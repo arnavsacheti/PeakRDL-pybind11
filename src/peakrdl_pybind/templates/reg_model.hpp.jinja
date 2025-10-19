@@ -1,0 +1,32 @@
+#pragma once
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include <pybind11/pybind11.h>
+
+#include "master.hpp"
+
+namespace soc {
+
+struct FieldDesc {
+  const char* name;
+  std::uint8_t lsb;
+  std::uint8_t msb;
+  const char* access;
+};
+
+struct RegDesc {
+  const char* path;
+  std::uint64_t address;
+  std::uint16_t width;
+  std::uint32_t reset;
+  const char* access;
+  bool is_volatile;
+  const FieldDesc* fields;
+  std::size_t field_count;
+};
+
+void bind_reg_model(pybind11::module_& m, std::shared_ptr<Master>* master);
+
+} // namespace soc

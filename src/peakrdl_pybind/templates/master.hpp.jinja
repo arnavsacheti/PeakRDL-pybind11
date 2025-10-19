@@ -1,0 +1,14 @@
+#pragma once
+#include <cstdint>
+#include <memory>
+
+namespace soc {
+
+class Master {
+public:
+  virtual ~Master() = default;
+  virtual std::uint32_t read32(std::uint64_t addr) = 0;
+  virtual void write32(std::uint64_t addr, std::uint32_t data, std::uint32_t wstrb = 0xF) = 0;
+};
+
+} // namespace soc

@@ -1,0 +1,34 @@
+#include "reg_model.hpp"
+
+namespace soc {
+
+namespace {
+
+{% for reg in registers %}
+static const FieldDesc {{ reg.name }}_fields[] = {
+{% for field in reg.fields %}
+    {"{{ field.name }}", {{ field.lsb }}, {{ field.msb }}, "{{ field.access }}"},
+{% endfor %}
+};
+
+static const RegDesc {{ reg.name }}_desc = {
+    "{{ reg.path }}",
+    {{ reg.absolute_address }},
+    {{ reg.width }},
+    {{ reg.reset or 0 }},
+    "{{ reg.access }}",
+    {{ "true" if reg.volatile else "false" }},
+    {{ reg.name }}_fields,
+    {{ reg.fields | length }},
+};
+{% endfor %}
+
+} // namespace
+
+void bind_reg_model(pybind11::module_& m, std::shared_ptr<Master>* master) {
+    (void)m;
+    (void)master;
+    // Binding logic will be implemented in future revisions.
+}
+
+} // namespace soc

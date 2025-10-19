@@ -1,0 +1,12 @@
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "{{ options.namespace or ('soc_' + options.soc_name) }}"
+version = "0.1.0"
+description = "Auto-generated SoC register bindings"
+requires-python = ">=3.9"
+
+[tool.scikit-build]
+wheel.packages = ["."]

@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.18)
+project({{ options.soc_name }}_soc LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(pybind11 REQUIRED)
+
+pybind11_add_module({{ options.namespace or ('soc_' + options.soc_name) }}
+    soc_module.cpp
+    master.cpp
+    reg_model.cpp
+)
+
+target_include_directories({{ options.namespace or ('soc_' + options.soc_name) }}
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+)

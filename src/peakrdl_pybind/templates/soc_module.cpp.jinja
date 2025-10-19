@@ -1,0 +1,25 @@
+#include <memory>
+
+#include <pybind11/pybind11.h>
+
+#include "master.hpp"
+#include "reg_model.hpp"
+
+namespace py = pybind11;
+
+namespace {
+std::shared_ptr<soc::Master> g_master;
+}
+
+PYBIND11_MODULE({{ options.namespace or ('soc_' + options.soc_name) }}, m) {
+    m.doc() = "Auto-generated SoC register bindings";
+
+    py::class_<soc::Master, std::shared_ptr<soc::Master>>(m, "Master")
+        .def(py::init<>())
+        .def("read32", &soc::Master::read32)
+        .def("write32", &soc::Master::write32, py::arg("addr"), py::arg("data"), py::arg("wstrb") = 0xF);
+
+    m.def("attach_master", [](std::shared_ptr<soc::Master> master) { g_master = std::move(master); });
+
+    soc::bind_reg_model(m, &g_master);
+}
