@@ -1,0 +1,34 @@
+#include "master.hpp"
+#include <pybind11/pybind11.h>
+
+namespace soc {
+
+void Master::read_block(std::uint64_t addr, std::uint8_t *dst, std::size_t len) {
+  for (std::size_t offset = 0; offset < len; offset += word_bytes()) {
+    std::uint32_t value = read32(addr + offset);
+    for (unsigned b = 0; b < word_bytes() && offset + b < len; ++b) {
+      dst[offset + b] = static_cast<std::uint8_t>((value >> (8 * b)) & 0xFF);
+    }
+  }
+}
+
+void Master::write_block(std::uint64_t addr, const std::uint8_t *src,
+                         std::size_t len) {
+  for (std::size_t offset = 0; offset < len; offset += word_bytes()) {
+    std::uint32_t value = 0;
+    std::uint32_t wstrb = 0;
+    for (unsigned b = 0; b < word_bytes() && offset + b < len; ++b) {
+      value |= static_cast<std::uint32_t>(src[offset + b]) << (8 * b);
+      wstrb |= 1u << b;
+    }
+    write32(addr + offset, value, wstrb);
+  }
+}
+
+void register_exceptions(pybind11::module_ &m) {
+  pybind11::register_exception<AccessError>(m, "AccessError");
+  pybind11::register_exception<TimeoutError>(m, "TimeoutError");
+  pybind11::register_exception<ConnectionError>(m, "ConnectionError");
+}
+
+} // namespace soc

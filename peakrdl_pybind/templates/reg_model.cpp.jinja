@@ -1,0 +1,132 @@
+#include "reg_model.hpp"
+
+#include <pybind11/stl.h>
+
+namespace soc {
+namespace {
+
+{% for reg in registers %}
+static const FieldDesc {{ reg.path | replace('.', '_') }}_fields[] = {
+{%- if reg.fields %}
+{%- for field in reg.fields %}
+    {"{{ field.name }}", {{ field.lsb }}, {{ field.msb }}, "{{ field.access }}"},
+{%- endfor %}
+{%- else %}
+    {"", 0, 0, "rw"},
+{%- endif %}
+};
+
+static const RegDesc {{ reg.path | replace('.', '_') }}_desc = {
+    "{{ reg.name }}",
+    "{{ reg.path }}",
+    {{ reg.address }},
+    {{ reg.width }},
+    {{ reg.reset if reg.reset is not none else 0 }},
+    {{ 'true' if reg.volatile else 'false' }},
+    "{{ reg.access }}",
+    {{ reg.path | replace('.', '_') }}_fields,
+    {{ reg.fields | length if reg.fields else 0 }},
+};
+{% endfor %}
+
+} // namespace
+
+FieldProxy::FieldProxy(const FieldDesc *desc, const RegDesc *reg,
+                       std::shared_ptr<AccessContext> ctx)
+    : desc_(desc), reg_(reg), ctx_(std::move(ctx)) {}
+
+std::uint32_t FieldProxy::mask() const {
+  return ((1u << (desc_->msb - desc_->lsb + 1)) - 1u) << desc_->lsb;
+}
+
+std::uint32_t FieldProxy::get() const {
+  auto value = read_reg(*ctx_, reg_->address);
+  return (value & mask()) >> desc_->lsb;
+}
+
+void FieldProxy::set(std::uint32_t value) const {
+  auto current = read_reg(*ctx_, reg_->address);
+  const auto m = mask();
+  current = (current & ~m) | ((value << desc_->lsb) & m);
+  write_reg(*ctx_, reg_->address, current, reg_->width);
+}
+
+RegProxy::RegProxy(const RegDesc *desc, std::shared_ptr<AccessContext> ctx)
+    : desc_(desc), ctx_(std::move(ctx)) {}
+
+std::uint32_t RegProxy::read() const { return read_reg(*ctx_, desc_->address); }
+
+void RegProxy::write(std::uint32_t value) const {
+  write_reg(*ctx_, desc_->address, value, desc_->width);
+}
+
+void RegProxy::modify(pybind11::kwargs kwargs) const {
+  auto value = read();
+  for (auto item : kwargs) {
+    auto key = std::string(pybind11::str(item.first));
+    auto new_value = item.second.cast<std::uint32_t>();
+    for (std::size_t i = 0; i < desc_->field_count; ++i) {
+      const auto &field = desc_->fields[i];
+      if (key == field.name) {
+        const auto m = ((1u << (field.msb - field.lsb + 1)) - 1u) << field.lsb;
+        value = (value & ~m) | ((new_value << field.lsb) & m);
+      }
+    }
+  }
+  write(value);
+}
+
+std::vector<FieldProxy> RegProxy::fields() const {
+  std::vector<FieldProxy> result;
+  result.reserve(desc_->field_count);
+  for (std::size_t i = 0; i < desc_->field_count; ++i) {
+    result.emplace_back(&desc_->fields[i], desc_, ctx_);
+  }
+  return result;
+}
+
+BlockProxy::BlockProxy(const BlockDesc *desc, std::shared_ptr<AccessContext> ctx,
+                       std::vector<std::shared_ptr<RegProxy>> regs,
+                       std::vector<std::shared_ptr<BlockProxy>> blocks)
+    : desc_(desc), ctx_(std::move(ctx)), registers_(std::move(regs)),
+      blocks_(std::move(blocks)) {}
+
+void bind_reg_model(pybind11::module_ &m, std::shared_ptr<Master> *master) {
+  auto ctx = std::make_shared<AccessContext>();
+  ctx->master_slot = master;
+  ctx->little_endian = {{ 'true' if options.little_endian else 'false' }};
+  ctx->word_bytes = {{ options.word_bytes }};
+
+  pybind11::class_<RegProxy, std::shared_ptr<RegProxy>>(m, "Register")
+      .def("read", &RegProxy::read)
+      .def("write", &RegProxy::write)
+      .def("modify", &RegProxy::modify)
+      .def_property_readonly("address", &RegProxy::address)
+      .def_property_readonly("width", &RegProxy::width);
+
+  pybind11::class_<FieldProxy>(m, "Field")
+      .def("get", &FieldProxy::get)
+      .def("set", &FieldProxy::set)
+      .def_property_readonly("lsb", &FieldProxy::lsb)
+      .def_property_readonly("msb", &FieldProxy::msb)
+      .def_property_readonly("mask", &FieldProxy::mask)
+      .def_property_readonly("access", &FieldProxy::access);
+
+  pybind11::class_<BlockProxy, std::shared_ptr<BlockProxy>>(m, "Block")
+      .def_property_readonly("name", &BlockProxy::name)
+      .def_property_readonly("address", &BlockProxy::address)
+      .def_property_readonly("registers", &BlockProxy::registers)
+      .def_property_readonly("blocks", &BlockProxy::blocks);
+
+  auto top_block_desc = BlockDesc{"{{ ir.name }}", "{{ ir.path }}", {{ ir.address }}};
+  std::vector<std::shared_ptr<RegProxy>> top_regs;
+  top_regs.reserve({{ registers | length }});
+{% for reg in registers %}
+  top_regs.emplace_back(std::make_shared<RegProxy>(&{{ reg.path | replace('.', '_') }}_desc, ctx));
+{% endfor %}
+  auto top = std::make_shared<BlockProxy>(&top_block_desc, ctx, std::move(top_regs),
+                                          std::vector<std::shared_ptr<BlockProxy>>{});
+  m.attr("top") = top;
+}
+
+} // namespace soc

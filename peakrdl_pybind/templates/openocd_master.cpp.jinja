@@ -1,0 +1,44 @@
+#include "../master.hpp"
+
+#include <pybind11/pybind11.h>
+
+#include <asio.hpp>
+#include <iostream>
+#include <sstream>
+
+namespace soc {
+
+class OpenOCDMaster : public Master {
+public:
+  OpenOCDMaster(std::string host, unsigned port)
+      : host_(std::move(host)), port_(port) {}
+
+  std::uint32_t read32(std::uint64_t addr) override {
+    return execute_command("mdw", addr);
+  }
+
+  void write32(std::uint64_t addr, std::uint32_t data,
+               std::uint32_t wstrb = 0xF) override {
+    (void)wstrb;
+    execute_command("mww", addr, data);
+  }
+
+private:
+  std::uint32_t execute_command(const char *cmd, std::uint64_t addr,
+                                std::uint32_t value = 0) {
+    // Placeholder implementation.
+    throw ConnectionError("OpenOCD master not implemented in generator stub");
+  }
+
+  std::string host_;
+  unsigned port_;
+};
+
+void bind_openocd_master(pybind11::module_ &m) {
+  pybind11::class_<OpenOCDMaster, Master, std::shared_ptr<OpenOCDMaster>>(m,
+                                                                          "OpenOCDMaster")
+      .def(pybind11::init<std::string, unsigned>(), pybind11::arg("host"),
+           pybind11::arg("port") = 4444);
+}
+
+} // namespace soc

@@ -1,0 +1,54 @@
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+
+#include <pybind11/pybind11.h>
+
+#include "master.hpp"
+
+namespace soc {
+
+struct AccessContext {
+  std::shared_ptr<Master> *master_slot;
+  bool little_endian;
+  unsigned word_bytes;
+};
+
+inline std::shared_ptr<Master> require_master(const AccessContext &ctx) {
+  if (ctx.master_slot == nullptr || !*ctx.master_slot) {
+    throw AccessError("No master attached");
+  }
+  return *ctx.master_slot;
+}
+
+inline std::uint32_t mask_to_width(std::uint32_t value, unsigned width) {
+  if (width >= 32)
+    return value;
+  const std::uint32_t mask = (width == 32) ? 0xFFFF'FFFFu : ((1u << width) - 1u);
+  return value & mask;
+}
+
+inline std::uint32_t make_wstrb(unsigned width_bits) {
+  unsigned byte_count = (width_bits + 7u) / 8u;
+  std::uint32_t mask = 0;
+  for (unsigned i = 0; i < byte_count; ++i)
+    mask |= 1u << i;
+  return mask;
+}
+
+inline std::uint32_t read_reg(const AccessContext &ctx, std::uint64_t addr) {
+  auto ptr = require_master(ctx);
+  pybind11::gil_scoped_release release;
+  return ptr->read32(addr);
+}
+
+inline void write_reg(const AccessContext &ctx, std::uint64_t addr,
+                      std::uint32_t value, unsigned width_bits) {
+  auto ptr = require_master(ctx);
+  pybind11::gil_scoped_release release;
+  ptr->write32(addr, mask_to_width(value, width_bits), make_wstrb(width_bits));
+}
+
+} // namespace soc

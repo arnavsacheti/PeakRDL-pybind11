@@ -1,0 +1,45 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace soc {
+
+class AccessError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
+class TimeoutError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
+class ConnectionError : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+
+class Master {
+public:
+  virtual ~Master() = default;
+
+  virtual std::uint32_t read32(std::uint64_t addr) = 0;
+  virtual void write32(std::uint64_t addr, std::uint32_t data,
+                       std::uint32_t wstrb = 0xF) = 0;
+
+  virtual void read_block(std::uint64_t addr, std::uint8_t *dst, std::size_t len);
+  virtual void write_block(std::uint64_t addr, const std::uint8_t *src,
+                           std::size_t len);
+
+  virtual bool little_endian() const { return true; }
+  virtual unsigned word_bytes() const { return {{ options.word_bytes }}; }
+};
+
+void register_exceptions(class pybind11::module_ &m);
+
+} // namespace soc

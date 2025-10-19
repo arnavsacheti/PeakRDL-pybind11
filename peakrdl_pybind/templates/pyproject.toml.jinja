@@ -1,0 +1,18 @@
+[build-system]
+requires = ["scikit-build-core", "pybind11", "setuptools"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "{{ options.namespace or ('soc_' + options.soc_name) }}"
+version = "0.1.0"
+description = "PyBind11 bindings for the {{ options.soc_name }} SoC"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.scikit-build]
+minimum-version = "0.3"
+wheel.py-api = "py3"
+
+[tool.scikit-build.cmake]
+build-dir = "${project-root}/build"
+source-dir = "${project-root}/cpp"

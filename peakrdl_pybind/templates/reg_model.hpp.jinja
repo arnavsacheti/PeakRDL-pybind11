@@ -1,0 +1,100 @@
+#pragma once
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <pybind11/pybind11.h>
+
+#include "accessors.hpp"
+
+namespace soc {
+
+struct FieldDesc {
+  const char *name;
+  std::uint8_t lsb;
+  std::uint8_t msb;
+  const char *access;
+};
+
+struct RegDesc {
+  const char *name;
+  const char *path;
+  std::uint64_t address;
+  std::uint16_t width;
+  std::uint32_t reset;
+  bool is_volatile;
+  const char *access;
+  const FieldDesc *fields;
+  std::size_t field_count;
+};
+
+struct BlockDesc {
+  const char *name;
+  const char *path;
+  std::uint64_t address;
+};
+
+class FieldProxy {
+public:
+  FieldProxy(const FieldDesc *desc, const RegDesc *reg,
+             std::shared_ptr<AccessContext> ctx);
+
+  std::uint32_t get() const;
+  void set(std::uint32_t value) const;
+  std::uint8_t lsb() const { return desc_->lsb; }
+  std::uint8_t msb() const { return desc_->msb; }
+  std::uint32_t mask() const;
+  const char *access() const { return desc_->access; }
+
+private:
+  const FieldDesc *desc_;
+  const RegDesc *reg_;
+  std::shared_ptr<AccessContext> ctx_;
+};
+
+class RegProxy {
+public:
+  RegProxy(const RegDesc *desc, std::shared_ptr<AccessContext> ctx);
+
+  std::uint32_t read() const;
+  void write(std::uint32_t value) const;
+  void modify(pybind11::kwargs kwargs) const;
+  std::uint64_t address() const { return desc_->address; }
+  std::uint16_t width() const { return desc_->width; }
+
+  std::vector<FieldProxy> fields() const;
+
+private:
+  const RegDesc *desc_;
+  std::shared_ptr<AccessContext> ctx_;
+};
+
+class BlockProxy {
+public:
+  BlockProxy(const BlockDesc *desc, std::shared_ptr<AccessContext> ctx,
+             std::vector<std::shared_ptr<RegProxy>> regs,
+             std::vector<std::shared_ptr<BlockProxy>> blocks);
+
+  const char *name() const { return desc_->name; }
+  std::uint64_t address() const { return desc_->address; }
+
+  const std::vector<std::shared_ptr<RegProxy>> &registers() const {
+    return registers_;
+  }
+  const std::vector<std::shared_ptr<BlockProxy>> &blocks() const {
+    return blocks_;
+  }
+
+private:
+  const BlockDesc *desc_;
+  std::shared_ptr<AccessContext> ctx_;
+  std::vector<std::shared_ptr<RegProxy>> registers_;
+  std::vector<std::shared_ptr<BlockProxy>> blocks_;
+};
+
+void bind_reg_model(pybind11::module_ &m, std::shared_ptr<Master> *master);
+
+} // namespace soc

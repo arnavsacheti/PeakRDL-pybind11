@@ -1,0 +1,36 @@
+#include "../master.hpp"
+
+#include <pybind11/pybind11.h>
+
+#include <cstdlib>
+#include <sstream>
+
+namespace soc {
+
+class SSHDevmemMaster : public Master {
+public:
+  SSHDevmemMaster(std::string host, std::string user)
+      : host_(std::move(host)), user_(std::move(user)) {}
+
+  std::uint32_t read32(std::uint64_t addr) override {
+    throw ConnectionError("SSH devmem master stub does not implement read32");
+  }
+
+  void write32(std::uint64_t addr, std::uint32_t data,
+               std::uint32_t wstrb = 0xF) override {
+    throw ConnectionError("SSH devmem master stub does not implement write32");
+  }
+
+private:
+  std::string host_;
+  std::string user_;
+};
+
+void bind_ssh_master(pybind11::module_ &m) {
+  pybind11::class_<SSHDevmemMaster, Master, std::shared_ptr<SSHDevmemMaster>>(m,
+                                                                              "SSHDevmemMaster")
+      .def(pybind11::init<std::string, std::string>(), pybind11::arg("host"),
+           pybind11::arg("user"));
+}
+
+} // namespace soc
