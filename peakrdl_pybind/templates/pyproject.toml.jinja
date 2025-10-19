@@ -1,0 +1,25 @@
+[build-system]
+requires = ["scikit-build-core>=0.5", "pybind11>=2.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "{{ module_name }}"
+version = "0.1.0"
+description = "Auto-generated PyBind11 bindings for {{ module_name }}"
+requires-python = ">=3.9"
+readme = "README.md"
+authors = [{ name = "Generated" }]
+license = { text = "MIT" }
+
+[tool.scikit-build]
+build-dir = "_skbuild"
+
+[tool.scikit-build.cmake]
+minimum-version = "3.20"
+source-dir = "."
+
+[tool.scikit-build.wheel]
+expand-macos-universal-tags = true
+
+[project.optional-dependencies]
+develop = ["pytest"]

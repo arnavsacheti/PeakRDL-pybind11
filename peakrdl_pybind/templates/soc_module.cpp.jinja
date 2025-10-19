@@ -1,0 +1,34 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+#include "master.hpp"
+#include "reg_model.hpp"
+
+namespace py = pybind11;
+namespace soc = {{ module_name|replace('-', '_') }};
+
+static std::shared_ptr<soc::Master> g_master;
+
+PYBIND11_MODULE({{ module_name }}, m) {
+  m.doc() = "Auto-generated SoC register bindings";
+
+  py::register_exception<soc::AccessError>(m, "AccessError");
+
+  py::class_<soc::Master, std::shared_ptr<soc::Master>>(m, "Master")
+      .def(py::init<>())
+      .def("read32", &soc::Master::read32)
+      .def("write32", &soc::Master::write32, py::arg("addr"), py::arg("data"), py::arg("wstrb") = 0xF)
+      .def("read_block", &soc::Master::read_block)
+      .def("write_block", &soc::Master::write_block)
+      .def_property_readonly("little_endian", &soc::Master::little_endian)
+      .def_property_readonly("word_bytes", &soc::Master::word_bytes);
+
+  m.def("attach_master", [](std::shared_ptr<soc::Master> master) {
+    g_master = std::move(master);
+  });
+
+  m.def("master_attached", []() { return static_cast<bool>(g_master); });
+
+  soc::bind_reg_model(m, &g_master);
+  m.def("reset_to_defaults", []() { soc::reset_to_defaults(&g_master); });
+}

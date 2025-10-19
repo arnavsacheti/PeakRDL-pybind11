@@ -1,0 +1,136 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <pybind11/pybind11.h>
+
+#include "master.hpp"
+#include "accessors.hpp"
+
+namespace {{ module_name|replace('-', '_') }} {
+
+struct FieldDesc {
+  const char* name;
+  std::uint8_t lsb;
+  std::uint8_t msb;
+  AccessMode access;
+  std::uint32_t reset;
+};
+
+struct RegDesc {
+  const char* name;
+  const char* path;
+  std::uint64_t address;
+  std::uint32_t offset;
+  std::uint16_t width;
+  std::uint32_t reset;
+  bool is_volatile;
+  AccessMode access;
+  const FieldDesc* fields;
+  std::size_t field_count;
+};
+
+struct ChildDesc {
+  const char* name;
+  const struct BlockDesc* desc;
+  std::uint64_t offset;
+};
+
+struct ArrayDesc {
+  const char* name;
+  const struct BlockDesc* element;
+  std::size_t count;
+  std::uint64_t stride;
+};
+
+struct BlockDesc {
+  const char* name;
+  const char* path;
+  std::uint64_t base_address;
+  const RegDesc* regs;
+  std::size_t reg_count;
+  const ChildDesc* blocks;
+  std::size_t block_count;
+  const ArrayDesc* arrays;
+  std::size_t array_count;
+};
+
+class FieldProxy {
+public:
+  FieldProxy(const FieldDesc* desc, const RegDesc* reg, std::shared_ptr<Master>* master, std::uint64_t base);
+
+  std::uint32_t get() const;
+  void set(std::uint32_t value) const;
+  std::uint8_t lsb() const;
+  std::uint8_t msb() const;
+  std::uint32_t mask() const;
+  const char* name() const;
+  const char* path() const;
+
+private:
+  const FieldDesc* desc_;
+  const RegDesc* reg_;
+  std::shared_ptr<Master>* master_;
+  std::uint64_t base_;
+};
+
+class RegProxy {
+public:
+  RegProxy(const RegDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base);
+
+  std::uint32_t read() const;
+  void write(std::uint32_t value) const;
+  void set_bits(std::uint32_t mask) const;
+  void clear_bits(std::uint32_t mask) const;
+  void modify(pybind11::kwargs kwargs) const;
+  std::uint64_t address() const;
+  std::uint16_t width() const;
+  const char* name() const;
+  const char* path() const;
+  pybind11::object getattr(const std::string& name) const;
+
+private:
+  const RegDesc* desc_;
+  std::shared_ptr<Master>* master_;
+  std::uint64_t base_;
+};
+
+class ArrayProxy;
+
+class BlockProxy {
+public:
+  BlockProxy(const BlockDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base);
+
+  pybind11::object getattr(const std::string& name) const;
+  std::string path() const;
+  std::uint64_t base_address() const;
+
+private:
+  const BlockDesc* desc_;
+  std::shared_ptr<Master>* master_;
+  std::uint64_t base_;
+};
+
+class ArrayProxy {
+public:
+  ArrayProxy(const ArrayDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base);
+  pybind11::object get_item(std::size_t index) const;
+  std::size_t size() const;
+
+private:
+  const ArrayDesc* desc_;
+  std::shared_ptr<Master>* master_;
+  std::uint64_t base_;
+};
+
+std::shared_ptr<BlockProxy> make_block_proxy(const BlockDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base);
+
+void bind_reg_model(pybind11::module_& m, std::shared_ptr<Master>* master);
+
+void reset_to_defaults(std::shared_ptr<Master>* master);
+
+}  // namespace {{ module_name|replace('-', '_') }}

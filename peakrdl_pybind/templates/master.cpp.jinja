@@ -1,0 +1,28 @@
+#include "master.hpp"
+
+namespace {{ module_name|replace('-', '_') }} {
+
+void Master::read_block(std::uint64_t addr, std::uint8_t* dst, std::size_t len) {
+  const unsigned step = word_bytes();
+  for (std::size_t offset = 0; offset < len; offset += step) {
+    std::uint32_t value = read32(addr + offset);
+    for (unsigned i = 0; i < step && offset + i < len; ++i) {
+      dst[offset + i] = static_cast<std::uint8_t>((value >> (8 * i)) & 0xFFu);
+    }
+  }
+}
+
+void Master::write_block(std::uint64_t addr, const std::uint8_t* src, std::size_t len) {
+  const unsigned step = word_bytes();
+  for (std::size_t offset = 0; offset < len; offset += step) {
+    std::uint32_t value = 0;
+    std::uint32_t mask = 0;
+    for (unsigned i = 0; i < step && offset + i < len; ++i) {
+      value |= static_cast<std::uint32_t>(src[offset + i]) << (8 * i);
+      mask |= (1u << i);
+    }
+    write32(addr + offset, value, mask);
+  }
+}
+
+}  // namespace {{ module_name|replace('-', '_') }}

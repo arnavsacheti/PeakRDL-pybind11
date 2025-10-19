@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.20)
+project({{ module_name }} LANGUAGES CXX)
+
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+find_package(pybind11 CONFIG REQUIRED)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+add_library({{ module_name }}_objects OBJECT
+    cpp/master.cpp
+    cpp/reg_model.cpp
+    cpp/soc_module.cpp
+)
+
+target_include_directories({{ module_name }}_objects PRIVATE cpp)
+
+pybind11_add_module({{ module_name }} MODULE $<TARGET_OBJECTS:{{ module_name }}_objects>)
+
+target_include_directories({{ module_name }} PRIVATE cpp)
+target_link_libraries({{ module_name }} PRIVATE pybind11::module)
+
+target_compile_definitions({{ module_name }} PRIVATE
+    SOC_WORD_BYTES={{ soc.word_bytes }}
+    SOC_LITTLE_ENDIAN={{ 1 if soc.little_endian else 0 }}
+    SOC_ACCESS_CHECKS={{ 0 if soc.options.get("no_access_checks") else 1 }}
+)

@@ -1,0 +1,24 @@
+#pragma once
+
+#include <cstdint>
+#include <cstddef>
+#include <memory>
+#include <string>
+
+namespace {{ module_name|replace('-', '_') }} {
+
+class Master {
+public:
+  virtual ~Master() = default;
+
+  virtual std::uint32_t read32(std::uint64_t addr) = 0;
+  virtual void write32(std::uint64_t addr, std::uint32_t data, std::uint32_t wstrb = 0xF) = 0;
+
+  virtual void read_block(std::uint64_t addr, std::uint8_t* dst, std::size_t len);
+  virtual void write_block(std::uint64_t addr, const std::uint8_t* src, std::size_t len);
+
+  virtual bool little_endian() const { return true; }
+  virtual unsigned word_bytes() const { return 4; }
+};
+
+}  // namespace {{ module_name|replace('-', '_') }}

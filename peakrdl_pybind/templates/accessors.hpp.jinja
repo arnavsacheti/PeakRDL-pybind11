@@ -1,0 +1,52 @@
+#pragma once
+
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+
+namespace {{ module_name|replace('-', '_') }} {
+
+enum class AccessMode : std::uint8_t {
+  kRW,
+  kRO,
+  kWO,
+  kW1C,
+  kW0C,
+  kRC
+};
+
+class AccessError : public std::runtime_error {
+public:
+  explicit AccessError(const std::string& what_arg) : std::runtime_error(what_arg) {}
+};
+
+inline std::uint32_t mask_width(std::uint32_t width) {
+  if (width >= 32) {
+    return 0xFFFF'FFFFu;
+  }
+  return (static_cast<std::uint32_t>(1u) << width) - 1u;
+}
+
+inline std::uint32_t apply_access_policy(AccessMode mode, std::uint32_t value, std::uint32_t existing) {
+  switch (mode) {
+    case AccessMode::kRW:
+      return value;
+    case AccessMode::kRO:
+      return existing;
+    case AccessMode::kWO:
+      return value;
+    case AccessMode::kW1C:
+      return value;
+    case AccessMode::kW0C:
+      return value;
+    case AccessMode::kRC:
+      return existing;
+  }
+  return value;
+}
+
+inline bool write_requires_existing(AccessMode mode) {
+  return mode == AccessMode::kRW;
+}
+
+}  // namespace {{ module_name|replace('-', '_') }}

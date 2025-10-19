@@ -1,0 +1,328 @@
+#include "reg_model.hpp"
+
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <pybind11/stl.h>
+
+namespace {{ module_name|replace('-', '_') }} {
+
+namespace {
+
+using pybind11::kwargs;
+using pybind11::module_;
+using pybind11::object;
+using pybind11::str;
+using pybind11::cast;
+
+std::shared_ptr<Master>& require_master(std::shared_ptr<Master>* master_ptr) {
+  if (!master_ptr || !*master_ptr) {
+    throw std::runtime_error("No master attached");
+  }
+  return *master_ptr;
+}
+
+std::uint64_t effective_address(const RegDesc* desc, std::uint64_t base) {
+  return base + static_cast<std::uint64_t>(desc->offset);
+}
+
+{% macro render_field_table(reg) %}
+{% if reg.fields %}
+static const FieldDesc {{ reg.to_cpp_name() }}_fields[] = {
+{% for field in reg.fields %}
+  {"{{ field.name }}", {{ field.lsb }}, {{ field.msb }}, {{ field.access.to_cpp() }}, {{ field.reset or 0 }}u},
+{% endfor %}
+};
+{% endif %}
+{% endmacro %}
+
+{% macro render_block(block) %}
+{% for reg in block.registers %}
+{{ render_field_table(reg) }}
+{% endfor %}
+{% for child in block.blocks %}
+{{ render_block(child) }}
+{% endfor %}
+{% for array in block.arrays %}
+{{ render_block(array.element) }}
+{% endfor %}
+{% if block.registers %}
+static const RegDesc {{ block.to_cpp_name() }}_regs[] = {
+{% for reg in block.registers %}
+  {
+    "{{ reg.name }}",
+    "{{ reg.path }}",
+    {{ reg.address }}ULL,
+    {{ reg.offset }}u,
+    {{ reg.width }},
+    {{ reg.reset or 0 }}u,
+    {{ 'true' if reg.is_volatile else 'false' }},
+    {{ reg.access.to_cpp() }},
+    {% if reg.fields %}{{ reg.to_cpp_name() }}_fields{% else %}nullptr{% endif %},
+    {% if reg.fields %}{{ reg.fields|length }}{% else %}0{% endif %}
+  },
+{% endfor %}
+};
+{% endif %}
+{% if block.blocks %}
+static const ChildDesc {{ block.to_cpp_name() }}_children[] = {
+{% for child in block.blocks %}
+  {"{{ child.name }}", &{{ child.to_cpp_name() }}_desc, {{ child.base_address - block.base_address }}ULL},
+{% endfor %}
+};
+{% endif %}
+{% if block.arrays %}
+static const ArrayDesc {{ block.to_cpp_name() }}_arrays[] = {
+{% for array in block.arrays %}
+  {"{{ array.name }}", &{{ array.element.to_cpp_name() }}_desc, {{ array.count }}, {{ array.stride }}ULL},
+{% endfor %}
+};
+{% endif %}
+static const BlockDesc {{ block.to_cpp_name() }}_desc = {
+  "{{ block.name }}",
+  "{{ block.path }}",
+  {{ block.base_address }}ULL,
+  {% if block.registers %}{{ block.to_cpp_name() }}_regs{% else %}nullptr{% endif %},
+  {% if block.registers %}{{ block.registers|length }}{% else %}0{% endif %},
+  {% if block.blocks %}{{ block.to_cpp_name() }}_children{% else %}nullptr{% endif %},
+  {% if block.blocks %}{{ block.blocks|length }}{% else %}0{% endif %},
+  {% if block.arrays %}{{ block.to_cpp_name() }}_arrays{% else %}nullptr{% endif %},
+  {% if block.arrays %}{{ block.arrays|length }}{% else %}0{% endif %}
+};
+{% endmacro %}
+
+{{ render_block(soc.top) }}
+
+const BlockDesc* const kTopBlock = &{{ soc.top.to_cpp_name() }}_desc;
+
+std::vector<const RegDesc*> collect_all_registers() {
+  static const std::vector<const RegDesc*> regs = [] {
+    std::vector<const RegDesc*> result;
+    std::vector<const BlockDesc*> stack = {kTopBlock};
+    while (!stack.empty()) {
+      const BlockDesc* current = stack.back();
+      stack.pop_back();
+      for (std::size_t i = 0; i < current->reg_count; ++i) {
+        result.push_back(&current->regs[i]);
+      }
+      for (std::size_t i = 0; i < current->block_count; ++i) {
+        stack.push_back(current->blocks[i].desc);
+      }
+      for (std::size_t i = 0; i < current->array_count; ++i) {
+        stack.push_back(current->arrays[i].element);
+      }
+    }
+    return result;
+  }();
+  return regs;
+}
+
+}  // namespace
+
+FieldProxy::FieldProxy(const FieldDesc* desc, const RegDesc* reg, std::shared_ptr<Master>* master, std::uint64_t base)
+    : desc_(desc), reg_(reg), master_(master), base_(base) {}
+
+std::uint32_t FieldProxy::get() const {
+  RegProxy reg(reg_, master_, base_);
+  std::uint32_t value = reg.read();
+  std::uint32_t mask = mask_width(static_cast<std::uint32_t>(desc_->msb - desc_->lsb + 1));
+  return (value >> desc_->lsb) & mask;
+}
+
+void FieldProxy::set(std::uint32_t value) const {
+  RegProxy reg(reg_, master_, base_);
+  std::uint32_t mask = mask_width(static_cast<std::uint32_t>(desc_->msb - desc_->lsb + 1)) << desc_->lsb;
+  std::uint32_t current = reg.read();
+  std::uint32_t new_value = (current & ~mask) | ((value << desc_->lsb) & mask);
+  reg.write(new_value);
+}
+
+std::uint8_t FieldProxy::lsb() const { return desc_->lsb; }
+std::uint8_t FieldProxy::msb() const { return desc_->msb; }
+std::uint32_t FieldProxy::mask() const { return mask_width(static_cast<std::uint32_t>(desc_->msb - desc_->lsb + 1)) << desc_->lsb; }
+const char* FieldProxy::name() const { return desc_->name; }
+const char* FieldProxy::path() const { return reg_->path; }
+
+RegProxy::RegProxy(const RegDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base)
+    : desc_(desc), master_(master), base_(base) {}
+
+std::uint32_t RegProxy::read() const {
+  auto& master = require_master(master_);
+  pybind11::gil_scoped_release nogil;
+  return master->read32(effective_address(desc_, base_));
+}
+
+void RegProxy::write(std::uint32_t value) const {
+#if SOC_ACCESS_CHECKS
+  if (desc_->access == AccessMode::kRO) {
+    throw AccessError(std::string("Register is read-only: ") + desc_->path);
+  }
+#endif
+  std::uint32_t width_mask = mask_width(desc_->width);
+  value &= width_mask;
+  auto& master = require_master(master_);
+  std::uint32_t existing = 0;
+  if (write_requires_existing(desc_->access)) {
+    pybind11::gil_scoped_release nogil;
+    existing = master->read32(effective_address(desc_, base_));
+  }
+  std::uint32_t write_value = apply_access_policy(desc_->access, value, existing);
+  unsigned byte_count = (desc_->width + 7u) / 8u;
+  std::uint32_t wstrb = byte_count >= 4 ? 0xFu : ((1u << byte_count) - 1u);
+  pybind11::gil_scoped_release nogil;
+  master->write32(effective_address(desc_, base_), write_value, wstrb);
+}
+
+void RegProxy::set_bits(std::uint32_t mask) const {
+  std::uint32_t value = read();
+  write(value | mask);
+}
+
+void RegProxy::clear_bits(std::uint32_t mask) const {
+  std::uint32_t value = read();
+  write(value & ~mask);
+}
+
+void RegProxy::modify(pybind11::kwargs kwargs) const {
+  std::uint32_t value = read();
+  for (auto& item : kwargs) {
+    std::string key = pybind11::cast<std::string>(item.first);
+    bool matched = false;
+    for (std::size_t idx = 0; idx < desc_->field_count; ++idx) {
+      const FieldDesc& field = desc_->fields[idx];
+      if (key == field.name) {
+    std::uint32_t field_mask = mask_width(static_cast<std::uint32_t>(field.msb - field.lsb + 1)) << field.lsb;
+        std::uint32_t field_value = pybind11::cast<std::uint32_t>(item.second);
+        value = (value & ~field_mask) | ((field_value << field.lsb) & field_mask);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      throw std::runtime_error("Unknown field: " + key);
+    }
+  }
+  write(value);
+}
+
+std::uint64_t RegProxy::address() const { return effective_address(desc_, base_); }
+std::uint16_t RegProxy::width() const { return desc_->width; }
+const char* RegProxy::name() const { return desc_->name; }
+const char* RegProxy::path() const { return desc_->path; }
+
+pybind11::object RegProxy::getattr(const std::string& name) const {
+  for (std::size_t i = 0; i < desc_->field_count; ++i) {
+    if (name == desc_->fields[i].name) {
+      return pybind11::cast(std::make_shared<FieldProxy>(&desc_->fields[i], desc_, master_, base_));
+    }
+  }
+  throw pybind11::attribute_error("Unknown field: " + name);
+}
+
+BlockProxy::BlockProxy(const BlockDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base)
+    : desc_(desc), master_(master), base_(base) {}
+
+pybind11::object BlockProxy::getattr(const std::string& name) const {
+  for (std::size_t i = 0; i < desc_->reg_count; ++i) {
+    const RegDesc* reg = &desc_->regs[i];
+    if (name == reg->name) {
+      return pybind11::cast(std::make_shared<RegProxy>(reg, master_, base_));
+    }
+  }
+  for (std::size_t i = 0; i < desc_->block_count; ++i) {
+    const ChildDesc& child = desc_->blocks[i];
+    if (name == child.name) {
+      std::uint64_t child_base = base_ + child.offset;
+      return pybind11::cast(std::make_shared<BlockProxy>(child.desc, master_, child_base));
+    }
+  }
+  for (std::size_t i = 0; i < desc_->array_count; ++i) {
+    const ArrayDesc& array = desc_->arrays[i];
+    if (name == array.name) {
+      return pybind11::cast(std::make_shared<ArrayProxy>(&array, master_, base_));
+    }
+  }
+  throw pybind11::attribute_error("Unknown register or block: " + name);
+}
+
+std::string BlockProxy::path() const { return desc_->path; }
+std::uint64_t BlockProxy::base_address() const { return base_; }
+
+ArrayProxy::ArrayProxy(const ArrayDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base)
+    : desc_(desc), master_(master), base_(base) {}
+
+pybind11::object ArrayProxy::get_item(std::size_t index) const {
+  if (index >= desc_->count) {
+    throw pybind11::index_error("Index out of range");
+  }
+  std::uint64_t element_base = base_ + static_cast<std::uint64_t>(index) * desc_->stride;
+  return pybind11::cast(std::make_shared<BlockProxy>(desc_->element, master_, element_base));
+}
+
+std::size_t ArrayProxy::size() const { return desc_->count; }
+
+std::shared_ptr<BlockProxy> make_block_proxy(const BlockDesc* desc, std::shared_ptr<Master>* master, std::uint64_t base) {
+  return std::make_shared<BlockProxy>(desc, master, base);
+}
+
+void reset_to_defaults(std::shared_ptr<Master>* master) {
+#if {{ 1 if soc.options.get("emit_reset_writes", True) else 0 }}
+  auto regs = collect_all_registers();
+  for (const RegDesc* reg : regs) {
+    if (reg->access == AccessMode::kRO) {
+      continue;
+    }
+    if (reg->reset != 0 || reg->field_count > 0) {
+      RegProxy proxy(reg, master, reg->address - reg->offset);
+      proxy.write(reg->reset);
+    }
+  }
+#else
+  (void)master;
+#endif
+}
+
+void bind_reg_model(pybind11::module_& m, std::shared_ptr<Master>* master) {
+  namespace py = pybind11;
+
+  py::class_<FieldProxy, std::shared_ptr<FieldProxy>>(m, "Field")
+      .def("get", &FieldProxy::get)
+      .def("set", &FieldProxy::set)
+      .def_property_readonly("lsb", &FieldProxy::lsb)
+      .def_property_readonly("msb", &FieldProxy::msb)
+      .def_property_readonly("mask", &FieldProxy::mask)
+      .def_property_readonly("name", &FieldProxy::name)
+      .def_property_readonly("path", &FieldProxy::path);
+
+  py::class_<RegProxy, std::shared_ptr<RegProxy>>(m, "Register")
+      .def("read", &RegProxy::read)
+      .def("write", &RegProxy::write, py::arg("value"))
+      .def("set_bits", &RegProxy::set_bits, py::arg("mask"))
+      .def("clear_bits", &RegProxy::clear_bits, py::arg("mask"))
+      .def("modify", &RegProxy::modify)
+      .def_property_readonly("address", &RegProxy::address)
+      .def_property_readonly("width", &RegProxy::width)
+      .def_property_readonly("name", &RegProxy::name)
+      .def_property_readonly("path", &RegProxy::path)
+      .def("__getattr__", &RegProxy::getattr);
+
+  py::class_<ArrayProxy, std::shared_ptr<ArrayProxy>>(m, "Array")
+      .def("__getitem__", &ArrayProxy::get_item)
+      .def_property_readonly("size", &ArrayProxy::size);
+
+  py::class_<BlockProxy, std::shared_ptr<BlockProxy>>(m, "Block")
+      .def("__getattr__", &BlockProxy::getattr)
+      .def_property_readonly("path", &BlockProxy::path)
+      .def_property_readonly("base_address", &BlockProxy::base_address);
+
+  m.attr("top") = py::cast(make_block_proxy(kTopBlock, master, kTopBlock->base_address));
+}
+
+}  // namespace {{ module_name|replace('-', '_') }}

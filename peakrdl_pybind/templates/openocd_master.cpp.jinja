@@ -1,0 +1,43 @@
+#include "master.hpp"
+
+#include <pybind11/pybind11.h>
+
+#include <chrono>
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+
+namespace py = pybind11;
+namespace {{ module_name|replace('-', '_') }} {
+
+class OpenOCDMaster : public Master {
+public:
+  OpenOCDMaster(std::string host, int port);
+
+  std::uint32_t read32(std::uint64_t addr) override;
+  void write32(std::uint64_t addr, std::uint32_t data, std::uint32_t wstrb = 0xF) override;
+
+private:
+  std::string host_;
+  int port_;
+};
+
+OpenOCDMaster::OpenOCDMaster(std::string host, int port) : host_(std::move(host)), port_(port) {}
+
+std::uint32_t OpenOCDMaster::read32(std::uint64_t addr) {
+  throw std::runtime_error("OpenOCD master stub - implement transport");
+}
+
+void OpenOCDMaster::write32(std::uint64_t addr, std::uint32_t data, std::uint32_t wstrb) {
+  (void)addr;
+  (void)data;
+  (void)wstrb;
+  throw std::runtime_error("OpenOCD master stub - implement transport");
+}
+
+void bind_openocd(py::module_& m) {
+  py::class_<OpenOCDMaster, Master, std::shared_ptr<OpenOCDMaster>>(m, "OpenOCDMaster")
+      .def(py::init<std::string, int>(), py::arg("host"), py::arg("port") = 4444);
+}
+
+}  // namespace {{ module_name|replace('-', '_') }}

@@ -1,0 +1,44 @@
+#include "master.hpp"
+
+#include <pybind11/pybind11.h>
+
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+
+namespace py = pybind11;
+namespace {{ module_name|replace('-', '_') }} {
+
+class SSHDevmemMaster : public Master {
+public:
+  SSHDevmemMaster(std::string host, std::string user);
+
+  std::uint32_t read32(std::uint64_t addr) override;
+  void write32(std::uint64_t addr, std::uint32_t data, std::uint32_t wstrb = 0xF) override;
+
+private:
+  std::string host_;
+  std::string user_;
+};
+
+SSHDevmemMaster::SSHDevmemMaster(std::string host, std::string user)
+    : host_(std::move(host)), user_(std::move(user)) {}
+
+std::uint32_t SSHDevmemMaster::read32(std::uint64_t addr) {
+  (void)addr;
+  throw std::runtime_error("SSH devmem master stub - implement transport");
+}
+
+void SSHDevmemMaster::write32(std::uint64_t addr, std::uint32_t data, std::uint32_t wstrb) {
+  (void)addr;
+  (void)data;
+  (void)wstrb;
+  throw std::runtime_error("SSH devmem master stub - implement transport");
+}
+
+void bind_ssh_devmem(py::module_& m) {
+  py::class_<SSHDevmemMaster, Master, std::shared_ptr<SSHDevmemMaster>>(m, "SSHDevmemMaster")
+      .def(py::init<std::string, std::string>(), py::arg("host"), py::arg("user"));
+}
+
+}  // namespace {{ module_name|replace('-', '_') }}
