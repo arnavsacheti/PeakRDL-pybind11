@@ -1,0 +1,36 @@
+#include <memory>
+
+#include <pybind11/pybind11.h>
+
+#include "master.hpp"
+#include "reg_model.hpp"
+
+namespace py = pybind11;
+
+namespace {{ namespace }} {
+
+static std::shared_ptr<Master> g_master;
+
+static std::shared_ptr<Master>* master_slot() {
+  return &g_master;
+}
+
+} // namespace {{ namespace }}
+
+PYBIND11_MODULE({{ module_name }}, m) {
+  m.doc() = "Auto-generated register bindings";
+
+  py::class_<{{ namespace }}::Master, std::shared_ptr<{{ namespace }}::Master>>(m, "Master")
+      .def("read32", &{{ namespace }}::Master::read32)
+      .def("write32", &{{ namespace }}::Master::write32, py::arg("addr"), py::arg("data"), py::arg("wstrb") = 0xF)
+      .def("read_block", &{{ namespace }}::Master::read_block, py::arg("addr"), py::arg("dst"), py::arg("length"))
+      .def("write_block", &{{ namespace }}::Master::write_block, py::arg("addr"), py::arg("src"), py::arg("length"))
+      .def("little_endian", &{{ namespace }}::Master::little_endian)
+      .def("word_bytes", &{{ namespace }}::Master::word_bytes);
+
+  m.def("attach_master", [](std::shared_ptr<{{ namespace }}::Master> master) {
+    {{ namespace }}::g_master = std::move(master);
+  });
+
+  {{ namespace }}::bind_reg_model(m, {{ namespace }}::master_slot(), &{{ top_descriptor }}, {{ 'true' if access_checks else 'false' }});
+}

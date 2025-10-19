@@ -1,0 +1,36 @@
+#include <array>
+#include <stdexcept>
+#include <string>
+
+#include "master.hpp"
+
+namespace {{ namespace }} {
+
+class OpenOCDMaster : public Master {
+public:
+  OpenOCDMaster(std::string host, int port);
+  ~OpenOCDMaster();
+
+  uint32_t read32(uint64_t addr) override;
+  void write32(uint64_t addr, uint32_t data, uint32_t wstrb = 0xF) override;
+
+private:
+  std::string host_;
+  int port_;
+};
+
+OpenOCDMaster::OpenOCDMaster(std::string host, int port) : host_(std::move(host)), port_(port) {}
+OpenOCDMaster::~OpenOCDMaster() = default;
+
+uint32_t OpenOCDMaster::read32(uint64_t addr) {
+  throw std::runtime_error("OpenOCD master example is not implemented");
+}
+
+void OpenOCDMaster::write32(uint64_t addr, uint32_t data, uint32_t wstrb) {
+  (void)addr;
+  (void)data;
+  (void)wstrb;
+  throw std::runtime_error("OpenOCD master example is not implemented");
+}
+
+} // namespace {{ namespace }}

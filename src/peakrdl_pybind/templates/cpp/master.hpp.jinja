@@ -1,0 +1,23 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace {{ namespace }} {
+
+class Master {
+public:
+  virtual ~Master() = default;
+
+  virtual uint32_t read32(uint64_t addr) = 0;
+  virtual void write32(uint64_t addr, uint32_t data, uint32_t wstrb = 0xF) = 0;
+
+  virtual void read_block(uint64_t addr, uint8_t* dst, size_t len);
+  virtual void write_block(uint64_t addr, const uint8_t* src, size_t len);
+
+  virtual bool little_endian() const { return {{ 'true' if little_endian else 'false' }}; }
+  virtual unsigned word_bytes() const { return {{ word_bytes }}; }
+};
+
+} // namespace {{ namespace }}

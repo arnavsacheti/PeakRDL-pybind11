@@ -1,0 +1,114 @@
+#pragma once
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
+#include "accessors.hpp"
+
+namespace {{ namespace }} {
+
+class FieldProxy {
+public:
+  FieldProxy(const RegisterDescriptor* reg, const FieldDescriptor* field, uint64_t address, std::shared_ptr<Master>* master_slot, bool access_checks);
+
+  uint64_t get() const;
+  void set(uint64_t value) const;
+  const char* name() const { return field_->name; }
+  uint8_t lsb() const { return field_->lsb; }
+  uint8_t msb() const { return field_->msb; }
+  AccessType access() const { return field_->access; }
+
+private:
+  const RegisterDescriptor* reg_;
+  const FieldDescriptor* field_;
+  uint64_t address_;
+  std::shared_ptr<Master>* master_slot_;
+  bool access_checks_;
+};
+
+class RegisterProxy {
+public:
+  RegisterProxy(const RegisterDescriptor* desc, uint64_t address, std::shared_ptr<Master>* master_slot, bool access_checks);
+
+  uint64_t read() const;
+  void write(uint64_t value) const;
+  void set_bits(uint64_t mask) const;
+  void clear_bits(uint64_t mask) const;
+  void modify(pybind11::kwargs kwargs) const;
+  uint64_t address() const { return address_; }
+  uint16_t width() const { return descriptor_->width; }
+  uint32_t reset() const { return descriptor_->reset; }
+  const char* path() const { return descriptor_->path; }
+  bool is_volatile() const { return descriptor_->volatile_; }
+
+  FieldProxy field(const std::string& name) const;
+  std::vector<std::string> field_names() const;
+
+private:
+  const RegisterDescriptor* descriptor_;
+  uint64_t address_;
+  std::shared_ptr<Master>* master_slot_;
+  bool access_checks_;
+};
+
+class RegisterArrayProxy {
+public:
+  RegisterArrayProxy(const RegisterDescriptor* desc, uint64_t address, size_t count, uint64_t stride, std::vector<size_t> dims, std::shared_ptr<Master>* master_slot, bool access_checks);
+  RegisterProxy at(size_t index) const;
+  size_t size() const { return count_; }
+  const std::vector<size_t>& dimensions() const { return dims_; }
+
+private:
+  const RegisterDescriptor* descriptor_;
+  uint64_t address_;
+  size_t count_;
+  uint64_t stride_;
+  std::vector<size_t> dims_;
+  std::shared_ptr<Master>* master_slot_;
+  bool access_checks_;
+};
+
+class BlockProxy {
+public:
+  BlockProxy(const BlockDescriptor* desc, uint64_t base, std::shared_ptr<Master>* master_slot, bool access_checks);
+
+  RegisterProxy register_at(size_t index) const;
+  RegisterProxy register_named(const std::string& name) const;
+  RegisterArrayProxy reg_array_named(const std::string& name) const;
+  BlockProxy block_named(const std::string& name) const;
+  class BlockArrayProxy block_array_named(const std::string& name) const;
+  uint64_t base_address() const { return base_; }
+  const BlockDescriptor* descriptor() const { return descriptor_; }
+
+private:
+  const BlockDescriptor* descriptor_;
+  uint64_t base_;
+  std::shared_ptr<Master>* master_slot_;
+  bool access_checks_;
+};
+
+class BlockArrayProxy {
+public:
+  BlockArrayProxy(const BlockDescriptor* desc, uint64_t base, size_t count, uint64_t stride, std::vector<size_t> dims, std::shared_ptr<Master>* master_slot, bool access_checks);
+  BlockProxy at(size_t index) const;
+  size_t size() const { return count_; }
+  const std::vector<size_t>& dimensions() const { return dims_; }
+
+private:
+  const BlockDescriptor* descriptor_;
+  uint64_t base_;
+  size_t count_;
+  uint64_t stride_;
+  std::vector<size_t> dims_;
+  std::shared_ptr<Master>* master_slot_;
+  bool access_checks_;
+};
+
+void bind_reg_model(pybind11::module_& m, std::shared_ptr<Master>* master_slot, const BlockDescriptor* top_block, bool access_checks);
+
+} // namespace {{ namespace }}

@@ -1,0 +1,397 @@
+#include "reg_model.hpp"
+
+#include <algorithm>
+#include <stdexcept>
+#include <vector>
+
+namespace py = pybind11;
+
+namespace {{ namespace }} {
+
+namespace {
+
+Master& require_master(std::shared_ptr<Master>* slot) {
+  if (!slot) {
+    throw AccessError("Invalid master slot");
+  }
+  auto& ref = *slot;
+  if (!ref) {
+    throw AccessError("No master attached");
+  }
+  return *ref;
+}
+
+const FieldDescriptor* find_field(const RegisterDescriptor* desc, const std::string& name) {
+  for (size_t i = 0; i < desc->field_count; ++i) {
+    if (name == desc->fields[i].name) {
+      return &desc->fields[i];
+    }
+  }
+  return nullptr;
+}
+
+const RegisterEntry* find_register(const BlockDescriptor* desc, const std::string& name) {
+  for (size_t i = 0; i < desc->register_count; ++i) {
+    if (name == desc->registers[i].name) {
+      return &desc->registers[i];
+    }
+  }
+  return nullptr;
+}
+
+const RegisterArrayEntry* find_register_array(const BlockDescriptor* desc, const std::string& name) {
+  for (size_t i = 0; i < desc->reg_array_count; ++i) {
+    if (name == desc->reg_arrays[i].name) {
+      return &desc->reg_arrays[i];
+    }
+  }
+  return nullptr;
+}
+
+const BlockEntry* find_block(const BlockDescriptor* desc, const std::string& name) {
+  for (size_t i = 0; i < desc->block_count; ++i) {
+    if (name == desc->blocks[i].name) {
+      return &desc->blocks[i];
+    }
+  }
+  return nullptr;
+}
+
+const BlockArrayEntry* find_block_array(const BlockDescriptor* desc, const std::string& name) {
+  for (size_t i = 0; i < desc->block_array_count; ++i) {
+    if (name == desc->block_arrays[i].name) {
+      return &desc->block_arrays[i];
+    }
+  }
+  return nullptr;
+}
+
+std::vector<size_t> dimensions_from_entry(const size_t* dims, size_t count) {
+  if (!dims) {
+    return {};
+  }
+  std::vector<size_t> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.push_back(dims[i]);
+  }
+  return result;
+}
+
+} // namespace
+
+FieldProxy::FieldProxy(const RegisterDescriptor* reg, const FieldDescriptor* field, uint64_t address, std::shared_ptr<Master>* master_slot, bool access_checks)
+    : reg_(reg), field_(field), address_(address), master_slot_(master_slot), access_checks_(access_checks) {}
+
+uint64_t FieldProxy::get() const {
+  auto& master = require_master(master_slot_);
+  uint64_t reg_value = read_register(*reg_, address_, master, access_checks_);
+  return get_field_value(reg_value, *field_);
+}
+
+void FieldProxy::set(uint64_t value) const {
+  enforce_field_access(field_->access, true, access_checks_);
+  auto& master = require_master(master_slot_);
+  uint64_t reg_value = read_register(*reg_, address_, master, false);
+  reg_value = set_field_value(reg_value, *field_, value);
+  write_register(*reg_, address_, master, reg_value, false);
+}
+
+RegisterProxy::RegisterProxy(const RegisterDescriptor* desc, uint64_t address, std::shared_ptr<Master>* master_slot, bool access_checks)
+    : descriptor_(desc), address_(address), master_slot_(master_slot), access_checks_(access_checks) {}
+
+uint64_t RegisterProxy::read() const {
+  auto& master = require_master(master_slot_);
+  return read_register(*descriptor_, address_, master, access_checks_);
+}
+
+void RegisterProxy::write(uint64_t value) const {
+  auto& master = require_master(master_slot_);
+  write_register(*descriptor_, address_, master, value, access_checks_);
+}
+
+void RegisterProxy::set_bits(uint64_t mask) const {
+  auto& master = require_master(master_slot_);
+  uint64_t value = read_register(*descriptor_, address_, master, false);
+  value |= mask;
+  write_register(*descriptor_, address_, master, value, false);
+}
+
+void RegisterProxy::clear_bits(uint64_t mask) const {
+  auto& master = require_master(master_slot_);
+  uint64_t value = read_register(*descriptor_, address_, master, false);
+  value &= ~mask;
+  write_register(*descriptor_, address_, master, value, false);
+}
+
+void RegisterProxy::modify(pybind11::kwargs kwargs) const {
+  if (kwargs.size() == 0) {
+    return;
+  }
+  auto& master = require_master(master_slot_);
+  uint64_t value = read_register(*descriptor_, address_, master, false);
+  for (auto& item : kwargs) {
+    std::string key = py::cast<std::string>(item.first);
+    const FieldDescriptor* field = find_field(descriptor_, key);
+    if (!field) {
+      throw py::key_error("Unknown field: " + key);
+    }
+    enforce_field_access(field->access, true, access_checks_);
+    uint64_t field_value = py::cast<uint64_t>(item.second);
+    value = set_field_value(value, *field, field_value);
+  }
+  write_register(*descriptor_, address_, master, value, false);
+}
+
+FieldProxy RegisterProxy::field(const std::string& name) const {
+  const FieldDescriptor* field = find_field(descriptor_, name);
+  if (!field) {
+    throw py::attribute_error("Register has no field named '" + name + "'");
+  }
+  return FieldProxy(descriptor_, field, address_, master_slot_, access_checks_);
+}
+
+std::vector<std::string> RegisterProxy::field_names() const {
+  std::vector<std::string> names;
+  names.reserve(descriptor_->field_count);
+  for (size_t i = 0; i < descriptor_->field_count; ++i) {
+    names.emplace_back(descriptor_->fields[i].name);
+  }
+  return names;
+}
+
+RegisterArrayProxy::RegisterArrayProxy(const RegisterDescriptor* desc, uint64_t address, size_t count, uint64_t stride, std::vector<size_t> dims, std::shared_ptr<Master>* master_slot, bool access_checks)
+    : descriptor_(desc), address_(address), count_(count), stride_(stride), dims_(std::move(dims)), master_slot_(master_slot), access_checks_(access_checks) {}
+
+RegisterProxy RegisterArrayProxy::at(size_t index) const {
+  if (index >= count_) {
+    throw py::index_error("Register array index out of range");
+  }
+  return RegisterProxy(descriptor_, address_ + index * stride_, master_slot_, access_checks_);
+}
+
+BlockProxy::BlockProxy(const BlockDescriptor* desc, uint64_t base, std::shared_ptr<Master>* master_slot, bool access_checks)
+    : descriptor_(desc), base_(base), master_slot_(master_slot), access_checks_(access_checks) {}
+
+RegisterProxy BlockProxy::register_at(size_t index) const {
+  if (index >= descriptor_->register_count) {
+    throw py::index_error("Register index out of range");
+  }
+  const auto& entry = descriptor_->registers[index];
+  return RegisterProxy(entry.descriptor, base_ + entry.offset, master_slot_, access_checks_);
+}
+
+RegisterProxy BlockProxy::register_named(const std::string& name) const {
+  const RegisterEntry* entry = find_register(descriptor_, name);
+  if (!entry) {
+    throw py::attribute_error("Unknown register: " + name);
+  }
+  return RegisterProxy(entry->descriptor, base_ + entry->offset, master_slot_, access_checks_);
+}
+
+RegisterArrayProxy BlockProxy::reg_array_named(const std::string& name) const {
+  const RegisterArrayEntry* entry = find_register_array(descriptor_, name);
+  if (!entry) {
+    throw py::attribute_error("Unknown register array: " + name);
+  }
+  auto dims = dimensions_from_entry(entry->dimensions, entry->dimension_count);
+  return RegisterArrayProxy(entry->descriptor, base_ + entry->offset, entry->count, entry->stride, std::move(dims), master_slot_, access_checks_);
+}
+
+BlockProxy BlockProxy::block_named(const std::string& name) const {
+  const BlockEntry* entry = find_block(descriptor_, name);
+  if (!entry) {
+    throw py::attribute_error("Unknown block: " + name);
+  }
+  return BlockProxy(entry->descriptor, base_ + entry->offset, master_slot_, access_checks_);
+}
+
+BlockArrayProxy BlockProxy::block_array_named(const std::string& name) const {
+  const BlockArrayEntry* entry = find_block_array(descriptor_, name);
+  if (!entry) {
+    throw py::attribute_error("Unknown block array: " + name);
+  }
+  auto dims = dimensions_from_entry(entry->dimensions, entry->dimension_count);
+  return BlockArrayProxy(entry->descriptor, base_ + entry->offset, entry->count, entry->stride, std::move(dims), master_slot_, access_checks_);
+}
+
+BlockArrayProxy::BlockArrayProxy(const BlockDescriptor* desc, uint64_t base, size_t count, uint64_t stride, std::vector<size_t> dims, std::shared_ptr<Master>* master_slot, bool access_checks)
+    : descriptor_(desc), base_(base), count_(count), stride_(stride), dims_(std::move(dims)), master_slot_(master_slot), access_checks_(access_checks) {}
+
+BlockProxy BlockArrayProxy::at(size_t index) const {
+  if (index >= count_) {
+    throw py::index_error("Block array index out of range");
+  }
+  return BlockProxy(descriptor_, base_ + index * stride_, master_slot_, access_checks_);
+}
+
+} // namespace {{ namespace }}
+
+{% macro access_enum(access) -%}
+AccessType::{{ access|upper }}
+{%- endmacro %}
+
+{% macro field_array_name(reg) -%}
+{{ reg.path|replace('.', '_')|c_ident }}_fields
+{%- endmacro %}
+
+{% macro register_name(reg) -%}
+{{ reg.path|replace('.', '_')|c_ident }}
+{%- endmacro %}
+
+{% macro block_name(block) -%}
+{{ block.path|replace('.', '_')|c_ident }}
+{%- endmacro %}
+
+{% macro emit_register(reg) -%}
+{% set fid = field_array_name(reg) %}
+static const FieldDescriptor {{ fid }}[] = {
+  {%- for field in reg.fields %}
+  {"{{ field.name }}", {{ field.lsb }}, {{ field.msb }}, {{ access_enum(field.access) }}, {{ field.reset if field.reset is not none else 0 }}},
+  {%- endfor %}
+};
+static const RegisterDescriptor {{ register_name(reg) }}_desc = {
+  "{{ reg.name }}",
+  "{{ reg.path }}",
+  {{ reg.absolute_address }},
+  {{ reg.width }},
+  {{ 'true' if reg.volatile else 'false' }},
+  {{ access_enum(reg.access) }},
+  {{ reg.reset if reg.reset is not none else 0 }},
+  {{ fid }},
+  {{ reg.fields|length }}
+};
+{%- endmacro %}
+
+// Descriptor tables generated below.
+{% macro emit_block_tables(block) -%}
+{% set bid = block_name(block) %}
+{% for child in block.blocks %}
+{{ emit_block_tables(child) }}
+{% endfor %}
+{% for reg in block.registers %}
+{{ emit_register(reg) }}
+{% endfor %}
+{% set array_regs = block.registers | selectattr('is_array') | list %}
+{% for reg in array_regs %}
+{% set rid = register_name(reg) %}
+{% if reg.array_dimensions %}
+static const size_t {{ rid }}_dims[] = { {{ reg.array_dimensions|join(', ') }} };
+{% endif %}
+{% endfor %}
+{% set block_arrays = block.blocks | selectattr('is_array') | list %}
+{% for child in block_arrays %}
+{% set cid = block_name(child) %}
+{% if child.array_dimensions %}
+static const size_t {{ cid }}_dims[] = { {{ child.array_dimensions|join(', ') }} };
+{% endif %}
+{% endfor %}
+{% set single_regs = block.registers | selectattr('is_array', 'equalto', False) | list %}
+{% if single_regs %}
+static const RegisterEntry {{ bid }}_registers[] = {
+  {%- for reg in single_regs %}
+  { "{{ reg.name }}", &{{ register_name(reg) }}_desc, {{ reg.absolute_address - block.absolute_address }} },
+  {%- endfor %}
+};
+{% endif %}
+{% if array_regs %}
+static const RegisterArrayEntry {{ bid }}_reg_arrays[] = {
+  {%- for reg in array_regs %}
+  { "{{ reg.name }}", &{{ register_name(reg) }}_desc, {{ reg.element_count }}, {{ reg.stride }}, {{ reg.absolute_address - block.absolute_address }}, {% if reg.array_dimensions %}{{ register_name(reg) }}_dims{% else %}nullptr{% endif %}, {{ reg.array_dimensions|length }} },
+  {%- endfor %}
+};
+{% endif %}
+{% set block_entries = block.blocks | selectattr('is_array', 'equalto', False) | list %}
+{% if block_entries %}
+static const BlockEntry {{ bid }}_blocks[] = {
+  {%- for child in block_entries %}
+  { "{{ child.name }}", &{{ block_name(child) }}_desc, {{ child.absolute_address - block.absolute_address }} },
+  {%- endfor %}
+};
+{% endif %}
+{% if block_arrays %}
+static const BlockArrayEntry {{ bid }}_block_arrays[] = {
+  {%- for child in block_arrays %}
+  { "{{ child.name }}", &{{ block_name(child) }}_desc, {{ child.array_dimensions|product }}, {{ child.stride if child.stride is not none else 0 }}, {{ child.absolute_address - block.absolute_address }}, {% if child.array_dimensions %}{{ block_name(child) }}_dims{% else %}nullptr{% endif %}, {{ child.array_dimensions|length }} },
+  {%- endfor %}
+};
+{% endif %}
+static const BlockDescriptor {{ bid }}_desc = {
+  "{{ block.name }}",
+  {{ block.absolute_address }},
+  {% if single_regs %}{{ bid }}_registers{% else %}nullptr{% endif %},
+  {{ single_regs|length }},
+  {% if array_regs %}{{ bid }}_reg_arrays{% else %}nullptr{% endif %},
+  {{ array_regs|length }},
+  {% if block_entries %}{{ bid }}_blocks{% else %}nullptr{% endif %},
+  {{ block_entries|length }},
+  {% if block_arrays %}{{ bid }}_block_arrays{% else %}nullptr{% endif %},
+  {{ block_arrays|length }}
+};
+{% endmacro %}
+
+{{ emit_block_tables(soc.top) }}
+
+void bind_reg_model(pybind11::module_& m, std::shared_ptr<Master>* master_slot, const BlockDescriptor* top_block, bool access_checks) {
+  py::register_exception<AccessError>(m, "AccessError");
+
+  py::class_<FieldProxy>(m, "Field")
+      .def("get", &FieldProxy::get)
+      .def("set", &FieldProxy::set, py::arg("value"))
+      .def_property_readonly("lsb", &FieldProxy::lsb)
+      .def_property_readonly("msb", &FieldProxy::msb)
+      .def_property_readonly("name", &FieldProxy::name)
+      .def_property_readonly("access", [](const FieldProxy& self) { return static_cast<int>(self.access()); });
+
+  py::class_<RegisterProxy>(m, "Register")
+      .def("read", &RegisterProxy::read)
+      .def("write", &RegisterProxy::write, py::arg("value"))
+      .def("set_bits", &RegisterProxy::set_bits, py::arg("mask"))
+      .def("clear_bits", &RegisterProxy::clear_bits, py::arg("mask"))
+      .def("modify", &RegisterProxy::modify)
+      .def("field", &RegisterProxy::field, py::arg("name"))
+      .def_property_readonly("fields", &RegisterProxy::field_names)
+      .def_property_readonly("address", &RegisterProxy::address)
+      .def_property_readonly("width", &RegisterProxy::width)
+      .def_property_readonly("reset", &RegisterProxy::reset)
+      .def_property_readonly("path", &RegisterProxy::path)
+      .def_property_readonly("volatile", &RegisterProxy::is_volatile)
+      .def("__getattr__", [](const RegisterProxy& self, const std::string& name) { return self.field(name); });
+
+  py::class_<RegisterArrayProxy>(m, "RegisterArray")
+      .def("__len__", &RegisterArrayProxy::size)
+      .def("__getitem__", &RegisterArrayProxy::at)
+      .def_property_readonly("dimensions", &RegisterArrayProxy::dimensions);
+
+  py::class_<BlockProxy>(m, "Block")
+      .def("register", &BlockProxy::register_named, py::arg("name"))
+      .def("register_array", &BlockProxy::reg_array_named, py::arg("name"))
+      .def("block", &BlockProxy::block_named, py::arg("name"))
+      .def("block_array", &BlockProxy::block_array_named, py::arg("name"))
+      .def_property_readonly("base_address", &BlockProxy::base_address)
+      .def("__getattr__", [](const BlockProxy& self, const std::string& name) -> py::object {
+        auto* desc = self.descriptor();
+        if (find_register(desc, name)) {
+          return py::cast(self.register_named(name));
+        }
+        if (find_register_array(desc, name)) {
+          return py::cast(self.reg_array_named(name));
+        }
+        if (find_block(desc, name)) {
+          return py::cast(self.block_named(name));
+        }
+        if (find_block_array(desc, name)) {
+          return py::cast(self.block_array_named(name));
+        }
+        throw py::attribute_error("Unknown attribute: " + name);
+      });
+
+  py::class_<BlockArrayProxy>(m, "BlockArray")
+      .def("__len__", &BlockArrayProxy::size)
+      .def("__getitem__", &BlockArrayProxy::at)
+      .def_property_readonly("dimensions", &BlockArrayProxy::dimensions);
+
+  m.attr("top") = BlockProxy(top_block, top_block->base_address, master_slot, access_checks);
+}
+
+} // namespace {{ module_name }}

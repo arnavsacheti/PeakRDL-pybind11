@@ -1,0 +1,111 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include "master.hpp"
+
+namespace {{ namespace }} {
+
+constexpr unsigned SOC_WORD_BYTES = {{ word_bytes }};
+constexpr bool SOC_LITTLE_ENDIAN = {{ 'true' if little_endian else 'false' }};
+
+class AccessError : public std::runtime_error {
+public:
+  explicit AccessError(const std::string& msg) : std::runtime_error(msg) {}
+};
+
+enum class AccessType {
+  RW,
+  RO,
+  WO,
+  W1C,
+  W0C,
+  W1S,
+  W0S,
+  W1T,
+  W0T
+};
+
+struct FieldDescriptor {
+  const char* name;
+  uint8_t lsb;
+  uint8_t msb;
+  AccessType access;
+  uint32_t reset;
+};
+
+struct RegisterDescriptor {
+  const char* name;
+  const char* path;
+  uint64_t address;
+  uint16_t width;
+  bool volatile_;
+  AccessType access;
+  uint32_t reset;
+  const FieldDescriptor* fields;
+  size_t field_count;
+};
+
+struct RegisterEntry {
+  const char* name;
+  const RegisterDescriptor* descriptor;
+  uint64_t offset;
+};
+
+struct RegisterArrayEntry {
+  const char* name;
+  const RegisterDescriptor* descriptor;
+  size_t count;
+  uint64_t stride;
+  uint64_t offset;
+  const size_t* dimensions;
+  size_t dimension_count;
+};
+
+struct BlockDescriptor;
+
+struct BlockEntry {
+  const char* name;
+  const BlockDescriptor* descriptor;
+  uint64_t offset;
+};
+
+struct BlockArrayEntry {
+  const char* name;
+  const BlockDescriptor* descriptor;
+  size_t count;
+  uint64_t stride;
+  uint64_t offset;
+  const size_t* dimensions;
+  size_t dimension_count;
+};
+
+struct BlockDescriptor {
+  const char* name;
+  uint64_t base_address;
+  const RegisterEntry* registers;
+  size_t register_count;
+  const RegisterArrayEntry* reg_arrays;
+  size_t reg_array_count;
+  const BlockEntry* blocks;
+  size_t block_count;
+  const BlockArrayEntry* block_arrays;
+  size_t block_array_count;
+};
+
+uint64_t read_register(const RegisterDescriptor& desc, uint64_t address, Master& master, bool access_checks);
+void write_register(const RegisterDescriptor& desc, uint64_t address, Master& master, uint64_t value, bool access_checks);
+
+void enforce_access(AccessType access, bool is_write, bool access_checks);
+void enforce_field_access(AccessType access, bool is_write, bool access_checks);
+uint64_t field_mask(const FieldDescriptor& field);
+uint64_t set_field_value(uint64_t reg_value, const FieldDescriptor& field, uint64_t field_value);
+uint64_t get_field_value(uint64_t reg_value, const FieldDescriptor& field);
+
+} // namespace {{ namespace }}

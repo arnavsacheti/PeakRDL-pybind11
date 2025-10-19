@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from typing import Any, Iterable, Iterator, Protocol
+
+class Master(Protocol):
+    def read32(self, addr: int) -> int: ...
+    def write32(self, addr: int, data: int, wstrb: int = ...) -> None: ...
+    def read_block(self, addr: int, dst: bytearray, length: int) -> None: ...
+    def write_block(self, addr: int, src: bytes, length: int) -> None: ...
+    def little_endian(self) -> bool: ...
+    def word_bytes(self) -> int: ...
+
+def attach_master(master: Master) -> None: ...
+
+class Field:
+    name: str
+    lsb: int
+    msb: int
+    def get(self) -> int: ...
+    def set(self, value: int) -> None: ...
+
+class Register:
+    path: str
+    address: int
+    width: int
+    reset: int
+    volatile: bool
+    def read(self) -> int: ...
+    def write(self, value: int) -> None: ...
+    def set_bits(self, mask: int) -> None: ...
+    def clear_bits(self, mask: int) -> None: ...
+    def modify(self, **fields: int) -> None: ...
+    def field(self, name: str) -> Field: ...
+
+class RegisterArray:
+    def __len__(self) -> int: ...
+    def __getitem__(self, idx: int) -> Register: ...
+    @property
+    def dimensions(self) -> tuple[int, ...]: ...
+
+class Block:
+    base_address: int
+    def register(self, name: str) -> Register: ...
+    def register_array(self, name: str) -> RegisterArray: ...
+    def block(self, name: str) -> Block: ...
+    def block_array(self, name: str) -> BlockArray: ...
+
+class BlockArray:
+    def __len__(self) -> int: ...
+    def __getitem__(self, idx: int) -> Block: ...
+    @property
+    def dimensions(self) -> tuple[int, ...]: ...
+
+{% macro block_class_name(block) -%}
+{{ block.path|replace('.', '_')|camel }}Block
+{%- endmacro %}
+
+{% macro emit_block_stub(block) -%}
+class {{ block_class_name(block) }}(Block):
+{% set single_regs = block.registers | selectattr('is_array', 'equalto', False) | list %}
+{% set array_regs = block.registers | selectattr('is_array') | list %}
+{% set single_blocks = block.blocks | selectattr('is_array', 'equalto', False) | list %}
+{% set block_arrays = block.blocks | selectattr('is_array') | list %}
+{%- if not single_regs and not array_regs and not single_blocks and not block_arrays %}
+    ...
+{%- else %}
+{% for reg in single_regs %}
+    {{ reg.name|c_ident }}: Register
+{% endfor %}
+{% for reg in array_regs %}
+    {{ reg.name|c_ident }}: RegisterArray
+{% endfor %}
+{% for child in single_blocks %}
+    {{ child.name|c_ident }}: {{ block_class_name(child) }}
+{% endfor %}
+{% for child in block_arrays %}
+    {{ child.name|c_ident }}: BlockArray
+{% endfor %}
+{%- endif %}
+{% for child in block.blocks %}
+{{ emit_block_stub(child) }}
+{% endfor %}
+{%- endmacro %}
+
+{{ emit_block_stub(soc.top) }}
+
+top: {{ block_class_name(soc.top) }}

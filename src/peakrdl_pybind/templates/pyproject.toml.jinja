@@ -1,0 +1,15 @@
+[build-system]
+requires = ["scikit-build-core>=0.5", "pybind11", "setuptools"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "{{ module_name }}"
+version = "0.1.0"
+description = "Auto-generated register bindings"
+requires-python = ">=3.9"
+
+[tool.scikit-build]
+build-dir = "build"
+
+[tool.scikit-build.cmake]
+args = ["-DPYBIND11_FINDPYTHON=ON"]

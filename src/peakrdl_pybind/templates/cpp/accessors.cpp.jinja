@@ -1,0 +1,110 @@
+#include "accessors.hpp"
+
+#include <algorithm>
+
+namespace {{ namespace }} {
+
+namespace {
+
+inline uint64_t make_mask(unsigned width) {
+  if (width >= 64) {
+    return 0xFFFFFFFFFFFFFFFFull;
+  }
+  return (width == 0) ? 0 : ((1ull << width) - 1ull);
+}
+
+inline uint32_t make_wstrb(unsigned bytes) {
+  if (bytes >= SOC_WORD_BYTES) {
+    return (1u << SOC_WORD_BYTES) - 1u;
+  }
+  return (1u << bytes) - 1u;
+}
+
+} // namespace
+
+uint64_t read_register(const RegisterDescriptor& desc, uint64_t address, Master& master, bool access_checks) {
+  enforce_access(desc.access, false, access_checks);
+  const unsigned word_bits = SOC_WORD_BYTES * 8;
+  const unsigned words = (desc.width + word_bits - 1) / word_bits;
+  uint64_t value = 0;
+  for (unsigned i = 0; i < words; ++i) {
+    uint32_t word = master.read32(address + i * SOC_WORD_BYTES);
+    if (SOC_LITTLE_ENDIAN) {
+      value |= static_cast<uint64_t>(word) << (i * word_bits);
+    } else {
+      unsigned shift = (words - i - 1) * word_bits;
+      value |= static_cast<uint64_t>(word) << shift;
+    }
+  }
+  const unsigned width = std::min<unsigned>(desc.width, 64);
+  value &= make_mask(width);
+  return value;
+}
+
+void write_register(const RegisterDescriptor& desc, uint64_t address, Master& master, uint64_t value, bool access_checks) {
+  enforce_access(desc.access, true, access_checks);
+  const unsigned word_bits = SOC_WORD_BYTES * 8;
+  const unsigned words = (desc.width + word_bits - 1) / word_bits;
+  const unsigned width = std::min<unsigned>(desc.width, 64);
+  const uint64_t mask = make_mask(width);
+  value &= mask;
+
+  if (width < word_bits) {
+    uint64_t current = read_register(desc, address, master, false);
+    const uint64_t preserve = ~mask;
+    value = (current & preserve) | (value & mask);
+  }
+
+  for (unsigned i = 0; i < words; ++i) {
+    unsigned shift = SOC_LITTLE_ENDIAN ? i * word_bits : (words - i - 1) * word_bits;
+    uint32_t word = static_cast<uint32_t>((value >> shift) & 0xFFFFFFFFu);
+    unsigned bytes = SOC_WORD_BYTES;
+    if (i == words - 1) {
+      unsigned remaining_bits = desc.width - i * word_bits;
+      if (remaining_bits < word_bits) {
+        bytes = (remaining_bits + 7) / 8;
+      }
+    }
+    master.write32(address + i * SOC_WORD_BYTES, word, make_wstrb(bytes));
+  }
+}
+
+void enforce_access(AccessType access, bool is_write, bool access_checks) {
+  if (!access_checks) {
+    return;
+  }
+  if (is_write) {
+    if (access == AccessType::RO) {
+      throw AccessError("Register is read-only");
+    }
+  } else {
+    if (access == AccessType::WO) {
+      throw AccessError("Register is write-only");
+    }
+  }
+}
+
+void enforce_field_access(AccessType access, bool is_write, bool access_checks) {
+  enforce_access(access, is_write, access_checks);
+}
+
+uint64_t field_mask(const FieldDescriptor& field) {
+  unsigned width = field.msb - field.lsb + 1;
+  return make_mask(width) << field.lsb;
+}
+
+uint64_t set_field_value(uint64_t reg_value, const FieldDescriptor& field, uint64_t field_value) {
+  uint64_t mask = field_mask(field);
+  unsigned width = field.msb - field.lsb + 1;
+  uint64_t clean_value = (field_value & make_mask(width)) << field.lsb;
+  reg_value &= ~mask;
+  reg_value |= clean_value;
+  return reg_value;
+}
+
+uint64_t get_field_value(uint64_t reg_value, const FieldDescriptor& field) {
+  uint64_t mask = field_mask(field);
+  return (reg_value & mask) >> field.lsb;
+}
+
+} // namespace {{ namespace }}

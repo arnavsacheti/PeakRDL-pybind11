@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.18)
+project({{ module_name }} LANGUAGES CXX)
+
+find_package(pybind11 CONFIG REQUIRED)
+
+pybind11_add_module({{ namespace }}
+  MODULE
+  cpp/master.cpp
+  cpp/accessors.cpp
+  cpp/reg_model.cpp
+  cpp/soc_module.cpp
+)
+
+target_include_directories({{ namespace }} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
+target_compile_features({{ namespace }} PRIVATE cxx_std_17)
+set_target_properties({{ namespace }} PROPERTIES OUTPUT_NAME "{{ module_name }}")
