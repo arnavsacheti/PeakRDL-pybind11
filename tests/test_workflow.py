@@ -3,16 +3,11 @@ Integration test demonstrating the PeakRDL-pybind11 workflow
 
 This test demonstrates the complete workflow of:
 1. Exporting SystemRDL to PyBind11 modules
-2. Building the C++ extension  
+2. Building the C++ extension
 3. Using the generated Python API
 
 Note: This test requires systemrdl-compiler to be installed
 """
-
-import os
-import sys
-import tempfile
-from pathlib import Path
 
 def test_workflow_demonstration():
     """
