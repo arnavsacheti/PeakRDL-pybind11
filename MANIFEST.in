@@ -1,0 +1,3 @@
+include README.md
+include LICENSE
+recursive-include peakrdl_pybind11/templates *.jinja

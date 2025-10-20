@@ -50,7 +50,10 @@ Issues = "https://github.com/arnavsacheti/PeakRDL-pybind11/issues"
 pybind11 = "peakrdl_pybind11.__peakrdl__:Exporter"
 
 [tool.setuptools]
-packages = ["peakrdl_pybind11"]
+packages = ["peakrdl_pybind11", "peakrdl_pybind11.masters"]
+
+[tool.setuptools.package-data]
+peakrdl_pybind11 = ["templates/*.jinja"]
 
 [tool.setuptools_scm]
 write_to = "peakrdl_pybind11/_version.py"
