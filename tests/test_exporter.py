@@ -73,7 +73,8 @@ class TestExporter:
                 'simple_soc_descriptors.hpp',
                 'simple_soc_bindings.cpp',
                 '__init__.py',
-                'setup.py',
+                'CMakeLists.txt',
+                'pyproject.toml',
                 '__init__.pyi',
             ]
             

@@ -78,10 +78,10 @@ soc.peripherals.uart.control.modify(enable=1, mode=2)
 
 ## Requirements
 
-- Python >= 3.7
-- systemrdl-compiler >= 1.27.0
-- peakrdl >= 1.1.0
+- Python >= 3.10
+- systemrdl-compiler >= 1.30.1
 - jinja2
+- CMake >= 3.15 (for building generated modules)
 - C++11 compatible compiler (for building generated modules)
 - pybind11 (runtime dependency for generated code)
 

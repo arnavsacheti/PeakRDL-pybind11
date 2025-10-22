@@ -53,6 +53,7 @@ public:
     const std::string& name() const { return name_; }
     uint64_t offset() const { return offset_; }
     uint8_t lsb() const { return lsb_; }
+    uint8_t msb() const { return lsb_ + width_ - 1; }
     uint8_t width() const { return width_; }
     bool is_readable() const { return readable_; }
     bool is_writable() const { return writable_; }

@@ -70,7 +70,8 @@ def test_workflow_demonstration():
     print("  ✓ demo_descriptors.hpp  - C++ register descriptors")
     print("  ✓ demo_bindings.cpp     - PyBind11 bindings")
     print("  ✓ __init__.py          - Python runtime module")
-    print("  ✓ setup.py             - Build script for C++ extension")
+    print("  ✓ CMakeLists.txt       - CMake build configuration")
+    print("  ✓ pyproject.toml       - Package configuration")
     print("  ✓ __init__.pyi         - Type stub file")
     print()
     
@@ -78,7 +79,7 @@ def test_workflow_demonstration():
     print("-" * 70)
     print("Command:")
     print("  $ cd output")
-    print("  $ python setup.py build_ext --inplace")
+    print("  $ pip install .")
     print()
     
     print("Step 4: Use Generated Python API")

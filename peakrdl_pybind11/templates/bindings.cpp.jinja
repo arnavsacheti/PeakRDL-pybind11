@@ -25,6 +25,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("name", &FieldBase::name)
         .def_property_readonly("offset", &FieldBase::offset)
         .def_property_readonly("lsb", &FieldBase::lsb)
+        .def_property_readonly("msb", &FieldBase::msb)
         .def_property_readonly("width", &FieldBase::width)
         .def_property_readonly("is_readable", &FieldBase::is_readable)
         .def_property_readonly("is_writable", &FieldBase::is_writable)
@@ -46,7 +47,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     
     {% for reg in nodes.regs %}
     // Register class: {{ reg.inst_name }}
-    py::class_<{{ reg.inst_name }}_t, RegisterBase>(m, "{{ reg.inst_name }}_t")
+    py::class_<{{ reg.inst_name }}_t, RegisterBase>(m, "{{ reg.inst_name }}_t"{% if reg.get_property('desc') %}, "{{ reg.get_html_desc() }}"{% endif %})
         .def(py::init<uint64_t>())
         {% for field in reg.fields() %}
         .def_readonly("{{ field.inst_name }}", &{{ reg.inst_name }}_t::{{ field.inst_name }})
@@ -55,7 +56,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     
     {% for field in reg.fields() %}
     // Field class: {{ reg.inst_name }}.{{ field.inst_name }}
-    py::class_<{{ reg.inst_name }}_t::{{ field.inst_name }}_field, FieldBase>(m, "{{ reg.inst_name }}_{{ field.inst_name }}_field")
+    py::class_<{{ reg.inst_name }}_t::{{ field.inst_name }}_field, FieldBase>(m, "{{ reg.inst_name }}_{{ field.inst_name }}_field"{% if field.get_property('desc') %}, "{{ field.get_html_desc() }}"{% endif %})
         .def("read", &{{ reg.inst_name }}_t::{{ field.inst_name }}_field::read, "Read field value")
         .def("write", &{{ reg.inst_name }}_t::{{ field.inst_name }}_field::write, "Write field value");
     {% endfor %}

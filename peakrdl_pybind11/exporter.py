@@ -120,16 +120,24 @@ class Pybind11Exporter:
             f.write(output)
     
     def _generate_setup_py(self):
-        """Generate setup.py for building the C++ extension"""
-        template = self.env.get_template('setup.py.jinja')
-        
-        output = template.render(
+        """Generate CMakeLists.txt and pyproject.toml for building the C++ extension"""
+        # Generate CMakeLists.txt
+        cmake_template = self.env.get_template('CMakeLists.txt.jinja')
+        cmake_output = cmake_template.render(
             soc_name=self.soc_name,
         )
+        cmake_filepath = os.path.join(self.output_dir, 'CMakeLists.txt')
+        with open(cmake_filepath, 'w') as f:
+            f.write(cmake_output)
         
-        filepath = os.path.join(self.output_dir, 'setup.py')
-        with open(filepath, 'w') as f:
-            f.write(output)
+        # Generate pyproject.toml for the module
+        pyproject_template = self.env.get_template('pyproject_module.toml.jinja')
+        pyproject_output = pyproject_template.render(
+            soc_name=self.soc_name,
+        )
+        pyproject_filepath = os.path.join(self.output_dir, 'pyproject.toml')
+        with open(pyproject_filepath, 'w') as f:
+            f.write(pyproject_output)
     
     def _generate_pyi_stubs(self):
         """Generate .pyi stub files for type hints"""

@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "peakrdl-pybind11"
-dynamic = ["version"]
+version = "0.1.0"
 description = "Export SystemRDL to PyBind11 modules for Python-based hardware testing"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 license = {text = "GPL-3.0-only"}
 keywords = ["SystemRDL", "PyBind11", "register", "hardware", "testing"]
 authors = [
@@ -20,25 +20,30 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 ]
 dependencies = [
-    "systemrdl-compiler >= 1.27.0",
-    "peakrdl >= 1.1.0",
+    "systemrdl-compiler >= 1.30.1",
     "jinja2",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "pylint",
+cli = [
+    "peakrdl-cli >= 1.2.3",
+]
+
+[dependency-groups]
+test = [
+    "pytest >= 7.4.4",
+    "pytest-cov >= 4.1.0",
+]
+tools = [
+    "pyrefly >= 0.37.0",
+    "ruff >= 0.14.0",
 ]
 
 [project.urls]
@@ -54,6 +59,3 @@ packages = ["peakrdl_pybind11", "peakrdl_pybind11.masters"]
 
 [tool.setuptools.package-data]
 peakrdl_pybind11 = ["templates/*.jinja"]
-
-[tool.setuptools_scm]
-write_to = "peakrdl_pybind11/_version.py"

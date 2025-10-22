@@ -3,7 +3,12 @@ PeakRDL-pybind11
 Export SystemRDL to PyBind11 modules for Python-based hardware testing
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("peakrdl-pybind11")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
 
 # Lazy import to avoid requiring systemrdl-compiler for submodules
 def __getattr__(name):

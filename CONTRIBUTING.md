@@ -10,14 +10,16 @@ git clone https://github.com/arnavsacheti/PeakRDL-pybind11.git
 cd PeakRDL-pybind11
 ```
 
-2. Install in development mode:
+2. Install dependencies using uv:
 ```bash
-pip install -e .
-```
+# Install uv if you don't have it
+pip install uv
 
-3. Install development dependencies:
-```bash
-pip install -e ".[dev]"
+# Install the package in development mode
+uv pip install -e .
+
+# Install development dependencies
+uv pip install -e ".[cli]" --group test --group tools
 ```
 
 ## Running Tests
@@ -34,9 +36,16 @@ pytest --cov=peakrdl_pybind11 tests/
 
 ## Code Style
 
-This project follows PEP 8 style guidelines. Use pylint to check your code:
+This project follows PEP 8 style guidelines. Use ruff for linting and formatting:
 ```bash
-pylint peakrdl_pybind11/
+# Format code
+ruff format peakrdl_pybind11/
+
+# Lint code
+ruff check peakrdl_pybind11/
+
+# Type checking
+pyrefly check peakrdl_pybind11/
 ```
 
 ## Project Structure

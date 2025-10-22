@@ -29,6 +29,9 @@ class FieldBase:
     def lsb(self) -> int: ...
     
     @property
+    def msb(self) -> int: ...
+    
+    @property
     def width(self) -> int: ...
     
     @property
@@ -75,13 +78,19 @@ class NodeBase:
 
 {% for reg in nodes.regs %}
 class {{ reg.inst_name }}_t(RegisterBase):
-    """Register: {{ reg.inst_name }}"""
+    """Register: {{ reg.inst_name }}
+    {% if reg.get_property('desc') %}
+    {{ reg.get_property('desc') }}
+    {% endif %}"""
     
     def __init__(self, base_offset: int) -> None: ...
     
     {% for field in reg.fields() %}
     class {{ field.inst_name }}_field(FieldBase):
-        """Field: {{ field.inst_name }}"""
+        """Field: {{ field.inst_name }}
+        {% if field.get_property('desc') %}
+        {{ field.get_property('desc') }}
+        {% endif %}"""
         
         def read(self) -> int:
             """Read field value"""

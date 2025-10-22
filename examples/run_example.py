@@ -62,8 +62,10 @@ def build_extension(output_dir):
     print("=" * 70)
     print("\nTo build the extension, run:")
     print(f"  cd {output_dir}")
-    print("  python setup.py build_ext --inplace")
-    print("\nNote: This requires pybind11 and a C++11 compiler.")
+    print("  pip install .")
+    print("\nOr for development:")
+    print("  pip install -e .")
+    print("\nNote: This requires pybind11, CMake 3.15+, and a C++11 compiler.")
 
 
 def demonstrate_usage():
