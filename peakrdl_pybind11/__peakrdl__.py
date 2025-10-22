@@ -44,6 +44,18 @@ class Exporter(ExporterSubcommandPlugin):
             action="store_false",
             help="Disable generation of .pyi stub files"
         )
+        arg_group.add_argument(
+            "--split-bindings",
+            dest="split_bindings",
+            type=int,
+            metavar="COUNT",
+            default=100,
+            help=(
+                "Split bindings into multiple files for parallel compilation when register count "
+                "exceeds this threshold. This significantly speeds up compilation for large "
+                "register maps. Set to 0 to disable splitting. (default: 100)"
+            )
+        )
     
     def do_export(self, top_node: 'AddrmapNode', options: 'argparse.Namespace') -> None:
         """Execute the export"""
@@ -55,10 +67,12 @@ class Exporter(ExporterSubcommandPlugin):
             soc_name = top_node.inst_name or "soc"
         
         gen_pyi = getattr(options, 'gen_pyi', True)
+        split_bindings = getattr(options, 'split_bindings', 100)
         
         exporter.export(
             top_node,
             options.output,
             soc_name=soc_name,
-            gen_pyi=gen_pyi
+            gen_pyi=gen_pyi,
+            split_bindings=split_bindings
         )
