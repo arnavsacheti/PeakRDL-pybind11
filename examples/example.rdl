@@ -1,0 +1,111 @@
+// example.rdl
+// Example SystemRDL file for demonstration
+
+addrmap example_soc {
+    name = "Example SoC";
+    desc = "An example SoC with UART and GPIO peripherals";
+    
+    regfile uart {
+        name = "UART Peripheral";
+        
+        reg {
+            name = "Control Register";
+            desc = "UART control and configuration";
+            
+            field {
+                name = "Enable";
+                desc = "Enable UART";
+                sw = rw;
+                hw = r;
+            } enable[0:0] = 0;
+            
+            field {
+                name = "Baudrate";
+                desc = "Baudrate selection (0=9600, 1=19200, 2=115200)";
+                sw = rw;
+                hw = r;
+            } baudrate[3:1] = 0;
+            
+            field {
+                name = "Parity";
+                desc = "Parity mode (0=none, 1=odd, 2=even)";
+                sw = rw;
+                hw = r;
+            } parity[5:4] = 0;
+        } control @ 0x00;
+        
+        reg {
+            name = "Status Register";
+            desc = "UART status flags";
+            
+            field {
+                name = "TX Ready";
+                desc = "Transmit buffer ready";
+                sw = r;
+                hw = w;
+            } tx_ready[0:0];
+            
+            field {
+                name = "RX Ready";
+                desc = "Receive buffer has data";
+                sw = r;
+                hw = w;
+            } rx_ready[1:1];
+            
+            field {
+                name = "Error";
+                desc = "Error flag";
+                sw = r;
+                hw = w;
+            } error[2:2];
+        } status @ 0x04;
+        
+        reg {
+            name = "Data Register";
+            desc = "UART data buffer";
+            
+            field {
+                name = "Data";
+                sw = rw;
+                hw = rw;
+            } data[7:0];
+        } data @ 0x08;
+    } uart @ 0x1000;
+    
+    regfile gpio {
+        name = "GPIO Peripheral";
+        
+        reg {
+            name = "Direction Register";
+            desc = "GPIO pin direction (0=input, 1=output)";
+            
+            field {
+                name = "Direction";
+                sw = rw;
+                hw = r;
+            } direction[15:0] = 0;
+        } direction @ 0x00;
+        
+        reg {
+            name = "Output Register";
+            desc = "GPIO output values";
+            
+            field {
+                name = "Output";
+                sw = rw;
+                hw = r;
+            } output[15:0] = 0;
+        } output @ 0x04;
+        
+        reg {
+            name = "Input Register";
+            desc = "GPIO input values";
+            
+            field {
+                name = "Input";
+                sw = r;
+                hw = w;
+            } input[15:0];
+        } input @ 0x08;
+    } gpio @ 0x2000;
+};
