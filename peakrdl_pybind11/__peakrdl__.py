@@ -1,16 +1,29 @@
 """
 PeakRDL exporter integration
 """
+from typing import TYPE_CHECKING
+
+from peakrdl.plugins.exporter import ExporterSubcommandPlugin
+
 from .exporter import Pybind11Exporter
 
-class Exporter:
+if TYPE_CHECKING:
+    import argparse
+    from systemrdl.node import AddrmapNode
+
+
+class Exporter(ExporterSubcommandPlugin):
     """Entry point for PeakRDL exporter plugin"""
     
     name = "pybind11"
-    description = "Export SystemRDL to PyBind11 modules for Python-based hardware testing"
+    short_desc = "Export SystemRDL to PyBind11 modules for Python-based hardware testing"
+    long_desc = (
+        "Generate PyBind11 C++ bindings and Python modules from SystemRDL register descriptions. "
+        "This exporter creates a complete Python API for hardware register access with pluggable "
+        "master backends (Mock, OpenOCD, SSH, or custom)."
+    )
     
-    @staticmethod
-    def add_exporter_arguments(arg_group):
+    def add_exporter_arguments(self, arg_group: 'argparse.ArgumentParser') -> None:
         """Add exporter-specific arguments to the command line"""
         arg_group.add_argument(
             "--soc-name",
@@ -32,8 +45,7 @@ class Exporter:
             help="Disable generation of .pyi stub files"
         )
     
-    @staticmethod
-    def do_export(top_node, options):
+    def do_export(self, top_node: 'AddrmapNode', options: 'argparse.Namespace') -> None:
         """Execute the export"""
         exporter = Pybind11Exporter()
         
