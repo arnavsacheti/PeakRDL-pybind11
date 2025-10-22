@@ -59,3 +59,32 @@ packages = ["peakrdl_pybind11", "peakrdl_pybind11.masters"]
 
 [tool.setuptools.package-data]
 peakrdl_pybind11 = ["templates/*.jinja"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["CVS", "parser", "docs", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific
+    "ANN", # flake8-annotations (require type annotations)
+]
+ignore = [
+    "F841",  # unused-variable
+    "UP032", # consider-using-f-string
+    "E501",  # line-too-long
+]
+
+# Make tests less strict for annotations.
+# [tool.ruff.lint.per-file-ignores]
+# "tests/**/*" = ["ANN*"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
