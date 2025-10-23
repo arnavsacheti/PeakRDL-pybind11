@@ -115,6 +115,23 @@ soc.peripherals.uart.control.modify(enable=1, mode=2)
 - C++11 compatible compiler (for building generated modules)
 - pybind11 (runtime dependency for generated code)
 
+## Benchmarks
+
+Performance benchmarks are available to measure export and build times:
+
+```bash
+# Run fast export benchmarks
+python benchmarks/run_benchmarks.py fast
+
+# Run all benchmarks
+pytest benchmarks/ --benchmark-only
+
+# See all benchmark options
+python benchmarks/run_benchmarks.py
+```
+
+See [benchmarks/README.md](benchmarks/README.md) for detailed documentation.
+
 ## License
 
 This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.

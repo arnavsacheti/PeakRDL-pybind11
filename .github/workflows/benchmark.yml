@@ -1,0 +1,62 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'peakrdl_pybind11/**'
+      - 'benchmarks/**'
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          uv pip install --system pytest pytest-benchmark
+          uv pip install --system -e .
+      
+      - name: Run fast benchmarks (export only)
+        run: |
+          pytest benchmarks/ --benchmark-only -m "not slow" -v \
+            --benchmark-json=benchmark-results.json \
+            --benchmark-columns=min,max,mean,stddev
+      
+      - name: Display benchmark results
+        run: |
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See job logs for detailed benchmark statistics" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmark-results.json
+          retention-days: 30
+      
+      # Optional: Compare with baseline (requires storing baseline)
+      - name: Store benchmark result
+        if: github.ref == 'refs/heads/main'
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'pytest'
+          output-file-path: benchmark-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          save-data-file: true
