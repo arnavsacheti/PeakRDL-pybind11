@@ -44,6 +44,9 @@ jobs:
           path: docs/_build/html/
           
   deploy-docs:
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
