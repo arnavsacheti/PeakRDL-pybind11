@@ -35,6 +35,11 @@ dependencies = [
 cli = [
     "peakrdl-cli >= 1.2.3",
 ]
+docs = [
+    "sphinx >= 7.0",
+    "sphinx-book-theme >= 1.0",
+    "sphinx-autodoc-typehints >= 2.0",
+]
 
 [dependency-groups]
 test = [

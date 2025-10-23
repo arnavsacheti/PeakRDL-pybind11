@@ -1,6 +1,7 @@
 # PeakRDL-pybind11
 
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](https://github.com/arnavsacheti/PeakRDL-pybind11/blob/main/LICENSE)
+[![Documentation Status](https://readthedocs.org/projects/peakrdl-pybind11/badge/?version=latest)](https://peakrdl-pybind11.readthedocs.io/en/latest/?badge=latest)
 
 PeakRDL-pybind11 is an exporter for the PeakRDL toolchain that generates PyBind11 modules from SystemRDL register descriptions. This enables Python-based hardware testing and interaction with register maps through a clean, type-safe Python API.
 
@@ -114,6 +115,20 @@ soc.peripherals.uart.control.modify(enable=1, mode=2)
 - CMake >= 3.15 (for building generated modules)
 - C++11 compatible compiler (for building generated modules)
 - pybind11 (runtime dependency for generated code)
+
+## Documentation
+
+Full documentation is available at [ReadTheDocs](https://peakrdl-pybind11.readthedocs.io/).
+
+To build the documentation locally:
+
+```bash
+pip install -e .[docs]
+cd docs
+make html
+```
+
+The built documentation will be in `docs/_build/html/`.
 
 ## License
 
