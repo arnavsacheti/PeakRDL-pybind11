@@ -8,11 +8,9 @@ version = "0.1.0"
 description = "Export SystemRDL to PyBind11 modules for Python-based hardware testing"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "GPL-3.0-only"}
+license = { text = "GPL-3.0-only" }
 keywords = ["SystemRDL", "PyBind11", "register", "hardware", "testing"]
-authors = [
-    {name = "Arnav Sacheti"}
-]
+authors = [{ name = "Arnav Sacheti" }]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -26,15 +24,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 ]
-dependencies = [
-    "systemrdl-compiler >= 1.30.1",
-    "jinja2",
-]
+dependencies = ["systemrdl-compiler >= 1.30.1", "jinja2"]
 
 [project.optional-dependencies]
-cli = [
-    "peakrdl-cli >= 1.2.3",
-]
+cli = ["peakrdl-cli >= 1.2.3"]
 docs = [
     "sphinx >= 7.0",
     "sphinx-book-theme >= 1.0",
@@ -42,14 +35,8 @@ docs = [
 ]
 
 [dependency-groups]
-test = [
-    "pytest >= 7.4.4",
-    "pytest-cov >= 4.1.0",
-]
-tools = [
-    "pyrefly >= 0.37.0",
-    "ruff >= 0.14.0",
-]
+test = ["pytest >= 7.4.4", "pytest-cov >= 4.1.0"]
+tools = ["pyrefly >= 0.37.0", "ruff >= 0.14.0"]
 
 [project.urls]
 Homepage = "https://github.com/arnavsacheti/PeakRDL-pybind11"
@@ -58,9 +45,6 @@ Issues = "https://github.com/arnavsacheti/PeakRDL-pybind11/issues"
 
 [project.entry-points."peakrdl.exporters"]
 pybind11 = "peakrdl_pybind11.__peakrdl__:Exporter"
-
-[tool.setuptools]
-packages = ["peakrdl_pybind11", "peakrdl_pybind11.masters"]
 
 [tool.setuptools.package-data]
 peakrdl_pybind11 = ["templates/*.jinja"]
