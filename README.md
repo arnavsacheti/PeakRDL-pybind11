@@ -40,11 +40,35 @@ peakrdl pybind11 input.rdl -o output_dir --soc-name MySoC --top top_addrmap --ge
 - `--soc-name`: Name of the generated SoC module (default: derived from input file)
 - `--top`: Top-level address map node to export (default: top-level node)
 - `--gen-pyi`: Generate `.pyi` stub files for type hints (enabled by default)
+- `--split-bindings COUNT`: Split bindings into multiple files for parallel compilation when register count exceeds COUNT. This significantly speeds up compilation for large register maps (default: 100, set to 0 to disable). Ignored when `--split-by-hierarchy` is used.
+- `--split-by-hierarchy`: Split bindings by addrmap/regfile hierarchy instead of by register count. This keeps related registers together and provides more logical grouping. Recommended for designs with clear hierarchical structure.
+
+#### Compilation Performance Optimization
+
+For large register maps, compilation can be very slow. PeakRDL-pybind11 includes several optimizations:
+
+1. **Hierarchical binding splitting** (recommended): Use `--split-by-hierarchy` to split bindings by addrmap/regfile boundaries. This keeps related registers together in the same compilation unit, providing better organization and cache locality.
+2. **Register count binding splitting**: When register count exceeds `--split-bindings` threshold (default: 100), bindings are automatically split into multiple `.cpp` files that can be compiled in parallel
+3. **Optimized compiler flags**: The generated CMakeLists.txt uses `-O1` optimization even for debug builds, which significantly reduces compilation time for template-heavy code
+4. **Parallel compilation**: CMake will automatically compile split files in parallel when using `make -j` or `ninja`
+
+Examples for large register maps:
+```bash
+# Split by hierarchy (recommended for well-structured designs)
+peakrdl pybind11 large_design.rdl -o output --split-by-hierarchy
+
+# Split bindings every 50 registers for faster compilation
+peakrdl pybind11 large_design.rdl -o output --split-bindings 50
+
+# Build with parallel compilation (4 cores)
+cd output
+pip install . -- -DCMAKE_BUILD_PARALLEL_LEVEL=4
+```
 
 ### Python API
 
 ```python
-from peakrdl_pybind11 import Exporter
+from peakrdl_pybind11 import Pybind11Exporter
 from systemrdl import RDLCompiler
 
 # Compile SystemRDL
@@ -53,8 +77,14 @@ rdl.compile_file("input.rdl")
 root = rdl.elaborate()
 
 # Export to PyBind11
-exporter = Exporter()
+exporter = Pybind11Exporter()
 exporter.export(root, "output_dir", soc_name="MySoC")
+
+# For large designs, enable binding splitting by hierarchy (recommended)
+exporter.export(root, "output_dir", soc_name="MySoC", split_by_hierarchy=True)
+
+# Or split by register count
+exporter.export(root, "output_dir", soc_name="MySoC", split_bindings=50)
 ```
 
 ### Using Generated Modules

@@ -12,6 +12,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <stdexcept>
 
 namespace {{ soc_name }} {
 
@@ -147,8 +148,10 @@ protected:
 };
 
 {% for addrmap in nodes.addrmaps %}
+{% if addrmap != top_node %}
 // Forward declaration for {{ addrmap.inst_name }}
 class {{ addrmap.inst_name }}_t;
+{% endif %}
 {% endfor %}
 
 {% for regfile in nodes.regfiles %}
@@ -198,6 +201,78 @@ public:
     {% endfor %}
 };
 
+{% endfor %}
+
+{% for regfile in nodes.regfiles %}
+// Regfile: {{ regfile.inst_name }}
+class {{ regfile.inst_name }}_t : public NodeBase {
+public:
+    {{ regfile.inst_name }}_t(uint64_t base_offset) 
+        : NodeBase("{{ regfile.inst_name }}", base_offset) {
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name }}.set_master(master_);
+        {% endif %}
+        {% endfor %}
+    }
+    
+    void set_master(Master* master) override {
+        NodeBase::set_master(master);
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name }}.set_master(master);
+        {% endif %}
+        {% endfor %}
+    }
+    
+    void set_offset(uint64_t base_offset) {
+        offset_ = base_offset;
+    }
+    
+    {% for child in regfile.children() %}
+    {% if child.inst_name %}
+    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {% endif %}
+    {% endfor %}
+};
+
+{% endfor %}
+
+{% for addrmap in nodes.addrmaps %}
+{% if addrmap != top_node %}
+// Addrmap: {{ addrmap.inst_name }}
+class {{ addrmap.inst_name }}_t : public NodeBase {
+public:
+    {{ addrmap.inst_name }}_t(uint64_t base_offset) 
+        : NodeBase("{{ addrmap.inst_name }}", base_offset) {
+        {% for child in addrmap.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name }}.set_master(master_);
+        {% endif %}
+        {% endfor %}
+    }
+    
+    void set_master(Master* master) override {
+        NodeBase::set_master(master);
+        {% for child in addrmap.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name }}.set_master(master);
+        {% endif %}
+        {% endfor %}
+    }
+    
+    void set_offset(uint64_t base_offset) {
+        offset_ = base_offset;
+    }
+    
+    {% for child in addrmap.children() %}
+    {% if child.inst_name %}
+    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {% endif %}
+    {% endfor %}
+};
+
+{% endif %}
 {% endfor %}
 
 // Top-level SoC class

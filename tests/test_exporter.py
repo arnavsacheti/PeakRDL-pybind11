@@ -150,6 +150,178 @@ class TestExporter:
             assert '#include <pybind11/pybind11.h>' in content
             assert 'PYBIND11_MODULE' in content
     
+    def test_split_bindings(self):
+        """Test that bindings are split when register count exceeds threshold"""
+        # Create a large RDL with many registers
+        rdl_content = "addrmap large_soc {\n"
+        for i in range(10):
+            rdl_content += f"""
+    reg {{
+        field {{
+            sw = rw;
+            hw = r;
+        }} field{i}[7:0];
+    }} reg{i} @ 0x{i*4:04x};
+"""
+        rdl_content += "};\n"
+        
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(rdl_content))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            # Split when more than 5 registers (we have 10, so should split into 2 chunks)
+            exporter.export(root.top, tmpdir, soc_name="large_soc", split_bindings=5)
+            
+            # Verify main bindings file exists
+            assert os.path.exists(os.path.join(tmpdir, 'large_soc_bindings.cpp'))
+            
+            # Verify chunk files exist (should have 2 chunks: 0-4 and 5-9)
+            assert os.path.exists(os.path.join(tmpdir, 'large_soc_bindings_0.cpp'))
+            assert os.path.exists(os.path.join(tmpdir, 'large_soc_bindings_1.cpp'))
+            
+            # Read main bindings file
+            with open(os.path.join(tmpdir, 'large_soc_bindings.cpp'), 'r') as f:
+                main_content = f.read()
+            
+            # Verify it has forward declarations and calls to chunk functions
+            assert 'bind_registers_chunk_0' in main_content
+            assert 'bind_registers_chunk_1' in main_content
+            
+            # Read chunk file
+            with open(os.path.join(tmpdir, 'large_soc_bindings_0.cpp'), 'r') as f:
+                chunk_content = f.read()
+            
+            # Verify chunk has register bindings
+            assert 'void bind_registers_chunk_0' in chunk_content
+            assert '#include <pybind11/pybind11.h>' in chunk_content
+            
+            # Verify CMakeLists.txt includes all source files
+            with open(os.path.join(tmpdir, 'CMakeLists.txt'), 'r') as f:
+                cmake_content = f.read()
+            
+            assert 'large_soc_bindings.cpp' in cmake_content
+            assert 'large_soc_bindings_0.cpp' in cmake_content
+            assert 'large_soc_bindings_1.cpp' in cmake_content
+    
+    def test_hierarchical_split_bindings(self):
+        """Test that bindings are split by hierarchy (addrmap/regfile)"""
+        # Create RDL with hierarchical structure
+        rdl_content = """
+addrmap hierarchical_soc {
+    regfile peripheral1 {
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg0 @ 0x00;
+        
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg1 @ 0x04;
+    } peripheral1 @ 0x0000;
+    
+    regfile peripheral2 {
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg2 @ 0x00;
+        
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg3 @ 0x04;
+    } peripheral2 @ 0x1000;
+};
+"""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(rdl_content))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            # Enable hierarchical splitting
+            exporter.export(root.top, tmpdir, soc_name="hierarchical_soc", split_by_hierarchy=True)
+            
+            # Verify main bindings file exists
+            assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings.cpp'))
+            
+            # Should have chunk files (one per regfile: peripheral1 and peripheral2)
+            assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings_0.cpp'))
+            assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings_1.cpp'))
+            
+            # Read main bindings file
+            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings.cpp'), 'r') as f:
+                main_content = f.read()
+            
+            # Verify it has forward declarations and calls to chunk functions
+            assert 'bind_registers_chunk_0' in main_content
+            assert 'bind_registers_chunk_1' in main_content
+            
+            # Read chunk file and verify it has register bindings
+            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings_0.cpp'), 'r') as f:
+                chunk_content = f.read()
+            
+            assert 'void bind_registers_chunk_0' in chunk_content
+            
+            # Verify CMakeLists.txt includes all source files
+            with open(os.path.join(tmpdir, 'CMakeLists.txt'), 'r') as f:
+                cmake_content = f.read()
+            
+            assert 'hierarchical_soc_bindings.cpp' in cmake_content
+            assert 'hierarchical_soc_bindings_0.cpp' in cmake_content
+            assert 'hierarchical_soc_bindings_1.cpp' in cmake_content
+    
+    def test_no_split_bindings(self):
+        """Test that bindings are not split when below threshold"""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SIMPLE_RDL))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            # With split_bindings=100, our 2 registers shouldn't trigger splitting
+            exporter.export(root.top, tmpdir, soc_name="test_soc", split_bindings=100)
+            
+            # Verify only main bindings file exists
+            assert os.path.exists(os.path.join(tmpdir, 'test_soc_bindings.cpp'))
+            
+            # Verify no chunk files exist
+            assert not os.path.exists(os.path.join(tmpdir, 'test_soc_bindings_0.cpp'))
+            
+            # Read bindings file and verify it's not using split mode
+            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp'), 'r') as f:
+                content = f.read()
+            
+            assert 'bind_registers_chunk' not in content
+            assert 'PYBIND11_MODULE' in content
+    
+    def test_disable_split_bindings(self):
+        """Test that split_bindings=0 disables splitting"""
+        # Create RDL with many registers
+        rdl_content = "addrmap large_soc {\n"
+        for i in range(200):
+            rdl_content += f"""
+    reg {{
+        field {{
+            sw = rw;
+        }} field{i}[7:0];
+    }} reg{i} @ 0x{i*4:04x};
+"""
+        rdl_content += "};\n"
+        
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(rdl_content))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            # Disable splitting with split_bindings=0
+            exporter.export(root.top, tmpdir, soc_name="large_soc", split_bindings=0)
+            
+            # Verify only main bindings file exists
+            assert os.path.exists(os.path.join(tmpdir, 'large_soc_bindings.cpp'))
+            
+            # Verify no chunk files exist
+            assert not os.path.exists(os.path.join(tmpdir, 'large_soc_bindings_0.cpp'))
+    
     @staticmethod
     def _write_rdl(content):
         """Write RDL content to a temporary file"""

@@ -63,3 +63,6 @@ peakrdl_pybind11/_version.py
 # Temporary files
 /tmp/
 *.tmp
+
+# Example output
+examples/output/

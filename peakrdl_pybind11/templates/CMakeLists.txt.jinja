@@ -6,13 +6,33 @@ find_package(Python COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
 # Create the Python extension module
-pybind11_add_module(_{{ soc_name }}_native {{ soc_name }}_bindings.cpp)
+pybind11_add_module(_{{ soc_name }}_native {% for src in source_files %}{{ src }}{% if not loop.last %} {% endif %}{% endfor %})
 
 # Set C++ standard
 target_compile_features(_{{ soc_name }}_native PRIVATE cxx_std_11)
 
 # Include directories
 target_include_directories(_{{ soc_name }}_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Compiler optimizations to speed up compilation
+# Use -O1 even for debug builds to reduce compilation time
+# This provides basic optimizations that help with template instantiation
+if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(MSVC)
+        # For MSVC, use /O1 for size optimization which is faster to compile
+        target_compile_options(_{{ soc_name }}_native PRIVATE /O1)
+    else()
+        # For GCC/Clang, use -O1 for basic optimizations
+        target_compile_options(_{{ soc_name }}_native PRIVATE -O1)
+    endif()
+endif()
+
+# Disable some warnings that can slow down compilation
+if(MSVC)
+    target_compile_options(_{{ soc_name }}_native PRIVATE /wd4661)
+else()
+    target_compile_options(_{{ soc_name }}_native PRIVATE -Wno-unused-variable)
+endif()
 
 # Install the module
 install(TARGETS _{{ soc_name }}_native LIBRARY DESTINATION .)

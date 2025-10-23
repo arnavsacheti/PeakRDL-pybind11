@@ -44,6 +44,31 @@ class Exporter(ExporterSubcommandPlugin):
             action="store_false",
             help="Disable generation of .pyi stub files"
         )
+        arg_group.add_argument(
+            "--split-bindings",
+            dest="split_bindings",
+            type=int,
+            metavar="COUNT",
+            default=100,
+            help=(
+                "Split bindings into multiple files for parallel compilation when register count "
+                "exceeds this threshold. This significantly speeds up compilation for large "
+                "register maps. Set to 0 to disable splitting. Ignored when --split-by-hierarchy "
+                "is used. (default: 100)"
+            )
+        )
+        arg_group.add_argument(
+            "--split-by-hierarchy",
+            dest="split_by_hierarchy",
+            action="store_true",
+            default=False,
+            help=(
+                "Split bindings by addrmap/regfile hierarchy instead of by register count. "
+                "This keeps related registers together in the same compilation unit, providing "
+                "more logical grouping and better organization. Recommended for large designs "
+                "with clear hierarchical structure."
+            )
+        )
     
     def do_export(self, top_node: 'AddrmapNode', options: 'argparse.Namespace') -> None:
         """Execute the export"""
@@ -55,10 +80,14 @@ class Exporter(ExporterSubcommandPlugin):
             soc_name = top_node.inst_name or "soc"
         
         gen_pyi = getattr(options, 'gen_pyi', True)
+        split_bindings = getattr(options, 'split_bindings', 100)
+        split_by_hierarchy = getattr(options, 'split_by_hierarchy', False)
         
         exporter.export(
             top_node,
             options.output,
             soc_name=soc_name,
-            gen_pyi=gen_pyi
+            gen_pyi=gen_pyi,
+            split_bindings=split_bindings,
+            split_by_hierarchy=split_by_hierarchy
         )
