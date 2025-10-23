@@ -205,6 +205,70 @@ class TestExporter:
             assert 'large_soc_bindings_0.cpp' in cmake_content
             assert 'large_soc_bindings_1.cpp' in cmake_content
     
+    def test_hierarchical_split_bindings(self):
+        """Test that bindings are split by hierarchy (addrmap/regfile)"""
+        # Create RDL with hierarchical structure
+        rdl_content = """
+addrmap hierarchical_soc {
+    regfile peripheral1 {
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg0 @ 0x00;
+        
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg1 @ 0x04;
+    } peripheral1 @ 0x0000;
+    
+    regfile peripheral2 {
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg2 @ 0x00;
+        
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } reg3 @ 0x04;
+    } peripheral2 @ 0x1000;
+};
+"""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(rdl_content))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            # Enable hierarchical splitting
+            exporter.export(root.top, tmpdir, soc_name="hierarchical_soc", split_by_hierarchy=True)
+            
+            # Verify main bindings file exists
+            assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings.cpp'))
+            
+            # Should have chunk files (one per regfile: peripheral1 and peripheral2)
+            assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings_0.cpp'))
+            assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings_1.cpp'))
+            
+            # Read main bindings file
+            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings.cpp'), 'r') as f:
+                main_content = f.read()
+            
+            # Verify it has forward declarations and calls to chunk functions
+            assert 'bind_registers_chunk_0' in main_content
+            assert 'bind_registers_chunk_1' in main_content
+            
+            # Read chunk file and verify it has register bindings
+            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings_0.cpp'), 'r') as f:
+                chunk_content = f.read()
+            
+            assert 'void bind_registers_chunk_0' in chunk_content
+            
+            # Verify CMakeLists.txt includes all source files
+            with open(os.path.join(tmpdir, 'CMakeLists.txt'), 'r') as f:
+                cmake_content = f.read()
+            
+            assert 'hierarchical_soc_bindings.cpp' in cmake_content
+            assert 'hierarchical_soc_bindings_0.cpp' in cmake_content
+            assert 'hierarchical_soc_bindings_1.cpp' in cmake_content
+    
     def test_no_split_bindings(self):
         """Test that bindings are not split when below threshold"""
         rdl = RDLCompiler()
