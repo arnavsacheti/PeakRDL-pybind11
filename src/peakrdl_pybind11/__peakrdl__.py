@@ -10,6 +10,7 @@ from .exporter import Pybind11Exporter
 
 if TYPE_CHECKING:
     import argparse
+
     from systemrdl.node import AddrmapNode
 
 
@@ -24,7 +25,7 @@ class Exporter(ExporterSubcommandPlugin):
         "master backends (Mock, OpenOCD, SSH, or custom)."
     )
 
-    def add_exporter_arguments(self, arg_group: "argparse.ArgumentParser") -> None:
+    def add_exporter_arguments(self, arg_group: "argparse._ActionsContainer") -> None:
         """Add exporter-specific arguments to the command line"""
         arg_group.add_argument(
             "--soc-name",

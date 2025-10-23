@@ -3,7 +3,7 @@ SSH Master for remote register access
 """
 
 import subprocess
-from typing import Optional
+
 from . import MasterBase
 
 
@@ -17,11 +17,11 @@ class SSHMaster(MasterBase):
     def __init__(
         self,
         host: str,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        key_file: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
+        key_file: str | None = None,
         tool: str = "devmem",
-    ):
+    ) -> None:
         """
         Initialize SSH connection
 
@@ -50,28 +50,28 @@ class SSHMaster(MasterBase):
         # Test connection
         self._test_connection()
 
-    def _test_connection(self):
+    def _test_connection(self) -> None:
         """Test SSH connection"""
         try:
             result = subprocess.run(
-                self.ssh_cmd + ["echo", "test"], capture_output=True, text=True, timeout=10
+                [*self.ssh_cmd, "echo", "test"], capture_output=True, text=True, timeout=10
             )
             if result.returncode != 0:
                 raise RuntimeError(f"SSH connection test failed: {result.stderr}")
         except Exception as e:
-            raise RuntimeError(f"Failed to connect via SSH to {self.host}: {e}")
+            raise RuntimeError(f"Failed to connect via SSH to {self.host}: {e}") from e
 
     def _run_remote_command(self, command: str) -> str:
         """Execute a command on the remote system"""
         try:
-            result = subprocess.run(self.ssh_cmd + [command], capture_output=True, text=True, timeout=30)
+            result = subprocess.run([*self.ssh_cmd, command], capture_output=True, text=True, timeout=30)
             if result.returncode != 0:
                 raise RuntimeError(f"Remote command failed: {result.stderr}")
             return result.stdout.strip()
         except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Remote command timed out: {command}")
+            raise RuntimeError(f"Remote command timed out: {command}") from None
         except Exception as e:
-            raise RuntimeError(f"Failed to execute remote command: {e}")
+            raise RuntimeError(f"Failed to execute remote command: {e}") from e
 
     def read(self, address: int, width: int) -> int:
         """
@@ -109,7 +109,7 @@ class SSHMaster(MasterBase):
             # Try parsing as decimal
             return int(output)
         except ValueError as e:
-            raise RuntimeError(f"Failed to parse remote read output: {output}: {e}")
+            raise RuntimeError(f"Failed to parse remote read output: {output}: {e}") from e
 
     def write(self, address: int, value: int, width: int) -> None:
         """

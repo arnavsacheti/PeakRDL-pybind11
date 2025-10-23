@@ -3,8 +3,7 @@ OpenOCD Master for JTAG/SWD debugging
 """
 
 import socket
-import time
-from typing import Optional
+
 from . import MasterBase
 
 
@@ -15,7 +14,7 @@ class OpenOCDMaster(MasterBase):
     Connects to OpenOCD's TCL interface for reading/writing memory
     """
 
-    def __init__(self, host: str = "localhost", port: int = 6666, timeout: float = 5.0):
+    def __init__(self, host: str = "localhost", port: int = 6666, timeout: float = 5.0) -> None:
         """
         Initialize OpenOCD connection
 
@@ -27,10 +26,10 @@ class OpenOCDMaster(MasterBase):
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.socket: Optional[socket.socket] = None
+        self.socket: socket.socket | None = None
         self._connect()
 
-    def _connect(self):
+    def _connect(self) -> None:
         """Establish connection to OpenOCD"""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -39,7 +38,7 @@ class OpenOCDMaster(MasterBase):
             # Read the welcome message
             self._recv()
         except Exception as e:
-            raise RuntimeError(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}")
+            raise RuntimeError(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}") from e
 
     def _send(self, command: str) -> str:
         """Send a command to OpenOCD and return the response"""
@@ -51,7 +50,7 @@ class OpenOCDMaster(MasterBase):
             self.socket.sendall((command + "\n").encode("utf-8"))
             return self._recv()
         except Exception as e:
-            raise RuntimeError(f"OpenOCD command failed: {e}")
+            raise RuntimeError(f"OpenOCD command failed: {e}") from e
 
     def _recv(self) -> str:
         """Receive response from OpenOCD"""
@@ -68,7 +67,7 @@ class OpenOCDMaster(MasterBase):
                 # OpenOCD ends responses with a specific marker
                 if data.endswith(b"\x1a"):
                     break
-            except socket.timeout:
+            except TimeoutError:
                 break
 
         return data.decode("utf-8", errors="ignore").rstrip("\x1a")
@@ -105,7 +104,7 @@ class OpenOCDMaster(MasterBase):
                 value_str = parts[1].strip().split()[0]
                 return int(value_str, 16)
         except Exception as e:
-            raise RuntimeError(f"Failed to parse OpenOCD response: {response}: {e}")
+            raise RuntimeError(f"Failed to parse OpenOCD response: {response}: {e}") from e
 
         return 0
 
@@ -132,31 +131,31 @@ class OpenOCDMaster(MasterBase):
 
         self._send(cmd)
 
-    def halt(self):
+    def halt(self) -> None:
         """Halt the target"""
         self._send("halt")
 
-    def resume(self):
+    def resume(self) -> None:
         """Resume the target"""
         self._send("resume")
 
-    def reset(self, halt: bool = False):
+    def reset(self, halt: bool = False) -> None:
         """Reset the target"""
         if halt:
             self._send("reset halt")
         else:
             self._send("reset")
 
-    def close(self):
+    def close(self) -> None:
         """Close the connection"""
         if self.socket:
             try:
                 self._send("exit")
-            except:
+            except Exception:
                 pass
             self.socket.close()
             self.socket = None
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Cleanup on deletion"""
         self.close()

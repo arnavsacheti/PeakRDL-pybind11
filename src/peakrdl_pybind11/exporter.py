@@ -4,11 +4,19 @@ Main exporter implementation for PeakRDL-pybind11
 
 import os
 import re
-from typing import Optional
-from systemrdl.node import RootNode, AddrmapNode, RegNode, RegfileNode, FieldNode
-from systemrdl.rdltypes import AccessType, OnReadType, OnWriteType
+from collections import OrderedDict
+from pathlib import Path
+from typing import TypedDict
 
 from jinja2 import Environment, PackageLoader, select_autoescape
+from systemrdl.node import AddrmapNode, FieldNode, Node, RegfileNode, RegNode, RootNode
+
+
+class Nodes(TypedDict):
+    addrmaps: list[AddrmapNode]
+    regfiles: list[RegfileNode]
+    regs: list[RegNode]
+    fields: list[FieldNode]
 
 
 class Pybind11Exporter:
@@ -16,7 +24,7 @@ class Pybind11Exporter:
     Export SystemRDL register descriptions to PyBind11 C++ modules
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.env = Environment(
             loader=PackageLoader("peakrdl_pybind11", "templates"),
             autoescape=select_autoescape(),
@@ -29,13 +37,13 @@ class Pybind11Exporter:
 
     def export(
         self,
-        top_node: RootNode,
+        top_node: RootNode | AddrmapNode,
         output_dir: str,
-        soc_name: Optional[str] = None,
+        soc_name: str | None = None,
         gen_pyi: bool = True,
         split_bindings: int = 100,
         split_by_hierarchy: bool = False,
-    ):
+    ) -> None:
         """
         Export SystemRDL to PyBind11 modules
 
@@ -52,7 +60,7 @@ class Pybind11Exporter:
                                more logical grouping. Default: False
         """
         self.top_node = top_node.top if isinstance(top_node, RootNode) else top_node
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir)
         self.soc_name = soc_name or self.top_node.inst_name or "soc"
         self.split_bindings = split_bindings
         self.split_by_hierarchy = split_by_hierarchy
@@ -91,7 +99,7 @@ class Pybind11Exporter:
             name = "_" + name
         return name or "soc"
 
-    def _generate_descriptors(self, nodes):
+    def _generate_descriptors(self, nodes: Nodes) -> None:
         """Generate C++ descriptor header file"""
         template = self.env.get_template("descriptors.hpp.jinja")
 
@@ -101,11 +109,12 @@ class Pybind11Exporter:
             nodes=nodes,
         )
 
-        filepath = os.path.join(self.output_dir, f"{self.soc_name}_descriptors.hpp")
-        with open(filepath, "w") as f:
+        assert self.output_dir is not None
+        filepath = self.output_dir / f"{self.soc_name}_descriptors.hpp"
+        with filepath.open("w") as f:
             f.write(output)
 
-    def _generate_bindings(self, nodes):
+    def _generate_bindings(self, nodes: Nodes) -> None:
         """Generate PyBind11 bindings C++ file(s)"""
         reg_count = len(nodes["regs"])
 
@@ -120,7 +129,7 @@ class Pybind11Exporter:
             # Single file
             self._generate_single_binding(nodes)
 
-    def _generate_single_binding(self, nodes):
+    def _generate_single_binding(self, nodes: Nodes) -> None:
         """Generate a single bindings file"""
         template = self.env.get_template("bindings.cpp.jinja")
 
@@ -131,11 +140,12 @@ class Pybind11Exporter:
             split_mode=False,
         )
 
-        filepath = os.path.join(self.output_dir, f"{self.soc_name}_bindings.cpp")
-        with open(filepath, "w") as f:
+        assert self.output_dir is not None
+        filepath = self.output_dir / f"{self.soc_name}_bindings.cpp"
+        with filepath.open("w") as f:
             f.write(output)
 
-    def _generate_split_bindings(self, nodes):
+    def _generate_split_bindings(self, nodes: Nodes) -> None:
         """Generate multiple split binding files for parallel compilation"""
         regs = nodes["regs"]
         chunk_size = self.split_bindings
@@ -149,8 +159,9 @@ class Pybind11Exporter:
             num_chunks=num_chunks,
         )
 
-        filepath = os.path.join(self.output_dir, f"{self.soc_name}_bindings.cpp")
-        with open(filepath, "w") as f:
+        assert self.output_dir is not None
+        filepath = self.output_dir / f"{self.soc_name}_bindings.cpp"
+        with filepath.open("w") as f:
             f.write(main_output)
 
         # Generate split binding files
@@ -167,11 +178,11 @@ class Pybind11Exporter:
                 regs=chunk_regs,
             )
 
-            filepath = os.path.join(self.output_dir, f"{self.soc_name}_bindings_{chunk_idx}.cpp")
-            with open(filepath, "w") as f:
+            filepath = self.output_dir / f"{self.soc_name}_bindings_{chunk_idx}.cpp"
+            with filepath.open("w") as f:
                 f.write(chunk_output)
 
-    def _generate_hierarchical_split_bindings(self, nodes):
+    def _generate_hierarchical_split_bindings(self, nodes: Nodes) -> None:
         """Generate split binding files organized by addrmap/regfile hierarchy"""
         # Group registers by their parent addrmap or regfile
         hierarchy_groups = self._group_registers_by_hierarchy(nodes)
@@ -191,8 +202,9 @@ class Pybind11Exporter:
             num_chunks=num_chunks,
         )
 
-        filepath = os.path.join(self.output_dir, f"{self.soc_name}_bindings.cpp")
-        with open(filepath, "w") as f:
+        assert self.output_dir is not None
+        filepath = self.output_dir / f"{self.soc_name}_bindings.cpp"
+        with filepath.open("w") as f:
             f.write(main_output)
 
         # Generate split binding files for each hierarchy group
@@ -206,20 +218,20 @@ class Pybind11Exporter:
                 chunk_name=group_name,  # Optional: for documentation/comments
             )
 
-            filepath = os.path.join(self.output_dir, f"{self.soc_name}_bindings_{chunk_idx}.cpp")
-            with open(filepath, "w") as f:
+            filepath = self.output_dir / f"{self.soc_name}_bindings_{chunk_idx}.cpp"
+            with filepath.open("w") as f:
                 f.write(chunk_output)
 
-    def _group_registers_by_hierarchy(self, nodes):
+    def _group_registers_by_hierarchy(self, nodes: Nodes) -> OrderedDict[str, list[RegNode]]:
         """Group registers by their parent addrmap or regfile for hierarchical splitting"""
         from collections import OrderedDict
 
-        groups = OrderedDict()
+        groups: OrderedDict[str, list[RegNode]] = OrderedDict()
 
         # Iterate through regfiles and addrmaps (excluding top node)
         for regfile in nodes["regfiles"]:
             group_name = regfile.inst_name
-            group_regs = []
+            group_regs: list[RegNode] = []
 
             # Collect all registers under this regfile
             for reg in nodes["regs"]:
@@ -250,7 +262,7 @@ class Pybind11Exporter:
                 groups[group_name] = group_regs
 
         # Handle orphan registers (direct children of top node)
-        orphan_regs = []
+        orphan_regs: list[RegNode] = []
         for reg in nodes["regs"]:
             already_added = any(reg in regs for regs in groups.values())
             if not already_added:
@@ -261,7 +273,7 @@ class Pybind11Exporter:
 
         return groups
 
-    def _is_descendant_of(self, child_node, parent_node):
+    def _is_descendant_of(self, child_node: Node, parent_node: Node) -> bool:
         """Check if child_node is a descendant of parent_node in the hierarchy"""
         current = child_node.parent
         while current is not None:
@@ -270,7 +282,7 @@ class Pybind11Exporter:
             current = current.parent
         return False
 
-    def _generate_python_runtime(self):
+    def _generate_python_runtime(self) -> None:
         """Generate Python runtime module"""
         template = self.env.get_template("runtime.py.jinja")
 
@@ -279,11 +291,12 @@ class Pybind11Exporter:
             top_node=self.top_node,
         )
 
-        filepath = os.path.join(self.output_dir, "__init__.py")
-        with open(filepath, "w") as f:
+        assert self.output_dir is not None
+        filepath = self.output_dir / "__init__.py"
+        with filepath.open("w") as f:
             f.write(output)
 
-    def _generate_setup_py(self, nodes):
+    def _generate_setup_py(self, nodes: Nodes) -> None:
         """Generate CMakeLists.txt and pyproject.toml for building the C++ extension"""
         reg_count = len(nodes["regs"])
 
@@ -309,14 +322,15 @@ class Pybind11Exporter:
         else:
             source_files = [f"{self.soc_name}_bindings.cpp"]
 
+        assert self.output_dir is not None
         # Generate CMakeLists.txt
         cmake_template = self.env.get_template("CMakeLists.txt.jinja")
         cmake_output = cmake_template.render(
             soc_name=self.soc_name,
             source_files=source_files,
         )
-        cmake_filepath = os.path.join(self.output_dir, "CMakeLists.txt")
-        with open(cmake_filepath, "w") as f:
+        cmake_filepath = self.output_dir / "CMakeLists.txt"
+        with cmake_filepath.open("w") as f:
             f.write(cmake_output)
 
         # Generate pyproject.toml for the module
@@ -324,11 +338,11 @@ class Pybind11Exporter:
         pyproject_output = pyproject_template.render(
             soc_name=self.soc_name,
         )
-        pyproject_filepath = os.path.join(self.output_dir, "pyproject.toml")
-        with open(pyproject_filepath, "w") as f:
+        pyproject_filepath = self.output_dir / "pyproject.toml"
+        with pyproject_filepath.open("w") as f:
             f.write(pyproject_output)
 
-    def _generate_pyi_stubs(self, nodes):
+    def _generate_pyi_stubs(self, nodes: Nodes) -> None:
         """Generate .pyi stub files for type hints"""
         template = self.env.get_template("stubs.pyi.jinja")
 
@@ -338,11 +352,12 @@ class Pybind11Exporter:
             nodes=nodes,
         )
 
-        filepath = os.path.join(self.output_dir, "__init__.pyi")
-        with open(filepath, "w") as f:
+        assert self.output_dir is not None
+        filepath = self.output_dir / "__init__.pyi"
+        with filepath.open("w") as f:
             f.write(output)
 
-    def _collect_nodes(self, node, nodes=None):
+    def _collect_nodes(self, node: Node, nodes: Nodes | None = None) -> Nodes:
         """Recursively collect all nodes in the hierarchy"""
         if nodes is None:
             nodes = {

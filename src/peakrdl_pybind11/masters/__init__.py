@@ -3,9 +3,9 @@ Master interfaces for register access
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict
+from collections.abc import Callable
 
-__all__ = ["MasterBase", "MockMaster", "CallbackMaster", "OpenOCDMaster", "SSHMaster"]
+__all__ = ["CallbackMaster", "MasterBase", "MockMaster", "OpenOCDMaster", "SSHMaster"]
 
 
 class MasterBase(ABC):
@@ -49,8 +49,8 @@ class MockMaster(MasterBase):
     Simulates register storage in memory
     """
 
-    def __init__(self):
-        self.memory: Dict[int, int] = {}
+    def __init__(self) -> None:
+        self.memory: dict[int, int] = {}
 
     def read(self, address: int, width: int) -> int:
         """Read from simulated memory"""
@@ -73,7 +73,11 @@ class CallbackMaster(MasterBase):
     Allows custom read/write functions to be provided
     """
 
-    def __init__(self, read_callback=None, write_callback=None):
+    def __init__(
+        self,
+        read_callback: Callable[[int, int], int] | None = None,
+        write_callback: Callable[[int, int, int], None] | None = None,
+    ) -> None:
         """
         Initialize with optional callbacks
 
