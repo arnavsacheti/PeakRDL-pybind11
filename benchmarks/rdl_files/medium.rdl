@@ -1,0 +1,114 @@
+// Medium complexity RDL file for benchmarking
+// Contains multiple peripherals with moderate register count
+
+addrmap medium_benchmark {
+    name = "Medium Benchmark SoC";
+    desc = "A medium-sized SoC with multiple peripherals";
+    
+    regfile uart {
+        name = "UART Peripheral";
+        
+        reg {
+            name = "Control Register";
+            field { sw = rw; hw = r; } enable[0:0] = 0;
+            field { sw = rw; hw = r; } baudrate[3:1] = 0;
+            field { sw = rw; hw = r; } parity[5:4] = 0;
+        } control @ 0x00;
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; } tx_ready[0:0];
+            field { sw = r; hw = w; } rx_ready[1:1];
+            field { sw = r; hw = w; } error[2:2];
+        } status @ 0x04;
+        
+        reg {
+            name = "Data Register";
+            field { sw = rw; hw = rw; } data[7:0];
+        } data @ 0x08;
+        
+        reg {
+            name = "Interrupt Enable";
+            field { sw = rw; hw = r; } tx_int_en[0:0] = 0;
+            field { sw = rw; hw = r; } rx_int_en[1:1] = 0;
+        } int_enable @ 0x0C;
+    } uart @ 0x1000;
+    
+    regfile gpio {
+        name = "GPIO Peripheral";
+        
+        reg {
+            name = "Direction Register";
+            field { sw = rw; hw = r; } direction[15:0] = 0;
+        } direction @ 0x00;
+        
+        reg {
+            name = "Output Register";
+            field { sw = rw; hw = r; } output[15:0] = 0;
+        } output @ 0x04;
+        
+        reg {
+            name = "Input Register";
+            field { sw = r; hw = w; } input[15:0];
+        } input @ 0x08;
+        
+        reg {
+            name = "Interrupt Enable";
+            field { sw = rw; hw = r; } int_enable[15:0] = 0;
+        } int_enable @ 0x0C;
+    } gpio @ 0x2000;
+    
+    regfile spi {
+        name = "SPI Peripheral";
+        
+        reg {
+            name = "Control Register";
+            field { sw = rw; hw = r; } enable[0:0] = 0;
+            field { sw = rw; hw = r; } master_mode[1:1] = 1;
+            field { sw = rw; hw = r; } clock_div[7:2] = 0;
+        } control @ 0x00;
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; } busy[0:0];
+            field { sw = r; hw = w; } tx_empty[1:1];
+            field { sw = r; hw = w; } rx_full[2:2];
+        } status @ 0x04;
+        
+        reg {
+            name = "TX Data";
+            field { sw = w; hw = r; } tx_data[7:0];
+        } tx_data @ 0x08;
+        
+        reg {
+            name = "RX Data";
+            field { sw = r; hw = w; } rx_data[7:0];
+        } rx_data @ 0x0C;
+    } spi @ 0x3000;
+    
+    regfile timer {
+        name = "Timer Peripheral";
+        
+        reg {
+            name = "Control Register";
+            field { sw = rw; hw = r; } enable[0:0] = 0;
+            field { sw = rw; hw = r; } mode[2:1] = 0;
+        } control @ 0x00;
+        
+        reg {
+            name = "Counter Value";
+            field { sw = rw; hw = rw; } counter[31:0];
+        } counter @ 0x04;
+        
+        reg {
+            name = "Compare Value";
+            field { sw = rw; hw = r; } compare[31:0] = 0;
+        } compare @ 0x08;
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; } match[0:0];
+            field { sw = r; hw = w; } overflow[1:1];
+        } status @ 0x0C;
+    } timer @ 0x4000;
+};

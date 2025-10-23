@@ -66,3 +66,11 @@ peakrdl_pybind11/_version.py
 
 # Example output
 examples/output/
+
+# Benchmark outputs
+benchmarks/.benchmarks/
+benchmarks/*.json
+benchmarks/*.svg
+benchmarks/*.html
+benchmarks/output/
+.benchmarks/
