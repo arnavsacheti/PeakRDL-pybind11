@@ -20,7 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
       
       - name: Install package
-        run: uv pip install --system -e .
+        run: uv sync
       
       - name: Run pyrefly type check
         run: uvx pyrefly check .
