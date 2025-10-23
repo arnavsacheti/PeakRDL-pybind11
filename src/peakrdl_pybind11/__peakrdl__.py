@@ -4,14 +4,19 @@ PeakRDL exporter integration
 
 from typing import TYPE_CHECKING
 
-from peakrdl.plugins.exporter import ExporterSubcommandPlugin
-
-from .exporter import Pybind11Exporter
-
 if TYPE_CHECKING:
     import argparse
 
+    from peakrdl.plugins.exporter import ExporterSubcommandPlugin
     from systemrdl.node import AddrmapNode
+else:
+    try:
+        from peakrdl.plugins.exporter import ExporterSubcommandPlugin  # pyrefly: ignore[missing-import]
+    except ImportError:
+        # peakrdl is an optional dependency
+        ExporterSubcommandPlugin = object  # type: ignore[misc]
+
+from .exporter import Pybind11Exporter
 
 
 class Exporter(ExporterSubcommandPlugin):

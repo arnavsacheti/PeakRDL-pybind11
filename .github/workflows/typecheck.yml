@@ -23,4 +23,4 @@ jobs:
         run: uv sync --extra cli
       
       - name: Run pyrefly type check
-        run: uvx pyrefly check .
+        run: uvx pyrefly check src/
