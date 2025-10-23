@@ -27,12 +27,12 @@ jobs:
       
       - name: Install dependencies
         run: |
-          uv pip install --system -e .
-          uv pip install --system --group benchmark
+          uv pip install -e .
+          uv pip install --group benchmark
       
       - name: Run fast benchmarks (export only)
         run: |
-          pytest benchmarks/ --benchmark-only -m "not slow" -v \
+          uv run pytest benchmarks/ --benchmark-only -m "not slow" -v \
             --benchmark-json=benchmark-results.json \
             --benchmark-columns=min,max,mean,stddev
       
