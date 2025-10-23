@@ -8,19 +8,18 @@ This script demonstrates how to:
 3. Use the generated Python API with different Master backends
 """
 
-import os
 import sys
-import subprocess
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from systemrdl import RDLCompiler
+
 from peakrdl_pybind11 import Pybind11Exporter
 
 
-def export_example():
+def export_example() -> Path:
     """Export the example SystemRDL file"""
     print("=" * 70)
     print("Step 1: Exporting SystemRDL to PyBind11 modules")
@@ -50,7 +49,7 @@ def export_example():
     return output_dir
 
 
-def build_extension(output_dir):
+def build_extension(output_dir: Path) -> None:
     """Build the C++ extension"""
     print("\n" + "=" * 70)
     print("Step 2: Building C++ extension (optional)")
@@ -63,7 +62,7 @@ def build_extension(output_dir):
     print("\nNote: This requires pybind11, CMake 3.15+, and a C++11 compiler.")
 
 
-def demonstrate_usage():
+def demonstrate_usage() -> None:
     """Show example usage"""
     print("\n" + "=" * 70)
     print("Step 3: Example Python usage")
@@ -115,7 +114,7 @@ print(f"GPIO input: 0x{input_val:04x}")
     print(example_code)
 
 
-def main():
+def main() -> int:
     """Main entry point"""
     print("\n" + "=" * 70)
     print("PeakRDL-pybind11 Example")
