@@ -92,12 +92,12 @@ Contents
 
    installation
    usage
-   api
 
 .. toctree::
    :maxdepth: 2
    :caption: API Reference
 
+   api
    api/exporter
    api/masters
 

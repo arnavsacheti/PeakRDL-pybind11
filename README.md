@@ -123,8 +123,8 @@ Full documentation is available at [ReadTheDocs](https://peakrdl-pybind11.readth
 To build the documentation locally:
 
 ```bash
+pip install -e .[docs]
 cd docs
-pip install -r requirements.txt
 make html
 ```
 
