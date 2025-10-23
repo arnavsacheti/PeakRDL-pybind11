@@ -31,9 +31,9 @@ class Pybind11Exporter:
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        self.soc_name = None
-        self.top_node = None
-        self.output_dir = None
+        self.soc_name: str | None = None
+        self.top_node: AddrmapNode | None = None
+        self.output_dir: Path | None = None
 
     def export(
         self,

@@ -54,7 +54,7 @@ peakrdl_pybind11 = ["templates/*.jinja"]
 [tool.ruff]
 line-length = 110
 target-version = "py310"
-extend-exclude = ["CVS", "parser", "docs", "tests"]
+extend-exclude = ["CVS", "parser", "docs", "tests", "benchmarks"]
 
 [tool.ruff.lint]
 select = [
@@ -79,3 +79,6 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.pyrefly]
+project_includes = ["src/**"]
