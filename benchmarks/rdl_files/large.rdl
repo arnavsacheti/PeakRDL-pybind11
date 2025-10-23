@@ -1,0 +1,252 @@
+// Large complexity RDL file for benchmarking
+// Contains many peripherals and registers to stress test the exporter
+
+addrmap large_benchmark {
+    name = "Large Benchmark SoC";
+    desc = "A large SoC with many peripherals and registers";
+    
+    regfile system_control {
+        name = "System Control";
+        
+        reg {
+            name = "System ID";
+            field { sw = r; hw = na; } chip_id[15:0] = 0x1234;
+            field { sw = r; hw = na; } revision[23:16] = 0x01;
+        } sys_id @ 0x00;
+        
+        reg {
+            name = "Clock Control";
+            field { sw = rw; hw = r; } pll_enable[0:0] = 0;
+            field { sw = rw; hw = r; } cpu_clk_div[7:4] = 0;
+            field { sw = rw; hw = r; } bus_clk_div[11:8] = 0;
+        } clk_ctrl @ 0x04;
+        
+        reg {
+            name = "Reset Control";
+            field { sw = rw; hw = r; } soft_reset[0:0] = 0;
+            field { sw = rw; hw = r; } watchdog_reset[1:1] = 0;
+        } reset_ctrl @ 0x08;
+        
+        reg {
+            name = "Power Control";
+            field { sw = rw; hw = r; } sleep_mode[1:0] = 0;
+            field { sw = rw; hw = r; } power_gate[7:4] = 0;
+        } power_ctrl @ 0x0C;
+    } system_control @ 0x0000;
+    
+    // Multiple UART instances
+    regfile uart0 {
+        name = "UART 0";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } baudrate[3:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } tx_ready[0:0]; field { sw = r; hw = w; } rx_ready[1:1]; } status @ 0x04;
+        reg { field { sw = rw; hw = rw; } data[7:0]; } data @ 0x08;
+        reg { field { sw = rw; hw = r; } tx_int_en[0:0]; field { sw = rw; hw = r; } rx_int_en[1:1]; } int_enable @ 0x0C;
+    } uart0 @ 0x1000;
+    
+    regfile uart1 {
+        name = "UART 1";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } baudrate[3:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } tx_ready[0:0]; field { sw = r; hw = w; } rx_ready[1:1]; } status @ 0x04;
+        reg { field { sw = rw; hw = rw; } data[7:0]; } data @ 0x08;
+        reg { field { sw = rw; hw = r; } tx_int_en[0:0]; field { sw = rw; hw = r; } rx_int_en[1:1]; } int_enable @ 0x0C;
+    } uart1 @ 0x1100;
+    
+    regfile uart2 {
+        name = "UART 2";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } baudrate[3:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } tx_ready[0:0]; field { sw = r; hw = w; } rx_ready[1:1]; } status @ 0x04;
+        reg { field { sw = rw; hw = rw; } data[7:0]; } data @ 0x08;
+        reg { field { sw = rw; hw = r; } tx_int_en[0:0]; field { sw = rw; hw = r; } rx_int_en[1:1]; } int_enable @ 0x0C;
+    } uart2 @ 0x1200;
+    
+    // Multiple GPIO banks
+    regfile gpio_bank0 {
+        name = "GPIO Bank 0";
+        reg { field { sw = rw; hw = r; } direction[31:0] = 0; } direction @ 0x00;
+        reg { field { sw = rw; hw = r; } output[31:0] = 0; } output @ 0x04;
+        reg { field { sw = r; hw = w; } input[31:0]; } input @ 0x08;
+        reg { field { sw = rw; hw = r; } int_enable[31:0] = 0; } int_enable @ 0x0C;
+        reg { field { sw = rw; hw = r; } int_type[31:0] = 0; } int_type @ 0x10;
+    } gpio_bank0 @ 0x2000;
+    
+    regfile gpio_bank1 {
+        name = "GPIO Bank 1";
+        reg { field { sw = rw; hw = r; } direction[31:0] = 0; } direction @ 0x00;
+        reg { field { sw = rw; hw = r; } output[31:0] = 0; } output @ 0x04;
+        reg { field { sw = r; hw = w; } input[31:0]; } input @ 0x08;
+        reg { field { sw = rw; hw = r; } int_enable[31:0] = 0; } int_enable @ 0x0C;
+        reg { field { sw = rw; hw = r; } int_type[31:0] = 0; } int_type @ 0x10;
+    } gpio_bank1 @ 0x2100;
+    
+    // Multiple SPI controllers
+    regfile spi0 {
+        name = "SPI 0";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } master_mode[1:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } busy[0:0]; field { sw = r; hw = w; } tx_empty[1:1]; } status @ 0x04;
+        reg { field { sw = w; hw = r; } tx_data[7:0]; } tx_data @ 0x08;
+        reg { field { sw = r; hw = w; } rx_data[7:0]; } rx_data @ 0x0C;
+    } spi0 @ 0x3000;
+    
+    regfile spi1 {
+        name = "SPI 1";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } master_mode[1:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } busy[0:0]; field { sw = r; hw = w; } tx_empty[1:1]; } status @ 0x04;
+        reg { field { sw = w; hw = r; } tx_data[7:0]; } tx_data @ 0x08;
+        reg { field { sw = r; hw = w; } rx_data[7:0]; } rx_data @ 0x0C;
+    } spi1 @ 0x3100;
+    
+    // Multiple Timers
+    regfile timer0 {
+        name = "Timer 0";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } mode[2:1]; } control @ 0x00;
+        reg { field { sw = rw; hw = rw; } counter[31:0]; } counter @ 0x04;
+        reg { field { sw = rw; hw = r; } compare[31:0]; } compare @ 0x08;
+        reg { field { sw = r; hw = w; } match[0:0]; field { sw = r; hw = w; } overflow[1:1]; } status @ 0x0C;
+    } timer0 @ 0x4000;
+    
+    regfile timer1 {
+        name = "Timer 1";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } mode[2:1]; } control @ 0x00;
+        reg { field { sw = rw; hw = rw; } counter[31:0]; } counter @ 0x04;
+        reg { field { sw = rw; hw = r; } compare[31:0]; } compare @ 0x08;
+        reg { field { sw = r; hw = w; } match[0:0]; field { sw = r; hw = w; } overflow[1:1]; } status @ 0x0C;
+    } timer1 @ 0x4100;
+    
+    regfile timer2 {
+        name = "Timer 2";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } mode[2:1]; } control @ 0x00;
+        reg { field { sw = rw; hw = rw; } counter[31:0]; } counter @ 0x04;
+        reg { field { sw = rw; hw = r; } compare[31:0]; } compare @ 0x08;
+        reg { field { sw = r; hw = w; } match[0:0]; field { sw = r; hw = w; } overflow[1:1]; } status @ 0x0C;
+    } timer2 @ 0x4200;
+    
+    // I2C Controllers
+    regfile i2c0 {
+        name = "I2C 0";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } master_mode[1:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } busy[0:0]; field { sw = r; hw = w; } error[1:1]; } status @ 0x04;
+        reg { field { sw = rw; hw = r; } slave_addr[6:0]; } slave_addr @ 0x08;
+        reg { field { sw = rw; hw = rw; } data[7:0]; } data @ 0x0C;
+    } i2c0 @ 0x5000;
+    
+    regfile i2c1 {
+        name = "I2C 1";
+        reg { field { sw = rw; hw = r; } enable[0:0]; field { sw = rw; hw = r; } master_mode[1:1]; } control @ 0x00;
+        reg { field { sw = r; hw = w; } busy[0:0]; field { sw = r; hw = w; } error[1:1]; } status @ 0x04;
+        reg { field { sw = rw; hw = r; } slave_addr[6:0]; } slave_addr @ 0x08;
+        reg { field { sw = rw; hw = rw; } data[7:0]; } data @ 0x0C;
+    } i2c1 @ 0x5100;
+    
+    // DMA Controller
+    regfile dma {
+        name = "DMA Controller";
+        
+        reg {
+            name = "DMA Control";
+            field { sw = rw; hw = r; } enable[0:0] = 0;
+            field { sw = rw; hw = r; } channel_count[7:4] = 4;
+        } control @ 0x00;
+        
+        reg {
+            name = "DMA Status";
+            field { sw = r; hw = w; } busy[0:0];
+            field { sw = r; hw = w; } error[1:1];
+        } status @ 0x04;
+        
+        // Channel 0
+        reg { field { sw = rw; hw = r; } src_addr[31:0]; } ch0_src @ 0x10;
+        reg { field { sw = rw; hw = r; } dst_addr[31:0]; } ch0_dst @ 0x14;
+        reg { field { sw = rw; hw = r; } length[15:0]; } ch0_len @ 0x18;
+        reg { field { sw = rw; hw = r; } enable[0:0]; } ch0_ctrl @ 0x1C;
+        
+        // Channel 1
+        reg { field { sw = rw; hw = r; } src_addr[31:0]; } ch1_src @ 0x20;
+        reg { field { sw = rw; hw = r; } dst_addr[31:0]; } ch1_dst @ 0x24;
+        reg { field { sw = rw; hw = r; } length[15:0]; } ch1_len @ 0x28;
+        reg { field { sw = rw; hw = r; } enable[0:0]; } ch1_ctrl @ 0x2C;
+        
+        // Channel 2
+        reg { field { sw = rw; hw = r; } src_addr[31:0]; } ch2_src @ 0x30;
+        reg { field { sw = rw; hw = r; } dst_addr[31:0]; } ch2_dst @ 0x34;
+        reg { field { sw = rw; hw = r; } length[15:0]; } ch2_len @ 0x38;
+        reg { field { sw = rw; hw = r; } enable[0:0]; } ch2_ctrl @ 0x3C;
+        
+        // Channel 3
+        reg { field { sw = rw; hw = r; } src_addr[31:0]; } ch3_src @ 0x40;
+        reg { field { sw = rw; hw = r; } dst_addr[31:0]; } ch3_dst @ 0x44;
+        reg { field { sw = rw; hw = r; } length[15:0]; } ch3_len @ 0x48;
+        reg { field { sw = rw; hw = r; } enable[0:0]; } ch3_ctrl @ 0x4C;
+    } dma @ 0x6000;
+    
+    // Interrupt Controller
+    regfile interrupt_controller {
+        name = "Interrupt Controller";
+        
+        reg {
+            name = "Global Enable";
+            field { sw = rw; hw = r; } enable[0:0] = 0;
+        } global_enable @ 0x00;
+        
+        reg {
+            name = "Interrupt Pending 0-31";
+            field { sw = r; hw = w; } pending[31:0];
+        } pending0 @ 0x04;
+        
+        reg {
+            name = "Interrupt Pending 32-63";
+            field { sw = r; hw = w; } pending[31:0];
+        } pending1 @ 0x08;
+        
+        reg {
+            name = "Interrupt Enable 0-31";
+            field { sw = rw; hw = r; } enable[31:0] = 0;
+        } enable0 @ 0x0C;
+        
+        reg {
+            name = "Interrupt Enable 32-63";
+            field { sw = rw; hw = r; } enable[31:0] = 0;
+        } enable1 @ 0x10;
+        
+        reg {
+            name = "Interrupt Priority 0-3";
+            field { sw = rw; hw = r; } pri0[7:0] = 0;
+            field { sw = rw; hw = r; } pri1[15:8] = 0;
+            field { sw = rw; hw = r; } pri2[23:16] = 0;
+            field { sw = rw; hw = r; } pri3[31:24] = 0;
+        } priority0 @ 0x14;
+        
+        reg {
+            name = "Interrupt Priority 4-7";
+            field { sw = rw; hw = r; } pri4[7:0] = 0;
+            field { sw = rw; hw = r; } pri5[15:8] = 0;
+            field { sw = rw; hw = r; } pri6[23:16] = 0;
+            field { sw = rw; hw = r; } pri7[31:24] = 0;
+        } priority1 @ 0x18;
+    } interrupt_controller @ 0x7000;
+    
+    // Watchdog Timer
+    regfile watchdog {
+        name = "Watchdog Timer";
+        
+        reg {
+            name = "Control";
+            field { sw = rw; hw = r; } enable[0:0] = 0;
+            field { sw = rw; hw = r; } reset_enable[1:1] = 0;
+        } control @ 0x00;
+        
+        reg {
+            name = "Load Value";
+            field { sw = rw; hw = r; } load[31:0] = 0;
+        } load @ 0x04;
+        
+        reg {
+            name = "Current Value";
+            field { sw = r; hw = w; } value[31:0];
+        } value @ 0x08;
+        
+        reg {
+            name = "Status";
+            field { sw = r; hw = w; } timeout[0:0];
+        } status @ 0x0C;
+    } watchdog @ 0x8000;
+};

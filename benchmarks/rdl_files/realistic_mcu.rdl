@@ -1,0 +1,1297 @@
+// Realistic Microcontroller RDL
+// Based on typical ARM Cortex-M4/M7 or RISC-V MCU architecture
+// Contains ~300-400 registers across multiple peripheral blocks
+// Inspired by STM32, NXP Kinetis, Nordic nRF, SiFive FE310, and similar real-world MCUs
+
+addrmap realistic_mcu {
+    name = "Realistic Microcontroller SoC";
+    desc = "Full-featured microcontroller with realistic register count for benchmarking";
+    
+    // ========================================================================
+    // System Control Block
+    // ========================================================================
+    regfile system_control {
+        name = "System Control and Configuration";
+        
+        reg {
+            name = "Device ID";
+            field { sw = r; hw = na; } device_id[31:0] = 0x12345678;
+        } device_id @ 0x00;
+        
+        reg {
+            name = "Revision ID";
+            field { sw = r; hw = na; } rev_major[31:24] = 0x01;
+            field { sw = r; hw = na; } rev_minor[23:16] = 0x02;
+            field { sw = r; hw = na; } rev_patch[15:0] = 0x0003;
+        } revision @ 0x04;
+        
+        reg {
+            name = "Clock Control";
+            field { sw = rw; hw = r; } pll_enable[0:0] = 0;
+            field { sw = rw; hw = r; } hse_enable[1:1] = 0;
+            field { sw = rw; hw = r; } lse_enable[2:2] = 0;
+            field { sw = rw; hw = r; } hsi_enable[3:3] = 1;
+            field { sw = rw; hw = r; } sysclk_src[6:4] = 0;
+            field { sw = rw; hw = r; } ahb_prescaler[11:8] = 0;
+            field { sw = rw; hw = r; } apb1_prescaler[14:12] = 0;
+            field { sw = rw; hw = r; } apb2_prescaler[17:15] = 0;
+        } clock_ctrl @ 0x08;
+        
+        reg {
+            name = "Clock Status";
+            field { sw = r; hw = w; } pll_ready[0:0];
+            field { sw = r; hw = w; } hse_ready[1:1];
+            field { sw = r; hw = w; } lse_ready[2:2];
+            field { sw = r; hw = w; } hsi_ready[3:3];
+        } clock_status @ 0x0C;
+        
+        reg {
+            name = "PLL Configuration";
+            field { sw = rw; hw = r; } pll_m[5:0] = 8;
+            field { sw = rw; hw = r; } pll_n[14:6] = 336;
+            field { sw = rw; hw = r; } pll_p[17:16] = 0;
+            field { sw = rw; hw = r; } pll_q[27:24] = 7;
+            field { sw = rw; hw = r; } pll_src[31:31] = 0;
+        } pll_config @ 0x10;
+        
+        reg {
+            name = "Reset Control";
+            field { sw = rw; hw = r; } soft_reset[0:0] = 0;
+            field { sw = rw; hw = r; } watchdog_reset_en[1:1] = 0;
+            field { sw = rw; hw = r; } brown_out_reset_en[2:2] = 1;
+        } reset_ctrl @ 0x14;
+        
+        reg {
+            name = "Reset Status";
+            field { sw = r; hw = w; onread = rclr; } por_flag[0:0];
+            field { sw = r; hw = w; onread = rclr; } pin_reset_flag[1:1];
+            field { sw = r; hw = w; onread = rclr; } watchdog_flag[2:2];
+            field { sw = r; hw = w; onread = rclr; } soft_reset_flag[3:3];
+            field { sw = r; hw = w; onread = rclr; } brown_out_flag[4:4];
+        } reset_status @ 0x18;
+        
+        reg {
+            name = "Power Control";
+            field { sw = rw; hw = r; } sleep_mode[1:0] = 0;
+            field { sw = rw; hw = r; } stop_mode[3:2] = 0;
+            field { sw = rw; hw = r; } standby_enable[4:4] = 0;
+            field { sw = rw; hw = r; } voltage_scaling[7:6] = 3;
+        } power_ctrl @ 0x1C;
+        
+        reg {
+            name = "Power Status";
+            field { sw = r; hw = w; } vdd_ready[0:0];
+            field { sw = r; hw = w; } vbat_present[1:1];
+            field { sw = r; hw = w; } wakeup_flag[2:2];
+        } power_status @ 0x20;
+        
+        reg {
+            name = "Peripheral Clock Enable 1";
+            field { sw = rw; hw = r; } uart0_clk_en[0:0] = 0;
+            field { sw = rw; hw = r; } uart1_clk_en[1:1] = 0;
+            field { sw = rw; hw = r; } uart2_clk_en[2:2] = 0;
+            field { sw = rw; hw = r; } uart3_clk_en[3:3] = 0;
+            field { sw = rw; hw = r; } spi0_clk_en[4:4] = 0;
+            field { sw = rw; hw = r; } spi1_clk_en[5:5] = 0;
+            field { sw = rw; hw = r; } spi2_clk_en[6:6] = 0;
+            field { sw = rw; hw = r; } i2c0_clk_en[7:7] = 0;
+            field { sw = rw; hw = r; } i2c1_clk_en[8:8] = 0;
+            field { sw = rw; hw = r; } i2c2_clk_en[9:9] = 0;
+            field { sw = rw; hw = r; } can0_clk_en[10:10] = 0;
+            field { sw = rw; hw = r; } can1_clk_en[11:11] = 0;
+            field { sw = rw; hw = r; } timer0_clk_en[12:12] = 0;
+            field { sw = rw; hw = r; } timer1_clk_en[13:13] = 0;
+            field { sw = rw; hw = r; } timer2_clk_en[14:14] = 0;
+            field { sw = rw; hw = r; } timer3_clk_en[15:15] = 0;
+        } periph_clk_en1 @ 0x24;
+        
+        reg {
+            name = "Peripheral Clock Enable 2";
+            field { sw = rw; hw = r; } gpio_a_clk_en[0:0] = 0;
+            field { sw = rw; hw = r; } gpio_b_clk_en[1:1] = 0;
+            field { sw = rw; hw = r; } gpio_c_clk_en[2:2] = 0;
+            field { sw = rw; hw = r; } gpio_d_clk_en[3:3] = 0;
+            field { sw = rw; hw = r; } gpio_e_clk_en[4:4] = 0;
+            field { sw = rw; hw = r; } adc0_clk_en[5:5] = 0;
+            field { sw = rw; hw = r; } adc1_clk_en[6:6] = 0;
+            field { sw = rw; hw = r; } dac_clk_en[7:7] = 0;
+            field { sw = rw; hw = r; } dma_clk_en[8:8] = 0;
+            field { sw = rw; hw = r; } usb_clk_en[9:9] = 0;
+            field { sw = rw; hw = r; } eth_clk_en[10:10] = 0;
+            field { sw = rw; hw = r; } sdio_clk_en[11:11] = 0;
+            field { sw = rw; hw = r; } crypto_clk_en[12:12] = 0;
+            field { sw = rw; hw = r; } rng_clk_en[13:13] = 0;
+            field { sw = rw; hw = r; } rtc_clk_en[14:14] = 0;
+            field { sw = rw; hw = r; } wwdg_clk_en[15:15] = 0;
+        } periph_clk_en2 @ 0x28;
+    } system_control @ 0x00000;
+    
+    // ========================================================================
+    // GPIO Banks (5 banks, 16 pins each = 80 GPIO pins)
+    // Each bank has 10 registers
+    // ========================================================================
+    regfile gpio_a {
+        name = "GPIO Port A";
+        
+        reg {
+            name = "Mode Register";
+            field { sw = rw; hw = r; } mode0[1:0] = 0;
+            field { sw = rw; hw = r; } mode1[3:2] = 0;
+            field { sw = rw; hw = r; } mode2[5:4] = 0;
+            field { sw = rw; hw = r; } mode3[7:6] = 0;
+            field { sw = rw; hw = r; } mode4[9:8] = 0;
+            field { sw = rw; hw = r; } mode5[11:10] = 0;
+            field { sw = rw; hw = r; } mode6[13:12] = 0;
+            field { sw = rw; hw = r; } mode7[15:14] = 0;
+        } mode_low @ 0x00;
+        
+        reg {
+            name = "Mode Register High";
+            field { sw = rw; hw = r; } mode8[1:0] = 0;
+            field { sw = rw; hw = r; } mode9[3:2] = 0;
+            field { sw = rw; hw = r; } mode10[5:4] = 0;
+            field { sw = rw; hw = r; } mode11[7:6] = 0;
+            field { sw = rw; hw = r; } mode12[9:8] = 0;
+            field { sw = rw; hw = r; } mode13[11:10] = 0;
+            field { sw = rw; hw = r; } mode14[13:12] = 0;
+            field { sw = rw; hw = r; } mode15[15:14] = 0;
+        } mode_high @ 0x04;
+        
+        reg {
+            name = "Output Type";
+            field { sw = rw; hw = r; } otype[15:0] = 0;
+        } otype @ 0x08;
+        
+        reg {
+            name = "Output Speed";
+            field { sw = rw; hw = r; } ospeed[31:0] = 0;
+        } ospeed @ 0x0C;
+        
+        reg {
+            name = "Pull-up/Pull-down";
+            field { sw = rw; hw = r; } pupd[31:0] = 0;
+        } pupd @ 0x10;
+        
+        reg {
+            name = "Input Data";
+            field { sw = r; hw = w; } idr[15:0];
+        } idr @ 0x14;
+        
+        reg {
+            name = "Output Data";
+            field { sw = rw; hw = r; } odr[15:0] = 0;
+        } odr @ 0x18;
+        
+        reg {
+            name = "Bit Set/Reset";
+            field { sw = w; hw = r; } bs[15:0];
+            field { sw = w; hw = r; } br[31:16];
+        } bsrr @ 0x1C;
+        
+        reg {
+            name = "Lock Register";
+            field { sw = rw; hw = r; } lck[15:0] = 0;
+            field { sw = rw; hw = r; } lckk[16:16] = 0;
+        } lckr @ 0x20;
+        
+        reg {
+            name = "Alternate Function Low";
+            field { sw = rw; hw = r; } afrl[31:0] = 0;
+        } afrl @ 0x24;
+        
+        reg {
+            name = "Alternate Function High";
+            field { sw = rw; hw = r; } afrh[31:0] = 0;
+        } afrh @ 0x28;
+    } gpio_a @ 0x10000;
+    
+    // GPIO Port B (same structure)
+    regfile gpio_b {
+        name = "GPIO Port B";
+        reg { field { sw = rw; hw = r; } mode0[1:0]; field { sw = rw; hw = r; } mode1[3:2]; field { sw = rw; hw = r; } mode2[5:4]; field { sw = rw; hw = r; } mode3[7:6]; field { sw = rw; hw = r; } mode4[9:8]; field { sw = rw; hw = r; } mode5[11:10]; field { sw = rw; hw = r; } mode6[13:12]; field { sw = rw; hw = r; } mode7[15:14]; } mode_low @ 0x00;
+        reg { field { sw = rw; hw = r; } mode8[1:0]; field { sw = rw; hw = r; } mode9[3:2]; field { sw = rw; hw = r; } mode10[5:4]; field { sw = rw; hw = r; } mode11[7:6]; field { sw = rw; hw = r; } mode12[9:8]; field { sw = rw; hw = r; } mode13[11:10]; field { sw = rw; hw = r; } mode14[13:12]; field { sw = rw; hw = r; } mode15[15:14]; } mode_high @ 0x04;
+        reg { field { sw = rw; hw = r; } otype[15:0]; } otype @ 0x08;
+        reg { field { sw = rw; hw = r; } ospeed[31:0]; } ospeed @ 0x0C;
+        reg { field { sw = rw; hw = r; } pupd[31:0]; } pupd @ 0x10;
+        reg { field { sw = r; hw = w; } idr[15:0]; } idr @ 0x14;
+        reg { field { sw = rw; hw = r; } odr[15:0]; } odr @ 0x18;
+        reg { field { sw = w; hw = r; } bs[15:0]; field { sw = w; hw = r; } br[31:16]; } bsrr @ 0x1C;
+        reg { field { sw = rw; hw = r; } lck[15:0]; field { sw = rw; hw = r; } lckk[16:16]; } lckr @ 0x20;
+        reg { field { sw = rw; hw = r; } afrl[31:0]; } afrl @ 0x24;
+        reg { field { sw = rw; hw = r; } afrh[31:0]; } afrh @ 0x28;
+    } gpio_b @ 0x10400;
+    
+    // GPIO Port C
+    regfile gpio_c {
+        name = "GPIO Port C";
+        reg { field { sw = rw; hw = r; } mode0[1:0]; field { sw = rw; hw = r; } mode1[3:2]; field { sw = rw; hw = r; } mode2[5:4]; field { sw = rw; hw = r; } mode3[7:6]; field { sw = rw; hw = r; } mode4[9:8]; field { sw = rw; hw = r; } mode5[11:10]; field { sw = rw; hw = r; } mode6[13:12]; field { sw = rw; hw = r; } mode7[15:14]; } mode_low @ 0x00;
+        reg { field { sw = rw; hw = r; } mode8[1:0]; field { sw = rw; hw = r; } mode9[3:2]; field { sw = rw; hw = r; } mode10[5:4]; field { sw = rw; hw = r; } mode11[7:6]; field { sw = rw; hw = r; } mode12[9:8]; field { sw = rw; hw = r; } mode13[11:10]; field { sw = rw; hw = r; } mode14[13:12]; field { sw = rw; hw = r; } mode15[15:14]; } mode_high @ 0x04;
+        reg { field { sw = rw; hw = r; } otype[15:0]; } otype @ 0x08;
+        reg { field { sw = rw; hw = r; } ospeed[31:0]; } ospeed @ 0x0C;
+        reg { field { sw = rw; hw = r; } pupd[31:0]; } pupd @ 0x10;
+        reg { field { sw = r; hw = w; } idr[15:0]; } idr @ 0x14;
+        reg { field { sw = rw; hw = r; } odr[15:0]; } odr @ 0x18;
+        reg { field { sw = w; hw = r; } bs[15:0]; field { sw = w; hw = r; } br[31:16]; } bsrr @ 0x1C;
+        reg { field { sw = rw; hw = r; } lck[15:0]; field { sw = rw; hw = r; } lckk[16:16]; } lckr @ 0x20;
+        reg { field { sw = rw; hw = r; } afrl[31:0]; } afrl @ 0x24;
+        reg { field { sw = rw; hw = r; } afrh[31:0]; } afrh @ 0x28;
+    } gpio_c @ 0x10800;
+    
+    // GPIO Port D
+    regfile gpio_d {
+        name = "GPIO Port D";
+        reg { field { sw = rw; hw = r; } mode0[1:0]; field { sw = rw; hw = r; } mode1[3:2]; field { sw = rw; hw = r; } mode2[5:4]; field { sw = rw; hw = r; } mode3[7:6]; field { sw = rw; hw = r; } mode4[9:8]; field { sw = rw; hw = r; } mode5[11:10]; field { sw = rw; hw = r; } mode6[13:12]; field { sw = rw; hw = r; } mode7[15:14]; } mode_low @ 0x00;
+        reg { field { sw = rw; hw = r; } mode8[1:0]; field { sw = rw; hw = r; } mode9[3:2]; field { sw = rw; hw = r; } mode10[5:4]; field { sw = rw; hw = r; } mode11[7:6]; field { sw = rw; hw = r; } mode12[9:8]; field { sw = rw; hw = r; } mode13[11:10]; field { sw = rw; hw = r; } mode14[13:12]; field { sw = rw; hw = r; } mode15[15:14]; } mode_high @ 0x04;
+        reg { field { sw = rw; hw = r; } otype[15:0]; } otype @ 0x08;
+        reg { field { sw = rw; hw = r; } ospeed[31:0]; } ospeed @ 0x0C;
+        reg { field { sw = rw; hw = r; } pupd[31:0]; } pupd @ 0x10;
+        reg { field { sw = r; hw = w; } idr[15:0]; } idr @ 0x14;
+        reg { field { sw = rw; hw = r; } odr[15:0]; } odr @ 0x18;
+        reg { field { sw = w; hw = r; } bs[15:0]; field { sw = w; hw = r; } br[31:16]; } bsrr @ 0x1C;
+        reg { field { sw = rw; hw = r; } lck[15:0]; field { sw = rw; hw = r; } lckk[16:16]; } lckr @ 0x20;
+        reg { field { sw = rw; hw = r; } afrl[31:0]; } afrl @ 0x24;
+        reg { field { sw = rw; hw = r; } afrh[31:0]; } afrh @ 0x28;
+    } gpio_d @ 0x10C00;
+    
+    // GPIO Port E
+    regfile gpio_e {
+        name = "GPIO Port E";
+        reg { field { sw = rw; hw = r; } mode0[1:0]; field { sw = rw; hw = r; } mode1[3:2]; field { sw = rw; hw = r; } mode2[5:4]; field { sw = rw; hw = r; } mode3[7:6]; field { sw = rw; hw = r; } mode4[9:8]; field { sw = rw; hw = r; } mode5[11:10]; field { sw = rw; hw = r; } mode6[13:12]; field { sw = rw; hw = r; } mode7[15:14]; } mode_low @ 0x00;
+        reg { field { sw = rw; hw = r; } mode8[1:0]; field { sw = rw; hw = r; } mode9[3:2]; field { sw = rw; hw = r; } mode10[5:4]; field { sw = rw; hw = r; } mode11[7:6]; field { sw = rw; hw = r; } mode12[9:8]; field { sw = rw; hw = r; } mode13[11:10]; field { sw = rw; hw = r; } mode14[13:12]; field { sw = rw; hw = r; } mode15[15:14]; } mode_high @ 0x04;
+        reg { field { sw = rw; hw = r; } otype[15:0]; } otype @ 0x08;
+        reg { field { sw = rw; hw = r; } ospeed[31:0]; } ospeed @ 0x0C;
+        reg { field { sw = rw; hw = r; } pupd[31:0]; } pupd @ 0x10;
+        reg { field { sw = r; hw = w; } idr[15:0]; } idr @ 0x14;
+        reg { field { sw = rw; hw = r; } odr[15:0]; } odr @ 0x18;
+        reg { field { sw = w; hw = r; } bs[15:0]; field { sw = w; hw = r; } br[31:16]; } bsrr @ 0x1C;
+        reg { field { sw = rw; hw = r; } lck[15:0]; field { sw = rw; hw = r; } lckk[16:16]; } lckr @ 0x20;
+        reg { field { sw = rw; hw = r; } afrl[31:0]; } afrl @ 0x24;
+        reg { field { sw = rw; hw = r; } afrh[31:0]; } afrh @ 0x28;
+    } gpio_e @ 0x11000;
+    
+    // ========================================================================
+    // UART Controllers (4 instances)
+    // Each UART has 10 registers
+    // ========================================================================
+    regfile uart0 {
+        name = "UART 0";
+        
+        reg {
+            name = "Control Register 1";
+            field { sw = rw; hw = r; } ue[0:0] = 0;
+            field { sw = rw; hw = r; } re[2:2] = 0;
+            field { sw = rw; hw = r; } te[3:3] = 0;
+            field { sw = rw; hw = r; } idleie[4:4] = 0;
+            field { sw = rw; hw = r; } rxneie[5:5] = 0;
+            field { sw = rw; hw = r; } tcie[6:6] = 0;
+            field { sw = rw; hw = r; } txeie[7:7] = 0;
+            field { sw = rw; hw = r; } peie[8:8] = 0;
+            field { sw = rw; hw = r; } ps[9:9] = 0;
+            field { sw = rw; hw = r; } pce[10:10] = 0;
+            field { sw = rw; hw = r; } m[12:12] = 0;
+            field { sw = rw; hw = r; } over8[15:15] = 0;
+        } cr1 @ 0x00;
+        
+        reg {
+            name = "Control Register 2";
+            field { sw = rw; hw = r; } stop[13:12] = 0;
+            field { sw = rw; hw = r; } linen[14:14] = 0;
+        } cr2 @ 0x04;
+        
+        reg {
+            name = "Control Register 3";
+            field { sw = rw; hw = r; } eie[0:0] = 0;
+            field { sw = rw; hw = r; } hdsel[3:3] = 0;
+            field { sw = rw; hw = r; } dmar[6:6] = 0;
+            field { sw = rw; hw = r; } dmat[7:7] = 0;
+            field { sw = rw; hw = r; } rtse[8:8] = 0;
+            field { sw = rw; hw = r; } ctse[9:9] = 0;
+            field { sw = rw; hw = r; } ctsie[10:10] = 0;
+        } cr3 @ 0x08;
+        
+        reg {
+            name = "Baud Rate Register";
+            field { sw = rw; hw = r; } div_fraction[3:0] = 0;
+            field { sw = rw; hw = r; } div_mantissa[15:4] = 0;
+        } brr @ 0x0C;
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; } pe[0:0];
+            field { sw = r; hw = w; } fe[1:1];
+            field { sw = r; hw = w; } nf[2:2];
+            field { sw = r; hw = w; } ore[3:3];
+            field { sw = r; hw = w; } idle[4:4];
+            field { sw = r; hw = w; } rxne[5:5];
+            field { sw = r; hw = w; } tc[6:6];
+            field { sw = r; hw = w; } txe[7:7];
+            field { sw = r; hw = w; } cts[9:9];
+        } sr @ 0x10;
+        
+        reg {
+            name = "Data Register";
+            field { sw = rw; hw = rw; } dr[8:0];
+        } dr @ 0x14;
+        
+        reg {
+            name = "Guard Time and Prescaler";
+            field { sw = rw; hw = r; } psc[7:0] = 0;
+            field { sw = rw; hw = r; } gt[15:8] = 0;
+        } gtpr @ 0x18;
+    } uart0 @ 0x20000;
+    
+    regfile uart1 {
+        name = "UART 1";
+        reg { field { sw = rw; hw = r; } ue[0:0]; field { sw = rw; hw = r; } re[2:2]; field { sw = rw; hw = r; } te[3:3]; field { sw = rw; hw = r; } idleie[4:4]; field { sw = rw; hw = r; } rxneie[5:5]; field { sw = rw; hw = r; } tcie[6:6]; field { sw = rw; hw = r; } txeie[7:7]; field { sw = rw; hw = r; } peie[8:8]; field { sw = rw; hw = r; } ps[9:9]; field { sw = rw; hw = r; } pce[10:10]; field { sw = rw; hw = r; } m[12:12]; field { sw = rw; hw = r; } over8[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } stop[13:12]; field { sw = rw; hw = r; } linen[14:14]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } eie[0:0]; field { sw = rw; hw = r; } hdsel[3:3]; field { sw = rw; hw = r; } dmar[6:6]; field { sw = rw; hw = r; } dmat[7:7]; field { sw = rw; hw = r; } rtse[8:8]; field { sw = rw; hw = r; } ctse[9:9]; field { sw = rw; hw = r; } ctsie[10:10]; } cr3 @ 0x08;
+        reg { field { sw = rw; hw = r; } div_fraction[3:0]; field { sw = rw; hw = r; } div_mantissa[15:4]; } brr @ 0x0C;
+        reg { field { sw = r; hw = w; } pe[0:0]; field { sw = r; hw = w; } fe[1:1]; field { sw = r; hw = w; } nf[2:2]; field { sw = r; hw = w; } ore[3:3]; field { sw = r; hw = w; } idle[4:4]; field { sw = r; hw = w; } rxne[5:5]; field { sw = r; hw = w; } tc[6:6]; field { sw = r; hw = w; } txe[7:7]; field { sw = r; hw = w; } cts[9:9]; } sr @ 0x10;
+        reg { field { sw = rw; hw = rw; } dr[8:0]; } dr @ 0x14;
+        reg { field { sw = rw; hw = r; } psc[7:0]; field { sw = rw; hw = r; } gt[15:8]; } gtpr @ 0x18;
+    } uart1 @ 0x20400;
+    
+    regfile uart2 {
+        name = "UART 2";
+        reg { field { sw = rw; hw = r; } ue[0:0]; field { sw = rw; hw = r; } re[2:2]; field { sw = rw; hw = r; } te[3:3]; field { sw = rw; hw = r; } idleie[4:4]; field { sw = rw; hw = r; } rxneie[5:5]; field { sw = rw; hw = r; } tcie[6:6]; field { sw = rw; hw = r; } txeie[7:7]; field { sw = rw; hw = r; } peie[8:8]; field { sw = rw; hw = r; } ps[9:9]; field { sw = rw; hw = r; } pce[10:10]; field { sw = rw; hw = r; } m[12:12]; field { sw = rw; hw = r; } over8[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } stop[13:12]; field { sw = rw; hw = r; } linen[14:14]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } eie[0:0]; field { sw = rw; hw = r; } hdsel[3:3]; field { sw = rw; hw = r; } dmar[6:6]; field { sw = rw; hw = r; } dmat[7:7]; field { sw = rw; hw = r; } rtse[8:8]; field { sw = rw; hw = r; } ctse[9:9]; field { sw = rw; hw = r; } ctsie[10:10]; } cr3 @ 0x08;
+        reg { field { sw = rw; hw = r; } div_fraction[3:0]; field { sw = rw; hw = r; } div_mantissa[15:4]; } brr @ 0x0C;
+        reg { field { sw = r; hw = w; } pe[0:0]; field { sw = r; hw = w; } fe[1:1]; field { sw = r; hw = w; } nf[2:2]; field { sw = r; hw = w; } ore[3:3]; field { sw = r; hw = w; } idle[4:4]; field { sw = r; hw = w; } rxne[5:5]; field { sw = r; hw = w; } tc[6:6]; field { sw = r; hw = w; } txe[7:7]; field { sw = r; hw = w; } cts[9:9]; } sr @ 0x10;
+        reg { field { sw = rw; hw = rw; } dr[8:0]; } dr @ 0x14;
+        reg { field { sw = rw; hw = r; } psc[7:0]; field { sw = rw; hw = r; } gt[15:8]; } gtpr @ 0x18;
+    } uart2 @ 0x20800;
+    
+    regfile uart3 {
+        name = "UART 3";
+        reg { field { sw = rw; hw = r; } ue[0:0]; field { sw = rw; hw = r; } re[2:2]; field { sw = rw; hw = r; } te[3:3]; field { sw = rw; hw = r; } idleie[4:4]; field { sw = rw; hw = r; } rxneie[5:5]; field { sw = rw; hw = r; } tcie[6:6]; field { sw = rw; hw = r; } txeie[7:7]; field { sw = rw; hw = r; } peie[8:8]; field { sw = rw; hw = r; } ps[9:9]; field { sw = rw; hw = r; } pce[10:10]; field { sw = rw; hw = r; } m[12:12]; field { sw = rw; hw = r; } over8[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } stop[13:12]; field { sw = rw; hw = r; } linen[14:14]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } eie[0:0]; field { sw = rw; hw = r; } hdsel[3:3]; field { sw = rw; hw = r; } dmar[6:6]; field { sw = rw; hw = r; } dmat[7:7]; field { sw = rw; hw = r; } rtse[8:8]; field { sw = rw; hw = r; } ctse[9:9]; field { sw = rw; hw = r; } ctsie[10:10]; } cr3 @ 0x08;
+        reg { field { sw = rw; hw = r; } div_fraction[3:0]; field { sw = rw; hw = r; } div_mantissa[15:4]; } brr @ 0x0C;
+        reg { field { sw = r; hw = w; } pe[0:0]; field { sw = r; hw = w; } fe[1:1]; field { sw = r; hw = w; } nf[2:2]; field { sw = r; hw = w; } ore[3:3]; field { sw = r; hw = w; } idle[4:4]; field { sw = r; hw = w; } rxne[5:5]; field { sw = r; hw = w; } tc[6:6]; field { sw = r; hw = w; } txe[7:7]; field { sw = r; hw = w; } cts[9:9]; } sr @ 0x10;
+        reg { field { sw = rw; hw = rw; } dr[8:0]; } dr @ 0x14;
+        reg { field { sw = rw; hw = r; } psc[7:0]; field { sw = rw; hw = r; } gt[15:8]; } gtpr @ 0x18;
+    } uart3 @ 0x20C00;
+    
+    // ========================================================================
+    // SPI Controllers (3 instances)  
+    // Each SPI has 8 registers
+    // ========================================================================
+    regfile spi0 {
+        name = "SPI 0";
+        
+        reg {
+            name = "Control Register 1";
+            field { sw = rw; hw = r; } cpha[0:0] = 0;
+            field { sw = rw; hw = r; } cpol[1:1] = 0;
+            field { sw = rw; hw = r; } mstr[2:2] = 0;
+            field { sw = rw; hw = r; } br[5:3] = 0;
+            field { sw = rw; hw = r; } spe[6:6] = 0;
+            field { sw = rw; hw = r; } lsbfirst[7:7] = 0;
+            field { sw = rw; hw = r; } ssi[8:8] = 0;
+            field { sw = rw; hw = r; } ssm[9:9] = 0;
+            field { sw = rw; hw = r; } rxonly[10:10] = 0;
+            field { sw = rw; hw = r; } dff[11:11] = 0;
+            field { sw = rw; hw = r; } crcnext[12:12] = 0;
+            field { sw = rw; hw = r; } crcen[13:13] = 0;
+            field { sw = rw; hw = r; } bidioe[14:14] = 0;
+            field { sw = rw; hw = r; } bidimode[15:15] = 0;
+        } cr1 @ 0x00;
+        
+        reg {
+            name = "Control Register 2";
+            field { sw = rw; hw = r; } rxdmaen[0:0] = 0;
+            field { sw = rw; hw = r; } txdmaen[1:1] = 0;
+            field { sw = rw; hw = r; } ssoe[2:2] = 0;
+            field { sw = rw; hw = r; } frf[4:4] = 0;
+            field { sw = rw; hw = r; } errie[5:5] = 0;
+            field { sw = rw; hw = r; } rxneie[6:6] = 0;
+            field { sw = rw; hw = r; } txeie[7:7] = 0;
+        } cr2 @ 0x04;
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; } rxne[0:0];
+            field { sw = r; hw = w; } txe[1:1];
+            field { sw = r; hw = w; } bsy[7:7];
+            field { sw = r; hw = w; onread = rclr; } ovr[6:6];
+            field { sw = r; hw = w; onread = rclr; } modf[5:5];
+            field { sw = r; hw = w; onread = rclr; } crcerr[4:4];
+        } sr @ 0x08;
+        
+        reg {
+            name = "Data Register";
+            field { sw = rw; hw = rw; } dr[15:0];
+        } dr @ 0x0C;
+        
+        reg {
+            name = "CRC Polynomial";
+            field { sw = rw; hw = r; } crcpoly[15:0] = 7;
+        } crcpr @ 0x10;
+        
+        reg {
+            name = "RX CRC Register";
+            field { sw = r; hw = w; } rxcrc[15:0];
+        } rxcrcr @ 0x14;
+        
+        reg {
+            name = "TX CRC Register";
+            field { sw = r; hw = w; } txcrc[15:0];
+        } txcrcr @ 0x18;
+        
+        reg {
+            name = "I2S Configuration";
+            field { sw = rw; hw = r; } i2smod[11:11] = 0;
+        } i2scfgr @ 0x1C;
+    } spi0 @ 0x30000;
+    
+    regfile spi1 {
+        name = "SPI 1";
+        reg { field { sw = rw; hw = r; } cpha[0:0]; field { sw = rw; hw = r; } cpol[1:1]; field { sw = rw; hw = r; } mstr[2:2]; field { sw = rw; hw = r; } br[5:3]; field { sw = rw; hw = r; } spe[6:6]; field { sw = rw; hw = r; } lsbfirst[7:7]; field { sw = rw; hw = r; } ssi[8:8]; field { sw = rw; hw = r; } ssm[9:9]; field { sw = rw; hw = r; } rxonly[10:10]; field { sw = rw; hw = r; } dff[11:11]; field { sw = rw; hw = r; } crcnext[12:12]; field { sw = rw; hw = r; } crcen[13:13]; field { sw = rw; hw = r; } bidioe[14:14]; field { sw = rw; hw = r; } bidimode[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } rxdmaen[0:0]; field { sw = rw; hw = r; } txdmaen[1:1]; field { sw = rw; hw = r; } ssoe[2:2]; field { sw = rw; hw = r; } frf[4:4]; field { sw = rw; hw = r; } errie[5:5]; field { sw = rw; hw = r; } rxneie[6:6]; field { sw = rw; hw = r; } txeie[7:7]; } cr2 @ 0x04;
+        reg { field { sw = r; hw = w; } rxne[0:0]; field { sw = r; hw = w; } txe[1:1]; field { sw = r; hw = w; } bsy[7:7]; field { sw = r; hw = w; onread = rclr; } ovr[6:6]; field { sw = r; hw = w; onread = rclr; } modf[5:5]; field { sw = r; hw = w; onread = rclr; } crcerr[4:4]; } sr @ 0x08;
+        reg { field { sw = rw; hw = rw; } dr[15:0]; } dr @ 0x0C;
+        reg { field { sw = rw; hw = r; } crcpoly[15:0]; } crcpr @ 0x10;
+        reg { field { sw = r; hw = w; } rxcrc[15:0]; } rxcrcr @ 0x14;
+        reg { field { sw = r; hw = w; } txcrc[15:0]; } txcrcr @ 0x18;
+        reg { field { sw = rw; hw = r; } i2smod[11:11]; } i2scfgr @ 0x1C;
+    } spi1 @ 0x30400;
+    
+    regfile spi2 {
+        name = "SPI 2";
+        reg { field { sw = rw; hw = r; } cpha[0:0]; field { sw = rw; hw = r; } cpol[1:1]; field { sw = rw; hw = r; } mstr[2:2]; field { sw = rw; hw = r; } br[5:3]; field { sw = rw; hw = r; } spe[6:6]; field { sw = rw; hw = r; } lsbfirst[7:7]; field { sw = rw; hw = r; } ssi[8:8]; field { sw = rw; hw = r; } ssm[9:9]; field { sw = rw; hw = r; } rxonly[10:10]; field { sw = rw; hw = r; } dff[11:11]; field { sw = rw; hw = r; } crcnext[12:12]; field { sw = rw; hw = r; } crcen[13:13]; field { sw = rw; hw = r; } bidioe[14:14]; field { sw = rw; hw = r; } bidimode[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } rxdmaen[0:0]; field { sw = rw; hw = r; } txdmaen[1:1]; field { sw = rw; hw = r; } ssoe[2:2]; field { sw = rw; hw = r; } frf[4:4]; field { sw = rw; hw = r; } errie[5:5]; field { sw = rw; hw = r; } rxneie[6:6]; field { sw = rw; hw = r; } txeie[7:7]; } cr2 @ 0x04;
+        reg { field { sw = r; hw = w; } rxne[0:0]; field { sw = r; hw = w; } txe[1:1]; field { sw = r; hw = w; } bsy[7:7]; field { sw = r; hw = w; onread = rclr; } ovr[6:6]; field { sw = r; hw = w; onread = rclr; } modf[5:5]; field { sw = r; hw = w; onread = rclr; } crcerr[4:4]; } sr @ 0x08;
+        reg { field { sw = rw; hw = rw; } dr[15:0]; } dr @ 0x0C;
+        reg { field { sw = rw; hw = r; } crcpoly[15:0]; } crcpr @ 0x10;
+        reg { field { sw = r; hw = w; } rxcrc[15:0]; } rxcrcr @ 0x14;
+        reg { field { sw = r; hw = w; } txcrc[15:0]; } txcrcr @ 0x18;
+        reg { field { sw = rw; hw = r; } i2smod[11:11]; } i2scfgr @ 0x1C;
+    } spi2 @ 0x30800;
+    
+    // ========================================================================
+    // I2C Controllers (3 instances)
+    // Each I2C has 7 registers
+    // ========================================================================
+    regfile i2c0 {
+        name = "I2C 0";
+        
+        reg {
+            name = "Control Register 1";
+            field { sw = rw; hw = r; } pe[0:0] = 0;
+            field { sw = rw; hw = r; } smbus[1:1] = 0;
+            field { sw = rw; hw = r; } smbtype[3:3] = 0;
+            field { sw = rw; hw = r; } enarp[4:4] = 0;
+            field { sw = rw; hw = r; } enpec[5:5] = 0;
+            field { sw = rw; hw = r; } engc[6:6] = 0;
+            field { sw = rw; hw = r; } nostretch[7:7] = 0;
+            field { sw = rw; hw = r; } start[8:8] = 0;
+            field { sw = rw; hw = r; } stop[9:9] = 0;
+            field { sw = rw; hw = r; } ack[10:10] = 0;
+            field { sw = rw; hw = r; } pos[11:11] = 0;
+            field { sw = rw; hw = r; } pec[12:12] = 0;
+            field { sw = rw; hw = r; } swrst[15:15] = 0;
+        } cr1 @ 0x00;
+        
+        reg {
+            name = "Control Register 2";
+            field { sw = rw; hw = r; } freq[5:0] = 0;
+            field { sw = rw; hw = r; } iterren[8:8] = 0;
+            field { sw = rw; hw = r; } itevten[9:9] = 0;
+            field { sw = rw; hw = r; } itbufen[10:10] = 0;
+            field { sw = rw; hw = r; } dmaen[11:11] = 0;
+            field { sw = rw; hw = r; } last[12:12] = 0;
+        } cr2 @ 0x04;
+        
+        reg {
+            name = "Own Address Register 1";
+            field { sw = rw; hw = r; } add0[0:0] = 0;
+            field { sw = rw; hw = r; } add7_1[7:1] = 0;
+            field { sw = rw; hw = r; } add9_8[9:8] = 0;
+            field { sw = rw; hw = r; } addmode[15:15] = 0;
+        } oar1 @ 0x08;
+        
+        reg {
+            name = "Own Address Register 2";
+            field { sw = rw; hw = r; } endual[0:0] = 0;
+            field { sw = rw; hw = r; } add2[7:1] = 0;
+        } oar2 @ 0x0C;
+        
+        reg {
+            name = "Data Register";
+            field { sw = rw; hw = rw; } dr[7:0];
+        } dr @ 0x10;
+        
+        reg {
+            name = "Status Register 1";
+            field { sw = r; hw = w; } sb[0:0];
+            field { sw = r; hw = w; } addr[1:1];
+            field { sw = r; hw = w; } btf[2:2];
+            field { sw = r; hw = w; } stopf[4:4];
+            field { sw = r; hw = w; } rxne[6:6];
+            field { sw = r; hw = w; } txe[7:7];
+            field { sw = r; hw = w; onread = rclr; } berr[8:8];
+            field { sw = r; hw = w; onread = rclr; } arlo[9:9];
+            field { sw = r; hw = w; onread = rclr; } af[10:10];
+            field { sw = r; hw = w; onread = rclr; } ovr[11:11];
+        } sr1 @ 0x14;
+        
+        reg {
+            name = "Status Register 2";
+            field { sw = r; hw = w; } msl[0:0];
+            field { sw = r; hw = w; } busy[1:1];
+            field { sw = r; hw = w; } tra[2:2];
+            field { sw = r; hw = w; } gencall[4:4];
+            field { sw = r; hw = w; } dualf[7:7];
+        } sr2 @ 0x18;
+        
+        reg {
+            name = "Clock Control Register";
+            field { sw = rw; hw = r; } ccr[11:0] = 0;
+            field { sw = rw; hw = r; } duty[14:14] = 0;
+            field { sw = rw; hw = r; } fs[15:15] = 0;
+        } ccr @ 0x1C;
+        
+        reg {
+            name = "TRISE Register";
+            field { sw = rw; hw = r; } trise[5:0] = 2;
+        } trise @ 0x20;
+    } i2c0 @ 0x40000;
+    
+    regfile i2c1 {
+        name = "I2C 1";
+        reg { field { sw = rw; hw = r; } pe[0:0]; field { sw = rw; hw = r; } smbus[1:1]; field { sw = rw; hw = r; } smbtype[3:3]; field { sw = rw; hw = r; } enarp[4:4]; field { sw = rw; hw = r; } enpec[5:5]; field { sw = rw; hw = r; } engc[6:6]; field { sw = rw; hw = r; } nostretch[7:7]; field { sw = rw; hw = r; } start[8:8]; field { sw = rw; hw = r; } stop[9:9]; field { sw = rw; hw = r; } ack[10:10]; field { sw = rw; hw = r; } pos[11:11]; field { sw = rw; hw = r; } pec[12:12]; field { sw = rw; hw = r; } swrst[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } freq[5:0]; field { sw = rw; hw = r; } iterren[8:8]; field { sw = rw; hw = r; } itevten[9:9]; field { sw = rw; hw = r; } itbufen[10:10]; field { sw = rw; hw = r; } dmaen[11:11]; field { sw = rw; hw = r; } last[12:12]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } add0[0:0]; field { sw = rw; hw = r; } add7_1[7:1]; field { sw = rw; hw = r; } add9_8[9:8]; field { sw = rw; hw = r; } addmode[15:15]; } oar1 @ 0x08;
+        reg { field { sw = rw; hw = r; } endual[0:0]; field { sw = rw; hw = r; } add2[7:1]; } oar2 @ 0x0C;
+        reg { field { sw = rw; hw = rw; } dr[7:0]; } dr @ 0x10;
+        reg { field { sw = r; hw = w; } sb[0:0]; field { sw = r; hw = w; } addr[1:1]; field { sw = r; hw = w; } btf[2:2]; field { sw = r; hw = w; } stopf[4:4]; field { sw = r; hw = w; } rxne[6:6]; field { sw = r; hw = w; } txe[7:7]; field { sw = r; hw = w; onread = rclr; } berr[8:8]; field { sw = r; hw = w; onread = rclr; } arlo[9:9]; field { sw = r; hw = w; onread = rclr; } af[10:10]; field { sw = r; hw = w; onread = rclr; } ovr[11:11]; } sr1 @ 0x14;
+        reg { field { sw = r; hw = w; } msl[0:0]; field { sw = r; hw = w; } busy[1:1]; field { sw = r; hw = w; } tra[2:2]; field { sw = r; hw = w; } gencall[4:4]; field { sw = r; hw = w; } dualf[7:7]; } sr2 @ 0x18;
+        reg { field { sw = rw; hw = r; } ccr[11:0]; field { sw = rw; hw = r; } duty[14:14]; field { sw = rw; hw = r; } fs[15:15]; } ccr @ 0x1C;
+        reg { field { sw = rw; hw = r; } trise[5:0]; } trise @ 0x20;
+    } i2c1 @ 0x40400;
+    
+    regfile i2c2 {
+        name = "I2C 2";
+        reg { field { sw = rw; hw = r; } pe[0:0]; field { sw = rw; hw = r; } smbus[1:1]; field { sw = rw; hw = r; } smbtype[3:3]; field { sw = rw; hw = r; } enarp[4:4]; field { sw = rw; hw = r; } enpec[5:5]; field { sw = rw; hw = r; } engc[6:6]; field { sw = rw; hw = r; } nostretch[7:7]; field { sw = rw; hw = r; } start[8:8]; field { sw = rw; hw = r; } stop[9:9]; field { sw = rw; hw = r; } ack[10:10]; field { sw = rw; hw = r; } pos[11:11]; field { sw = rw; hw = r; } pec[12:12]; field { sw = rw; hw = r; } swrst[15:15]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } freq[5:0]; field { sw = rw; hw = r; } iterren[8:8]; field { sw = rw; hw = r; } itevten[9:9]; field { sw = rw; hw = r; } itbufen[10:10]; field { sw = rw; hw = r; } dmaen[11:11]; field { sw = rw; hw = r; } last[12:12]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } add0[0:0]; field { sw = rw; hw = r; } add7_1[7:1]; field { sw = rw; hw = r; } add9_8[9:8]; field { sw = rw; hw = r; } addmode[15:15]; } oar1 @ 0x08;
+        reg { field { sw = rw; hw = r; } endual[0:0]; field { sw = rw; hw = r; } add2[7:1]; } oar2 @ 0x0C;
+        reg { field { sw = rw; hw = rw; } dr[7:0]; } dr @ 0x10;
+        reg { field { sw = r; hw = w; } sb[0:0]; field { sw = r; hw = w; } addr[1:1]; field { sw = r; hw = w; } btf[2:2]; field { sw = r; hw = w; } stopf[4:4]; field { sw = r; hw = w; } rxne[6:6]; field { sw = r; hw = w; } txe[7:7]; field { sw = r; hw = w; onread = rclr; } berr[8:8]; field { sw = r; hw = w; onread = rclr; } arlo[9:9]; field { sw = r; hw = w; onread = rclr; } af[10:10]; field { sw = r; hw = w; onread = rclr; } ovr[11:11]; } sr1 @ 0x14;
+        reg { field { sw = r; hw = w; } msl[0:0]; field { sw = r; hw = w; } busy[1:1]; field { sw = r; hw = w; } tra[2:2]; field { sw = r; hw = w; } gencall[4:4]; field { sw = r; hw = w; } dualf[7:7]; } sr2 @ 0x18;
+        reg { field { sw = rw; hw = r; } ccr[11:0]; field { sw = rw; hw = r; } duty[14:14]; field { sw = rw; hw = r; } fs[15:15]; } ccr @ 0x1C;
+        reg { field { sw = rw; hw = r; } trise[5:0]; } trise @ 0x20;
+    } i2c2 @ 0x40800;
+    
+    // ========================================================================
+    // Timer/Counter Modules (4 advanced timers)
+    // Each timer has 18 registers
+    // ========================================================================
+    regfile timer0 {
+        name = "Advanced Timer 0";
+        
+        reg {
+            name = "Control Register 1";
+            field { sw = rw; hw = r; } cen[0:0] = 0;
+            field { sw = rw; hw = r; } udis[1:1] = 0;
+            field { sw = rw; hw = r; } urs[2:2] = 0;
+            field { sw = rw; hw = r; } opm[3:3] = 0;
+            field { sw = rw; hw = r; } dir[4:4] = 0;
+            field { sw = rw; hw = r; } cms[6:5] = 0;
+            field { sw = rw; hw = r; } arpe[7:7] = 0;
+            field { sw = rw; hw = r; } ckd[9:8] = 0;
+        } cr1 @ 0x00;
+        
+        reg {
+            name = "Control Register 2";
+            field { sw = rw; hw = r; } ccpc[0:0] = 0;
+            field { sw = rw; hw = r; } ccus[2:2] = 0;
+            field { sw = rw; hw = r; } ccds[3:3] = 0;
+            field { sw = rw; hw = r; } mms[6:4] = 0;
+            field { sw = rw; hw = r; } ti1s[7:7] = 0;
+            field { sw = rw; hw = r; } ois1[8:8] = 0;
+            field { sw = rw; hw = r; } ois1n[9:9] = 0;
+            field { sw = rw; hw = r; } ois2[10:10] = 0;
+            field { sw = rw; hw = r; } ois2n[11:11] = 0;
+            field { sw = rw; hw = r; } ois3[12:12] = 0;
+            field { sw = rw; hw = r; } ois3n[13:13] = 0;
+            field { sw = rw; hw = r; } ois4[14:14] = 0;
+        } cr2 @ 0x04;
+        
+        reg {
+            name = "Slave Mode Control";
+            field { sw = rw; hw = r; } sms[2:0] = 0;
+            field { sw = rw; hw = r; } ts[6:4] = 0;
+            field { sw = rw; hw = r; } msm[7:7] = 0;
+            field { sw = rw; hw = r; } etf[11:8] = 0;
+            field { sw = rw; hw = r; } etps[13:12] = 0;
+            field { sw = rw; hw = r; } ece[14:14] = 0;
+            field { sw = rw; hw = r; } etp[15:15] = 0;
+        } smcr @ 0x08;
+        
+        reg {
+            name = "DMA/Interrupt Enable";
+            field { sw = rw; hw = r; } uie[0:0] = 0;
+            field { sw = rw; hw = r; } cc1ie[1:1] = 0;
+            field { sw = rw; hw = r; } cc2ie[2:2] = 0;
+            field { sw = rw; hw = r; } cc3ie[3:3] = 0;
+            field { sw = rw; hw = r; } cc4ie[4:4] = 0;
+            field { sw = rw; hw = r; } comie[5:5] = 0;
+            field { sw = rw; hw = r; } tie[6:6] = 0;
+            field { sw = rw; hw = r; } bie[7:7] = 0;
+            field { sw = rw; hw = r; } ude[8:8] = 0;
+            field { sw = rw; hw = r; } cc1de[9:9] = 0;
+            field { sw = rw; hw = r; } cc2de[10:10] = 0;
+            field { sw = rw; hw = r; } cc3de[11:11] = 0;
+            field { sw = rw; hw = r; } cc4de[12:12] = 0;
+            field { sw = rw; hw = r; } comde[13:13] = 0;
+            field { sw = rw; hw = r; } tde[14:14] = 0;
+        } dier @ 0x0C;
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; onread = rclr; } uif[0:0];
+            field { sw = r; hw = w; onread = rclr; } cc1if[1:1];
+            field { sw = r; hw = w; onread = rclr; } cc2if[2:2];
+            field { sw = r; hw = w; onread = rclr; } cc3if[3:3];
+            field { sw = r; hw = w; onread = rclr; } cc4if[4:4];
+            field { sw = r; hw = w; onread = rclr; } comif[5:5];
+            field { sw = r; hw = w; onread = rclr; } tif[6:6];
+            field { sw = r; hw = w; onread = rclr; } bif[7:7];
+            field { sw = r; hw = w; onread = rclr; } cc1of[9:9];
+            field { sw = r; hw = w; onread = rclr; } cc2of[10:10];
+            field { sw = r; hw = w; onread = rclr; } cc3of[11:11];
+            field { sw = r; hw = w; onread = rclr; } cc4of[12:12];
+        } sr @ 0x10;
+        
+        reg {
+            name = "Event Generation";
+            field { sw = w; hw = r; } ug[0:0];
+            field { sw = w; hw = r; } cc1g[1:1];
+            field { sw = w; hw = r; } cc2g[2:2];
+            field { sw = w; hw = r; } cc3g[3:3];
+            field { sw = w; hw = r; } cc4g[4:4];
+            field { sw = w; hw = r; } comg[5:5];
+            field { sw = w; hw = r; } tg[6:6];
+            field { sw = w; hw = r; } bg[7:7];
+        } egr @ 0x14;
+        
+        reg {
+            name = "Capture/Compare Mode 1";
+            field { sw = rw; hw = r; } cc1s[1:0] = 0;
+            field { sw = rw; hw = r; } ic1psc[3:2] = 0;
+            field { sw = rw; hw = r; } ic1f[7:4] = 0;
+            field { sw = rw; hw = r; } cc2s[9:8] = 0;
+            field { sw = rw; hw = r; } ic2psc[11:10] = 0;
+            field { sw = rw; hw = r; } ic2f[15:12] = 0;
+        } ccmr1 @ 0x18;
+        
+        reg {
+            name = "Capture/Compare Mode 2";
+            field { sw = rw; hw = r; } cc3s[1:0] = 0;
+            field { sw = rw; hw = r; } ic3psc[3:2] = 0;
+            field { sw = rw; hw = r; } ic3f[7:4] = 0;
+            field { sw = rw; hw = r; } cc4s[9:8] = 0;
+            field { sw = rw; hw = r; } ic4psc[11:10] = 0;
+            field { sw = rw; hw = r; } ic4f[15:12] = 0;
+        } ccmr2 @ 0x1C;
+        
+        reg {
+            name = "Capture/Compare Enable";
+            field { sw = rw; hw = r; } cc1e[0:0] = 0;
+            field { sw = rw; hw = r; } cc1p[1:1] = 0;
+            field { sw = rw; hw = r; } cc1ne[2:2] = 0;
+            field { sw = rw; hw = r; } cc1np[3:3] = 0;
+            field { sw = rw; hw = r; } cc2e[4:4] = 0;
+            field { sw = rw; hw = r; } cc2p[5:5] = 0;
+            field { sw = rw; hw = r; } cc2ne[6:6] = 0;
+            field { sw = rw; hw = r; } cc2np[7:7] = 0;
+            field { sw = rw; hw = r; } cc3e[8:8] = 0;
+            field { sw = rw; hw = r; } cc3p[9:9] = 0;
+            field { sw = rw; hw = r; } cc3ne[10:10] = 0;
+            field { sw = rw; hw = r; } cc3np[11:11] = 0;
+            field { sw = rw; hw = r; } cc4e[12:12] = 0;
+            field { sw = rw; hw = r; } cc4p[13:13] = 0;
+        } ccer @ 0x20;
+        
+        reg {
+            name = "Counter";
+            field { sw = rw; hw = rw; } cnt[15:0];
+        } cnt @ 0x24;
+        
+        reg {
+            name = "Prescaler";
+            field { sw = rw; hw = r; } psc[15:0] = 0;
+        } psc @ 0x28;
+        
+        reg {
+            name = "Auto-reload";
+            field { sw = rw; hw = r; } arr[15:0] = 0xFFFF;
+        } arr @ 0x2C;
+        
+        reg {
+            name = "Repetition Counter";
+            field { sw = rw; hw = r; } rep[7:0] = 0;
+        } rcr @ 0x30;
+        
+        reg {
+            name = "Capture/Compare 1";
+            field { sw = rw; hw = rw; } ccr1[15:0];
+        } ccr1 @ 0x34;
+        
+        reg {
+            name = "Capture/Compare 2";
+            field { sw = rw; hw = rw; } ccr2[15:0];
+        } ccr2 @ 0x38;
+        
+        reg {
+            name = "Capture/Compare 3";
+            field { sw = rw; hw = rw; } ccr3[15:0];
+        } ccr3 @ 0x3C;
+        
+        reg {
+            name = "Capture/Compare 4";
+            field { sw = rw; hw = rw; } ccr4[15:0];
+        } ccr4 @ 0x40;
+        
+        reg {
+            name = "Break and Dead-Time";
+            field { sw = rw; hw = r; } dtg[7:0] = 0;
+            field { sw = rw; hw = r; } lock[9:8] = 0;
+            field { sw = rw; hw = r; } ossi[10:10] = 0;
+            field { sw = rw; hw = r; } ossr[11:11] = 0;
+            field { sw = rw; hw = r; } bke[12:12] = 0;
+            field { sw = rw; hw = r; } bkp[13:13] = 0;
+            field { sw = rw; hw = r; } aoe[14:14] = 0;
+            field { sw = rw; hw = r; } moe[15:15] = 0;
+        } bdtr @ 0x44;
+        
+        reg {
+            name = "DMA Control";
+            field { sw = rw; hw = r; } dba[4:0] = 0;
+            field { sw = rw; hw = r; } dbl[12:8] = 0;
+        } dcr @ 0x48;
+        
+        reg {
+            name = "DMA Address for Burst";
+            field { sw = rw; hw = rw; } dmab[15:0];
+        } dmar @ 0x4C;
+    } timer0 @ 0x50000;
+    
+    // Additional timer instances (compact form to save space)
+    regfile timer1 {
+        name = "Timer 1";
+        reg { field { sw = rw; hw = r; } cen[0:0]; field { sw = rw; hw = r; } udis[1:1]; field { sw = rw; hw = r; } urs[2:2]; field { sw = rw; hw = r; } opm[3:3]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } cms[6:5]; field { sw = rw; hw = r; } arpe[7:7]; field { sw = rw; hw = r; } ckd[9:8]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } ccpc[0:0]; field { sw = rw; hw = r; } ccus[2:2]; field { sw = rw; hw = r; } ccds[3:3]; field { sw = rw; hw = r; } mms[6:4]; field { sw = rw; hw = r; } ti1s[7:7]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } sms[2:0]; field { sw = rw; hw = r; } ts[6:4]; field { sw = rw; hw = r; } msm[7:7]; } smcr @ 0x08;
+        reg { field { sw = rw; hw = r; } uie[0:0]; field { sw = rw; hw = r; } cc1ie[1:1]; field { sw = rw; hw = r; } cc2ie[2:2]; field { sw = rw; hw = r; } cc3ie[3:3]; field { sw = rw; hw = r; } cc4ie[4:4]; } dier @ 0x0C;
+        reg { field { sw = r; hw = w; onread = rclr; } uif[0:0]; field { sw = r; hw = w; onread = rclr; } cc1if[1:1]; field { sw = r; hw = w; onread = rclr; } cc2if[2:2]; } sr @ 0x10;
+        reg { field { sw = w; hw = r; } ug[0:0]; field { sw = w; hw = r; } cc1g[1:1]; } egr @ 0x14;
+        reg { field { sw = rw; hw = r; } cc1s[1:0]; field { sw = rw; hw = r; } cc2s[9:8]; } ccmr1 @ 0x18;
+        reg { field { sw = rw; hw = r; } cc3s[1:0]; field { sw = rw; hw = r; } cc4s[9:8]; } ccmr2 @ 0x1C;
+        reg { field { sw = rw; hw = r; } cc1e[0:0]; field { sw = rw; hw = r; } cc2e[4:4]; } ccer @ 0x20;
+        reg { field { sw = rw; hw = rw; } cnt[15:0]; } cnt @ 0x24;
+        reg { field { sw = rw; hw = r; } psc[15:0]; } psc @ 0x28;
+        reg { field { sw = rw; hw = r; } arr[15:0]; } arr @ 0x2C;
+        reg { field { sw = rw; hw = rw; } ccr1[15:0]; } ccr1 @ 0x34;
+        reg { field { sw = rw; hw = rw; } ccr2[15:0]; } ccr2 @ 0x38;
+        reg { field { sw = rw; hw = rw; } ccr3[15:0]; } ccr3 @ 0x3C;
+        reg { field { sw = rw; hw = rw; } ccr4[15:0]; } ccr4 @ 0x40;
+    } timer1 @ 0x50400;
+    
+    regfile timer2 {
+        name = "Timer 2";
+        reg { field { sw = rw; hw = r; } cen[0:0]; field { sw = rw; hw = r; } udis[1:1]; field { sw = rw; hw = r; } urs[2:2]; field { sw = rw; hw = r; } opm[3:3]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } cms[6:5]; field { sw = rw; hw = r; } arpe[7:7]; field { sw = rw; hw = r; } ckd[9:8]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } ccpc[0:0]; field { sw = rw; hw = r; } ccus[2:2]; field { sw = rw; hw = r; } ccds[3:3]; field { sw = rw; hw = r; } mms[6:4]; field { sw = rw; hw = r; } ti1s[7:7]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } sms[2:0]; field { sw = rw; hw = r; } ts[6:4]; field { sw = rw; hw = r; } msm[7:7]; } smcr @ 0x08;
+        reg { field { sw = rw; hw = r; } uie[0:0]; field { sw = rw; hw = r; } cc1ie[1:1]; field { sw = rw; hw = r; } cc2ie[2:2]; field { sw = rw; hw = r; } cc3ie[3:3]; field { sw = rw; hw = r; } cc4ie[4:4]; } dier @ 0x0C;
+        reg { field { sw = r; hw = w; onread = rclr; } uif[0:0]; field { sw = r; hw = w; onread = rclr; } cc1if[1:1]; field { sw = r; hw = w; onread = rclr; } cc2if[2:2]; } sr @ 0x10;
+        reg { field { sw = w; hw = r; } ug[0:0]; field { sw = w; hw = r; } cc1g[1:1]; } egr @ 0x14;
+        reg { field { sw = rw; hw = r; } cc1s[1:0]; field { sw = rw; hw = r; } cc2s[9:8]; } ccmr1 @ 0x18;
+        reg { field { sw = rw; hw = r; } cc3s[1:0]; field { sw = rw; hw = r; } cc4s[9:8]; } ccmr2 @ 0x1C;
+        reg { field { sw = rw; hw = r; } cc1e[0:0]; field { sw = rw; hw = r; } cc2e[4:4]; } ccer @ 0x20;
+        reg { field { sw = rw; hw = rw; } cnt[15:0]; } cnt @ 0x24;
+        reg { field { sw = rw; hw = r; } psc[15:0]; } psc @ 0x28;
+        reg { field { sw = rw; hw = r; } arr[15:0]; } arr @ 0x2C;
+        reg { field { sw = rw; hw = rw; } ccr1[15:0]; } ccr1 @ 0x34;
+        reg { field { sw = rw; hw = rw; } ccr2[15:0]; } ccr2 @ 0x38;
+        reg { field { sw = rw; hw = rw; } ccr3[15:0]; } ccr3 @ 0x3C;
+        reg { field { sw = rw; hw = rw; } ccr4[15:0]; } ccr4 @ 0x40;
+    } timer2 @ 0x50800;
+    
+    regfile timer3 {
+        name = "Timer 3";
+        reg { field { sw = rw; hw = r; } cen[0:0]; field { sw = rw; hw = r; } udis[1:1]; field { sw = rw; hw = r; } urs[2:2]; field { sw = rw; hw = r; } opm[3:3]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } cms[6:5]; field { sw = rw; hw = r; } arpe[7:7]; field { sw = rw; hw = r; } ckd[9:8]; } cr1 @ 0x00;
+        reg { field { sw = rw; hw = r; } ccpc[0:0]; field { sw = rw; hw = r; } ccus[2:2]; field { sw = rw; hw = r; } ccds[3:3]; field { sw = rw; hw = r; } mms[6:4]; field { sw = rw; hw = r; } ti1s[7:7]; } cr2 @ 0x04;
+        reg { field { sw = rw; hw = r; } sms[2:0]; field { sw = rw; hw = r; } ts[6:4]; field { sw = rw; hw = r; } msm[7:7]; } smcr @ 0x08;
+        reg { field { sw = rw; hw = r; } uie[0:0]; field { sw = rw; hw = r; } cc1ie[1:1]; field { sw = rw; hw = r; } cc2ie[2:2]; field { sw = rw; hw = r; } cc3ie[3:3]; field { sw = rw; hw = r; } cc4ie[4:4]; } dier @ 0x0C;
+        reg { field { sw = r; hw = w; onread = rclr; } uif[0:0]; field { sw = r; hw = w; onread = rclr; } cc1if[1:1]; field { sw = r; hw = w; onread = rclr; } cc2if[2:2]; } sr @ 0x10;
+        reg { field { sw = w; hw = r; } ug[0:0]; field { sw = w; hw = r; } cc1g[1:1]; } egr @ 0x14;
+        reg { field { sw = rw; hw = r; } cc1s[1:0]; field { sw = rw; hw = r; } cc2s[9:8]; } ccmr1 @ 0x18;
+        reg { field { sw = rw; hw = r; } cc3s[1:0]; field { sw = rw; hw = r; } cc4s[9:8]; } ccmr2 @ 0x1C;
+        reg { field { sw = rw; hw = r; } cc1e[0:0]; field { sw = rw; hw = r; } cc2e[4:4]; } ccer @ 0x20;
+        reg { field { sw = rw; hw = rw; } cnt[15:0]; } cnt @ 0x24;
+        reg { field { sw = rw; hw = r; } psc[15:0]; } psc @ 0x28;
+        reg { field { sw = rw; hw = r; } arr[15:0]; } arr @ 0x2C;
+        reg { field { sw = rw; hw = rw; } ccr1[15:0]; } ccr1 @ 0x34;
+        reg { field { sw = rw; hw = rw; } ccr2[15:0]; } ccr2 @ 0x38;
+        reg { field { sw = rw; hw = rw; } ccr3[15:0]; } ccr3 @ 0x3C;
+        reg { field { sw = rw; hw = rw; } ccr4[15:0]; } ccr4 @ 0x40;
+    } timer3 @ 0x50C00;
+    
+    // ========================================================================
+    // ADC (Analog to Digital Converter) - 2 instances
+    // Each ADC has 15 registers
+    // ========================================================================
+    regfile adc0 {
+        name = "ADC 0";
+        
+        reg {
+            name = "Status Register";
+            field { sw = r; hw = w; onread = rclr; } awd[0:0];
+            field { sw = r; hw = w; onread = rclr; } eoc[1:1];
+            field { sw = r; hw = w; onread = rclr; } jeoc[2:2];
+            field { sw = r; hw = w; onread = rclr; } jstrt[3:3];
+            field { sw = r; hw = w; onread = rclr; } strt[4:4];
+            field { sw = r; hw = w; onread = rclr; } ovr[5:5];
+        } sr @ 0x00;
+        
+        reg {
+            name = "Control Register 1";
+            field { sw = rw; hw = r; } awdch[4:0] = 0;
+            field { sw = rw; hw = r; } eocie[5:5] = 0;
+            field { sw = rw; hw = r; } awdie[6:6] = 0;
+            field { sw = rw; hw = r; } jeocie[7:7] = 0;
+            field { sw = rw; hw = r; } scan[8:8] = 0;
+            field { sw = rw; hw = r; } awdsgl[9:9] = 0;
+            field { sw = rw; hw = r; } jauto[10:10] = 0;
+            field { sw = rw; hw = r; } discen[11:11] = 0;
+            field { sw = rw; hw = r; } jdiscen[12:12] = 0;
+            field { sw = rw; hw = r; } discnum[15:13] = 0;
+            field { sw = rw; hw = r; } jawden[22:22] = 0;
+            field { sw = rw; hw = r; } awden[23:23] = 0;
+            field { sw = rw; hw = r; } res[25:24] = 0;
+            field { sw = rw; hw = r; } ovrie[26:26] = 0;
+        } cr1 @ 0x04;
+        
+        reg {
+            name = "Control Register 2";
+            field { sw = rw; hw = r; } adon[0:0] = 0;
+            field { sw = rw; hw = r; } cont[1:1] = 0;
+            field { sw = rw; hw = r; } dma[8:8] = 0;
+            field { sw = rw; hw = r; } dds[9:9] = 0;
+            field { sw = rw; hw = r; } eocs[10:10] = 0;
+            field { sw = rw; hw = r; } align[11:11] = 0;
+            field { sw = rw; hw = r; } jextsel[19:16] = 0;
+            field { sw = rw; hw = r; } jexten[21:20] = 0;
+            field { sw = rw; hw = r; } jswstart[22:22] = 0;
+            field { sw = rw; hw = r; } extsel[27:24] = 0;
+            field { sw = rw; hw = r; } exten[29:28] = 0;
+            field { sw = rw; hw = r; } swstart[30:30] = 0;
+        } cr2 @ 0x08;
+        
+        reg {
+            name = "Sample Time Register 1";
+            field { sw = rw; hw = r; } smp10[2:0] = 0;
+            field { sw = rw; hw = r; } smp11[5:3] = 0;
+            field { sw = rw; hw = r; } smp12[8:6] = 0;
+            field { sw = rw; hw = r; } smp13[11:9] = 0;
+            field { sw = rw; hw = r; } smp14[14:12] = 0;
+            field { sw = rw; hw = r; } smp15[17:15] = 0;
+            field { sw = rw; hw = r; } smp16[20:18] = 0;
+            field { sw = rw; hw = r; } smp17[23:21] = 0;
+            field { sw = rw; hw = r; } smp18[26:24] = 0;
+        } smpr1 @ 0x0C;
+        
+        reg {
+            name = "Sample Time Register 2";
+            field { sw = rw; hw = r; } smp0[2:0] = 0;
+            field { sw = rw; hw = r; } smp1[5:3] = 0;
+            field { sw = rw; hw = r; } smp2[8:6] = 0;
+            field { sw = rw; hw = r; } smp3[11:9] = 0;
+            field { sw = rw; hw = r; } smp4[14:12] = 0;
+            field { sw = rw; hw = r; } smp5[17:15] = 0;
+            field { sw = rw; hw = r; } smp6[20:18] = 0;
+            field { sw = rw; hw = r; } smp7[23:21] = 0;
+            field { sw = rw; hw = r; } smp8[26:24] = 0;
+            field { sw = rw; hw = r; } smp9[29:27] = 0;
+        } smpr2 @ 0x10;
+        
+        reg {
+            name = "Watchdog High Threshold";
+            field { sw = rw; hw = r; } ht[11:0] = 0xFFF;
+        } htr @ 0x24;
+        
+        reg {
+            name = "Watchdog Low Threshold";
+            field { sw = rw; hw = r; } lt[11:0] = 0;
+        } ltr @ 0x28;
+        
+        reg {
+            name = "Regular Sequence 1";
+            field { sw = rw; hw = r; } sq13[4:0] = 0;
+            field { sw = rw; hw = r; } sq14[9:5] = 0;
+            field { sw = rw; hw = r; } sq15[14:10] = 0;
+            field { sw = rw; hw = r; } sq16[19:15] = 0;
+            field { sw = rw; hw = r; } l[23:20] = 0;
+        } sqr1 @ 0x2C;
+        
+        reg {
+            name = "Regular Sequence 2";
+            field { sw = rw; hw = r; } sq7[4:0] = 0;
+            field { sw = rw; hw = r; } sq8[9:5] = 0;
+            field { sw = rw; hw = r; } sq9[14:10] = 0;
+            field { sw = rw; hw = r; } sq10[19:15] = 0;
+            field { sw = rw; hw = r; } sq11[24:20] = 0;
+            field { sw = rw; hw = r; } sq12[29:25] = 0;
+        } sqr2 @ 0x30;
+        
+        reg {
+            name = "Regular Sequence 3";
+            field { sw = rw; hw = r; } sq1[4:0] = 0;
+            field { sw = rw; hw = r; } sq2[9:5] = 0;
+            field { sw = rw; hw = r; } sq3[14:10] = 0;
+            field { sw = rw; hw = r; } sq4[19:15] = 0;
+            field { sw = rw; hw = r; } sq5[24:20] = 0;
+            field { sw = rw; hw = r; } sq6[29:25] = 0;
+        } sqr3 @ 0x34;
+        
+        reg {
+            name = "Injected Sequence";
+            field { sw = rw; hw = r; } jsq1[4:0] = 0;
+            field { sw = rw; hw = r; } jsq2[9:5] = 0;
+            field { sw = rw; hw = r; } jsq3[14:10] = 0;
+            field { sw = rw; hw = r; } jsq4[19:15] = 0;
+            field { sw = rw; hw = r; } jl[21:20] = 0;
+        } jsqr @ 0x38;
+        
+        reg {
+            name = "Injected Data 1";
+            field { sw = r; hw = w; } jdata[15:0];
+        } jdr1 @ 0x3C;
+        
+        reg {
+            name = "Injected Data 2";
+            field { sw = r; hw = w; } jdata[15:0];
+        } jdr2 @ 0x40;
+        
+        reg {
+            name = "Regular Data";
+            field { sw = r; hw = w; } data[15:0];
+        } dr @ 0x4C;
+    } adc0 @ 0x60000;
+    
+    regfile adc1 {
+        name = "ADC 1";
+        reg { field { sw = r; hw = w; onread = rclr; } awd[0:0]; field { sw = r; hw = w; onread = rclr; } eoc[1:1]; field { sw = r; hw = w; onread = rclr; } jeoc[2:2]; field { sw = r; hw = w; onread = rclr; } jstrt[3:3]; field { sw = r; hw = w; onread = rclr; } strt[4:4]; field { sw = r; hw = w; onread = rclr; } ovr[5:5]; } sr @ 0x00;
+        reg { field { sw = rw; hw = r; } awdch[4:0]; field { sw = rw; hw = r; } eocie[5:5]; field { sw = rw; hw = r; } awdie[6:6]; field { sw = rw; hw = r; } jeocie[7:7]; field { sw = rw; hw = r; } scan[8:8]; field { sw = rw; hw = r; } awdsgl[9:9]; field { sw = rw; hw = r; } jauto[10:10]; field { sw = rw; hw = r; } discen[11:11]; field { sw = rw; hw = r; } jdiscen[12:12]; field { sw = rw; hw = r; } discnum[15:13]; } cr1 @ 0x04;
+        reg { field { sw = rw; hw = r; } adon[0:0]; field { sw = rw; hw = r; } cont[1:1]; field { sw = rw; hw = r; } dma[8:8]; field { sw = rw; hw = r; } dds[9:9]; field { sw = rw; hw = r; } align[11:11]; field { sw = rw; hw = r; } swstart[30:30]; } cr2 @ 0x08;
+        reg { field { sw = rw; hw = r; } smp10[2:0]; field { sw = rw; hw = r; } smp11[5:3]; field { sw = rw; hw = r; } smp12[8:6]; field { sw = rw; hw = r; } smp13[11:9]; field { sw = rw; hw = r; } smp14[14:12]; field { sw = rw; hw = r; } smp15[17:15]; } smpr1 @ 0x0C;
+        reg { field { sw = rw; hw = r; } smp0[2:0]; field { sw = rw; hw = r; } smp1[5:3]; field { sw = rw; hw = r; } smp2[8:6]; field { sw = rw; hw = r; } smp3[11:9]; field { sw = rw; hw = r; } smp4[14:12]; field { sw = rw; hw = r; } smp5[17:15]; } smpr2 @ 0x10;
+        reg { field { sw = rw; hw = r; } ht[11:0]; } htr @ 0x24;
+        reg { field { sw = rw; hw = r; } lt[11:0]; } ltr @ 0x28;
+        reg { field { sw = rw; hw = r; } sq13[4:0]; field { sw = rw; hw = r; } sq14[9:5]; field { sw = rw; hw = r; } sq15[14:10]; field { sw = rw; hw = r; } sq16[19:15]; field { sw = rw; hw = r; } l[23:20]; } sqr1 @ 0x2C;
+        reg { field { sw = rw; hw = r; } sq7[4:0]; field { sw = rw; hw = r; } sq8[9:5]; field { sw = rw; hw = r; } sq9[14:10]; field { sw = rw; hw = r; } sq10[19:15]; field { sw = rw; hw = r; } sq11[24:20]; field { sw = rw; hw = r; } sq12[29:25]; } sqr2 @ 0x30;
+        reg { field { sw = rw; hw = r; } sq1[4:0]; field { sw = rw; hw = r; } sq2[9:5]; field { sw = rw; hw = r; } sq3[14:10]; field { sw = rw; hw = r; } sq4[19:15]; field { sw = rw; hw = r; } sq5[24:20]; field { sw = rw; hw = r; } sq6[29:25]; } sqr3 @ 0x34;
+        reg { field { sw = rw; hw = r; } jsq1[4:0]; field { sw = rw; hw = r; } jsq2[9:5]; field { sw = rw; hw = r; } jsq3[14:10]; field { sw = rw; hw = r; } jsq4[19:15]; field { sw = rw; hw = r; } jl[21:20]; } jsqr @ 0x38;
+        reg { field { sw = r; hw = w; } jdata[15:0]; } jdr1 @ 0x3C;
+        reg { field { sw = r; hw = w; } jdata[15:0]; } jdr2 @ 0x40;
+        reg { field { sw = r; hw = w; } data[15:0]; } dr @ 0x4C;
+    } adc1 @ 0x60400;
+    
+    // ========================================================================
+    // DMA Controller (8 channels)
+    // 1 controller with 25 registers
+    // ========================================================================
+    regfile dma {
+        name = "DMA Controller";
+        
+        reg {
+            name = "Interrupt Status";
+            field { sw = r; hw = w; } gif1[0:0];
+            field { sw = r; hw = w; } tcif1[1:1];
+            field { sw = r; hw = w; } htif1[2:2];
+            field { sw = r; hw = w; } teif1[3:3];
+            field { sw = r; hw = w; } gif2[4:4];
+            field { sw = r; hw = w; } tcif2[5:5];
+            field { sw = r; hw = w; } htif2[6:6];
+            field { sw = r; hw = w; } teif2[7:7];
+            field { sw = r; hw = w; } gif3[8:8];
+            field { sw = r; hw = w; } tcif3[9:9];
+            field { sw = r; hw = w; } htif3[10:10];
+            field { sw = r; hw = w; } teif3[11:11];
+            field { sw = r; hw = w; } gif4[12:12];
+            field { sw = r; hw = w; } tcif4[13:13];
+            field { sw = r; hw = w; } htif4[14:14];
+            field { sw = r; hw = w; } teif4[15:15];
+        } isr @ 0x00;
+        
+        reg {
+            name = "Interrupt Flag Clear";
+            field { sw = w; hw = r; } cgif1[0:0];
+            field { sw = w; hw = r; } ctcif1[1:1];
+            field { sw = w; hw = r; } chtif1[2:2];
+            field { sw = w; hw = r; } cteif1[3:3];
+            field { sw = w; hw = r; } cgif2[4:4];
+            field { sw = w; hw = r; } ctcif2[5:5];
+            field { sw = w; hw = r; } chtif2[6:6];
+            field { sw = w; hw = r; } cteif2[7:7];
+            field { sw = w; hw = r; } cgif3[8:8];
+            field { sw = w; hw = r; } ctcif3[9:9];
+            field { sw = w; hw = r; } chtif3[10:10];
+            field { sw = w; hw = r; } cteif3[11:11];
+            field { sw = w; hw = r; } cgif4[12:12];
+            field { sw = w; hw = r; } ctcif4[13:13];
+            field { sw = w; hw = r; } chtif4[14:14];
+            field { sw = w; hw = r; } cteif4[15:15];
+        } ifcr @ 0x04;
+        
+        // Channel 1
+        reg {
+            name = "Channel 1 Configuration";
+            field { sw = rw; hw = r; } en[0:0] = 0;
+            field { sw = rw; hw = r; } tcie[1:1] = 0;
+            field { sw = rw; hw = r; } htie[2:2] = 0;
+            field { sw = rw; hw = r; } teie[3:3] = 0;
+            field { sw = rw; hw = r; } dir[4:4] = 0;
+            field { sw = rw; hw = r; } circ[5:5] = 0;
+            field { sw = rw; hw = r; } pinc[6:6] = 0;
+            field { sw = rw; hw = r; } minc[7:7] = 0;
+            field { sw = rw; hw = r; } psize[9:8] = 0;
+            field { sw = rw; hw = r; } msize[11:10] = 0;
+            field { sw = rw; hw = r; } pl[13:12] = 0;
+            field { sw = rw; hw = r; } mem2mem[14:14] = 0;
+        } ccr1 @ 0x08;
+        
+        reg { field { sw = rw; hw = r; } ndt[15:0] = 0; } cndtr1 @ 0x0C;
+        reg { field { sw = rw; hw = r; } pa[31:0] = 0; } cpar1 @ 0x10;
+        reg { field { sw = rw; hw = r; } ma[31:0] = 0; } cmar1 @ 0x14;
+        
+        // Channel 2
+        reg { field { sw = rw; hw = r; } en[0:0]; field { sw = rw; hw = r; } tcie[1:1]; field { sw = rw; hw = r; } htie[2:2]; field { sw = rw; hw = r; } teie[3:3]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } circ[5:5]; field { sw = rw; hw = r; } pinc[6:6]; field { sw = rw; hw = r; } minc[7:7]; field { sw = rw; hw = r; } psize[9:8]; field { sw = rw; hw = r; } msize[11:10]; field { sw = rw; hw = r; } pl[13:12]; field { sw = rw; hw = r; } mem2mem[14:14]; } ccr2 @ 0x1C;
+        reg { field { sw = rw; hw = r; } ndt[15:0]; } cndtr2 @ 0x20;
+        reg { field { sw = rw; hw = r; } pa[31:0]; } cpar2 @ 0x24;
+        reg { field { sw = rw; hw = r; } ma[31:0]; } cmar2 @ 0x28;
+        
+        // Channel 3
+        reg { field { sw = rw; hw = r; } en[0:0]; field { sw = rw; hw = r; } tcie[1:1]; field { sw = rw; hw = r; } htie[2:2]; field { sw = rw; hw = r; } teie[3:3]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } circ[5:5]; field { sw = rw; hw = r; } pinc[6:6]; field { sw = rw; hw = r; } minc[7:7]; field { sw = rw; hw = r; } psize[9:8]; field { sw = rw; hw = r; } msize[11:10]; field { sw = rw; hw = r; } pl[13:12]; field { sw = rw; hw = r; } mem2mem[14:14]; } ccr3 @ 0x30;
+        reg { field { sw = rw; hw = r; } ndt[15:0]; } cndtr3 @ 0x34;
+        reg { field { sw = rw; hw = r; } pa[31:0]; } cpar3 @ 0x38;
+        reg { field { sw = rw; hw = r; } ma[31:0]; } cmar3 @ 0x3C;
+        
+        // Channel 4
+        reg { field { sw = rw; hw = r; } en[0:0]; field { sw = rw; hw = r; } tcie[1:1]; field { sw = rw; hw = r; } htie[2:2]; field { sw = rw; hw = r; } teie[3:3]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } circ[5:5]; field { sw = rw; hw = r; } pinc[6:6]; field { sw = rw; hw = r; } minc[7:7]; field { sw = rw; hw = r; } psize[9:8]; field { sw = rw; hw = r; } msize[11:10]; field { sw = rw; hw = r; } pl[13:12]; field { sw = rw; hw = r; } mem2mem[14:14]; } ccr4 @ 0x44;
+        reg { field { sw = rw; hw = r; } ndt[15:0]; } cndtr4 @ 0x48;
+        reg { field { sw = rw; hw = r; } pa[31:0]; } cpar4 @ 0x4C;
+        reg { field { sw = rw; hw = r; } ma[31:0]; } cmar4 @ 0x50;
+        
+        // Channel 5-8 (compact)
+        reg { field { sw = rw; hw = r; } en[0:0]; field { sw = rw; hw = r; } tcie[1:1]; field { sw = rw; hw = r; } dir[4:4]; field { sw = rw; hw = r; } circ[5:5]; } ccr5 @ 0x58;
+        reg { field { sw = rw; hw = r; } ndt[15:0]; } cndtr5 @ 0x5C;
+        reg { field { sw = rw; hw = r; } pa[31:0]; } cpar5 @ 0x60;
+        reg { field { sw = rw; hw = r; } ma[31:0]; } cmar5 @ 0x64;
+    } dma @ 0x70000;
+    
+    // ========================================================================
+    // Watchdog Timer
+    // ========================================================================
+    regfile watchdog {
+        name = "Independent Watchdog";
+        
+        reg {
+            name = "Key Register";
+            field { sw = w; hw = r; } key[15:0];
+        } kr @ 0x00;
+        
+        reg {
+            name = "Prescaler";
+            field { sw = rw; hw = r; } pr[2:0] = 0;
+        } pr @ 0x04;
+        
+        reg {
+            name = "Reload Value";
+            field { sw = rw; hw = r; } rl[11:0] = 0xFFF;
+        } rlr @ 0x08;
+        
+        reg {
+            name = "Status";
+            field { sw = r; hw = w; } pvu[0:0];
+            field { sw = r; hw = w; } rvu[1:1];
+        } sr @ 0x0C;
+    } watchdog @ 0x80000;
+    
+    // ========================================================================
+    // Real-Time Clock
+    // ========================================================================
+    regfile rtc {
+        name = "Real-Time Clock";
+        
+        reg {
+            name = "Time Register";
+            field { sw = rw; hw = rw; } su[3:0];
+            field { sw = rw; hw = rw; } st[6:4];
+            field { sw = rw; hw = rw; } mnu[11:8];
+            field { sw = rw; hw = rw; } mnt[14:12];
+            field { sw = rw; hw = rw; } hu[19:16];
+            field { sw = rw; hw = rw; } ht[21:20];
+            field { sw = rw; hw = rw; } pm[22:22];
+        } tr @ 0x00;
+        
+        reg {
+            name = "Date Register";
+            field { sw = rw; hw = rw; } du[3:0];
+            field { sw = rw; hw = rw; } dt[5:4];
+            field { sw = rw; hw = rw; } mu[11:8];
+            field { sw = rw; hw = rw; } mt[12:12];
+            field { sw = rw; hw = rw; } wdu[15:13];
+            field { sw = rw; hw = rw; } yu[19:16];
+            field { sw = rw; hw = rw; } yt[23:20];
+        } dr @ 0x04;
+        
+        reg {
+            name = "Control Register";
+            field { sw = rw; hw = r; } wcksel[2:0] = 0;
+            field { sw = rw; hw = r; } tsedge[3:3] = 0;
+            field { sw = rw; hw = r; } refckon[4:4] = 0;
+            field { sw = rw; hw = r; } bypshad[5:5] = 0;
+            field { sw = rw; hw = r; } fmt[6:6] = 0;
+            field { sw = rw; hw = r; } alrae[8:8] = 0;
+            field { sw = rw; hw = r; } alrbe[9:9] = 0;
+            field { sw = rw; hw = r; } wute[10:10] = 0;
+            field { sw = rw; hw = r; } tse[11:11] = 0;
+            field { sw = rw; hw = r; } alraie[12:12] = 0;
+            field { sw = rw; hw = r; } alrbie[13:13] = 0;
+            field { sw = rw; hw = r; } wutie[14:14] = 0;
+            field { sw = rw; hw = r; } tsie[15:15] = 0;
+        } cr @ 0x08;
+        
+        reg {
+            name = "Init and Status";
+            field { sw = r; hw = w; } alrawf[0:0];
+            field { sw = r; hw = w; } alrbwf[1:1];
+            field { sw = r; hw = w; } wutwf[2:2];
+            field { sw = r; hw = w; } shpf[3:3];
+            field { sw = r; hw = w; } inits[4:4];
+            field { sw = r; hw = w; } rsf[5:5];
+            field { sw = r; hw = w; } initf[6:6];
+            field { sw = rw; hw = r; } init[7:7] = 0;
+            field { sw = r; hw = w; onread = rclr; } alraf[8:8];
+            field { sw = r; hw = w; onread = rclr; } alrbf[9:9];
+            field { sw = r; hw = w; onread = rclr; } wutf[10:10];
+            field { sw = r; hw = w; onread = rclr; } tsf[11:11];
+            field { sw = r; hw = w; onread = rclr; } tsovf[12:12];
+            field { sw = r; hw = w; } recalpf[16:16];
+        } isr @ 0x0C;
+        
+        reg {
+            name = "Prescaler";
+            field { sw = rw; hw = r; } prediv_s[14:0] = 0xFF;
+            field { sw = rw; hw = r; } prediv_a[22:16] = 0x7F;
+        } prer @ 0x10;
+        
+        reg {
+            name = "Wakeup Timer";
+            field { sw = rw; hw = r; } wut[15:0] = 0xFFFF;
+        } wutr @ 0x14;
+        
+        reg {
+            name = "Alarm A";
+            field { sw = rw; hw = r; } su[3:0] = 0;
+            field { sw = rw; hw = r; } st[6:4] = 0;
+            field { sw = rw; hw = r; } mnu[11:8] = 0;
+            field { sw = rw; hw = r; } mnt[14:12] = 0;
+            field { sw = rw; hw = r; } hu[19:16] = 0;
+            field { sw = rw; hw = r; } ht[21:20] = 0;
+        } alrmar @ 0x1C;
+        
+        reg {
+            name = "Alarm B";
+            field { sw = rw; hw = r; } su[3:0] = 0;
+            field { sw = rw; hw = r; } st[6:4] = 0;
+            field { sw = rw; hw = r; } mnu[11:8] = 0;
+            field { sw = rw; hw = r; } mnt[14:12] = 0;
+            field { sw = rw; hw = r; } hu[19:16] = 0;
+            field { sw = rw; hw = r; } ht[21:20] = 0;
+        } alrmbr @ 0x20;
+        
+        reg {
+            name = "Write Protection";
+            field { sw = w; hw = r; } key[7:0];
+        } wpr @ 0x24;
+    } rtc @ 0x90000;
+    
+    // ========================================================================
+    // NVIC (Nested Vectored Interrupt Controller)
+    // 12 registers for interrupt management
+    // ========================================================================
+    regfile nvic {
+        name = "Nested Vectored Interrupt Controller";
+        
+        reg {
+            name = "Interrupt Set-Enable 0";
+            field { sw = rw; hw = r; } setena[31:0] = 0;
+        } iser0 @ 0x00;
+        
+        reg {
+            name = "Interrupt Set-Enable 1";
+            field { sw = rw; hw = r; } setena[31:0] = 0;
+        } iser1 @ 0x04;
+        
+        reg {
+            name = "Interrupt Clear-Enable 0";
+            field { sw = rw; hw = r; } clrena[31:0] = 0;
+        } icer0 @ 0x80;
+        
+        reg {
+            name = "Interrupt Clear-Enable 1";
+            field { sw = rw; hw = r; } clrena[31:0] = 0;
+        } icer1 @ 0x84;
+        
+        reg {
+            name = "Interrupt Set-Pending 0";
+            field { sw = rw; hw = r; } setpend[31:0] = 0;
+        } ispr0 @ 0x100;
+        
+        reg {
+            name = "Interrupt Set-Pending 1";
+            field { sw = rw; hw = r; } setpend[31:0] = 0;
+        } ispr1 @ 0x104;
+        
+        reg {
+            name = "Interrupt Clear-Pending 0";
+            field { sw = rw; hw = r; } clrpend[31:0] = 0;
+        } icpr0 @ 0x180;
+        
+        reg {
+            name = "Interrupt Clear-Pending 1";
+            field { sw = rw; hw = r; } clrpend[31:0] = 0;
+        } icpr1 @ 0x184;
+        
+        reg {
+            name = "Interrupt Active Bit 0";
+            field { sw = r; hw = w; } active[31:0];
+        } iabr0 @ 0x200;
+        
+        reg {
+            name = "Interrupt Active Bit 1";
+            field { sw = r; hw = w; } active[31:0];
+        } iabr1 @ 0x204;
+        
+        reg {
+            name = "Interrupt Priority 0-3";
+            field { sw = rw; hw = r; } pri_0[7:0] = 0;
+            field { sw = rw; hw = r; } pri_1[15:8] = 0;
+            field { sw = rw; hw = r; } pri_2[23:16] = 0;
+            field { sw = rw; hw = r; } pri_3[31:24] = 0;
+        } ipr0 @ 0x300;
+        
+        reg {
+            name = "Interrupt Priority 4-7";
+            field { sw = rw; hw = r; } pri_4[7:0] = 0;
+            field { sw = rw; hw = r; } pri_5[15:8] = 0;
+            field { sw = rw; hw = r; } pri_6[23:16] = 0;
+            field { sw = rw; hw = r; } pri_7[31:24] = 0;
+        } ipr1 @ 0x304;
+    } nvic @ 0xE000E000;
+};

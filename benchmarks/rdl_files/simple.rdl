@@ -1,0 +1,39 @@
+// Simple RDL file for benchmarking
+// Contains a minimal set of registers for basic performance testing
+
+addrmap simple_benchmark {
+    name = "Simple Benchmark SoC";
+    desc = "A simple SoC with basic registers for performance testing";
+    
+    reg {
+        name = "Control Register";
+        field {
+            sw = rw;
+            hw = r;
+        } enable[0:0];
+        field {
+            sw = rw;
+            hw = r;
+        } mode[2:1];
+    } control @ 0x0000;
+    
+    reg {
+        name = "Status Register";
+        field {
+            sw = r;
+            hw = w;
+        } ready[0:0];
+        field {
+            sw = r;
+            hw = w;
+        } error[1:1];
+    } status @ 0x0004;
+    
+    reg {
+        name = "Data Register";
+        field {
+            sw = rw;
+            hw = rw;
+        } data[31:0];
+    } data @ 0x0008;
+};
