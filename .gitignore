@@ -66,3 +66,7 @@ peakrdl_pybind11/_version.py
 
 # Example output
 examples/output/
+
+# Sphinx documentation
+docs/_build/
+docs/_autosummary/

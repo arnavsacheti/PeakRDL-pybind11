@@ -45,6 +45,11 @@ tools = [
     "pyrefly >= 0.37.0",
     "ruff >= 0.14.0",
 ]
+docs = [
+    "sphinx >= 7.0",
+    "sphinx-rtd-theme >= 2.0",
+    "sphinx-autodoc-typehints >= 2.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/arnavsacheti/PeakRDL-pybind11"
