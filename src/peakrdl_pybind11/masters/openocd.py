@@ -7,17 +7,18 @@ import time
 from typing import Optional
 from . import MasterBase
 
+
 class OpenOCDMaster(MasterBase):
     """
     Master interface using OpenOCD TCL server
-    
+
     Connects to OpenOCD's TCL interface for reading/writing memory
     """
-    
+
     def __init__(self, host: str = "localhost", port: int = 6666, timeout: float = 5.0):
         """
         Initialize OpenOCD connection
-        
+
         Args:
             host: OpenOCD server host
             port: OpenOCD TCL server port (default 6666)
@@ -28,7 +29,7 @@ class OpenOCDMaster(MasterBase):
         self.timeout = timeout
         self.socket: Optional[socket.socket] = None
         self._connect()
-    
+
     def _connect(self):
         """Establish connection to OpenOCD"""
         try:
@@ -39,24 +40,24 @@ class OpenOCDMaster(MasterBase):
             self._recv()
         except Exception as e:
             raise RuntimeError(f"Failed to connect to OpenOCD at {self.host}:{self.port}: {e}")
-    
+
     def _send(self, command: str) -> str:
         """Send a command to OpenOCD and return the response"""
         if self.socket is None:
             raise RuntimeError("Not connected to OpenOCD")
-        
+
         try:
             # Send command with newline
-            self.socket.sendall((command + "\n").encode('utf-8'))
+            self.socket.sendall((command + "\n").encode("utf-8"))
             return self._recv()
         except Exception as e:
             raise RuntimeError(f"OpenOCD command failed: {e}")
-    
+
     def _recv(self) -> str:
         """Receive response from OpenOCD"""
         if self.socket is None:
             raise RuntimeError("Not connected to OpenOCD")
-        
+
         data = b""
         while True:
             try:
@@ -69,17 +70,17 @@ class OpenOCDMaster(MasterBase):
                     break
             except socket.timeout:
                 break
-        
-        return data.decode('utf-8', errors='ignore').rstrip('\x1a')
-    
+
+        return data.decode("utf-8", errors="ignore").rstrip("\x1a")
+
     def read(self, address: int, width: int) -> int:
         """
         Read memory via OpenOCD
-        
+
         Args:
             address: Memory address to read
             width: Width in bytes
-            
+
         Returns:
             Value read from memory
         """
@@ -94,24 +95,24 @@ class OpenOCDMaster(MasterBase):
             cmd = f"mdd 0x{address:x}"
         else:
             raise ValueError(f"Unsupported width: {width}")
-        
+
         response = self._send(cmd)
-        
+
         # Parse response (format: "0xADDRESS: VALUE")
         try:
-            parts = response.split(':')
+            parts = response.split(":")
             if len(parts) >= 2:
                 value_str = parts[1].strip().split()[0]
                 return int(value_str, 16)
         except Exception as e:
             raise RuntimeError(f"Failed to parse OpenOCD response: {response}: {e}")
-        
+
         return 0
-    
+
     def write(self, address: int, value: int, width: int) -> None:
         """
         Write memory via OpenOCD
-        
+
         Args:
             address: Memory address to write
             value: Value to write
@@ -128,24 +129,24 @@ class OpenOCDMaster(MasterBase):
             cmd = f"mwd 0x{address:x} 0x{value:x}"
         else:
             raise ValueError(f"Unsupported width: {width}")
-        
+
         self._send(cmd)
-    
+
     def halt(self):
         """Halt the target"""
         self._send("halt")
-    
+
     def resume(self):
         """Resume the target"""
         self._send("resume")
-    
+
     def reset(self, halt: bool = False):
         """Reset the target"""
         if halt:
             self._send("reset halt")
         else:
             self._send("reset")
-    
+
     def close(self):
         """Close the connection"""
         if self.socket:
@@ -155,7 +156,7 @@ class OpenOCDMaster(MasterBase):
                 pass
             self.socket.close()
             self.socket = None
-    
+
     def __del__(self):
         """Cleanup on deletion"""
         self.close()

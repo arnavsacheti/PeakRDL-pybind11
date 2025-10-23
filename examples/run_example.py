@@ -25,32 +25,27 @@ def export_example():
     print("=" * 70)
     print("Step 1: Exporting SystemRDL to PyBind11 modules")
     print("=" * 70)
-    
+
     # Compile SystemRDL
     rdl_file = Path(__file__).parent / "example.rdl"
     output_dir = Path(__file__).parent / "output"
-    
+
     print(f"Input file: {rdl_file}")
     print(f"Output directory: {output_dir}")
-    
+
     rdl = RDLCompiler()
     rdl.compile_file(str(rdl_file))
     root = rdl.elaborate()
-    
+
     # Export to PyBind11
     exporter = Pybind11Exporter()
-    exporter.export(
-        root.top,
-        str(output_dir),
-        soc_name="example_soc",
-        gen_pyi=True
-    )
-    
+    exporter.export(root.top, str(output_dir), soc_name="example_soc", gen_pyi=True)
+
     print("\nGenerated files:")
     for f in output_dir.iterdir():
         if f.is_file():
             print(f"  - {f.name} ({f.stat().st_size} bytes)")
-    
+
     print("\n✓ Export completed successfully!")
     return output_dir
 
@@ -73,8 +68,8 @@ def demonstrate_usage():
     print("\n" + "=" * 70)
     print("Step 3: Example Python usage")
     print("=" * 70)
-    
-    example_code = '''
+
+    example_code = """
 # Import the generated module
 import sys
 sys.path.insert(0, 'examples/output')
@@ -114,8 +109,8 @@ soc.gpio.output.write(0x5500)     # Set output values
 # Read GPIO input
 input_val = soc.gpio.input.read()
 print(f"GPIO input: 0x{input_val:04x}")
-'''
-    
+"""
+
     print("\nExample code:")
     print(example_code)
 
@@ -125,17 +120,17 @@ def main():
     print("\n" + "=" * 70)
     print("PeakRDL-pybind11 Example")
     print("=" * 70)
-    
+
     try:
         # Export
         output_dir = export_example()
-        
+
         # Show build instructions
         build_extension(output_dir)
-        
+
         # Show usage example
         demonstrate_usage()
-        
+
         print("\n" + "=" * 70)
         print("Next steps:")
         print("=" * 70)
@@ -144,13 +139,14 @@ def main():
         print("3. Try the example code (see Step 3 above)")
         print("\nFor more information, see the README.md file.")
         print("=" * 70)
-        
+
     except Exception as e:
         print(f"\n❌ Error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
-    
+
     return 0
 
 
