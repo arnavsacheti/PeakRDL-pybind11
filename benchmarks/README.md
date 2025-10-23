@@ -13,11 +13,12 @@ The benchmarks measure performance across several dimensions:
 
 ## Test RDL Files
 
-The benchmarks use three complexity levels:
+The benchmarks use four complexity levels:
 
 - **simple.rdl**: 3 registers (baseline performance)
 - **medium.rdl**: ~20 registers across 4 peripherals (UART, GPIO, SPI, Timer)
-- **large.rdl**: ~70 registers across 15+ peripherals (realistic SoC)
+- **large.rdl**: ~70 registers across 15+ peripherals (moderate SoC)
+- **realistic_mcu.rdl**: ~288 registers (real-world ARM Cortex-M style MCU with UARTs, SPIs, I2C, Timers, ADC, DMA, GPIO banks, NVIC, RTC, watchdog, etc.)
 
 ## Running Benchmarks
 
@@ -78,6 +79,8 @@ Measures the performance of RDL compilation and export to pybind11 modules:
 - `test_export_large_rdl`: ~70 registers
 - `test_export_large_rdl_with_splitting`: Large with register-count splitting
 - `test_export_large_rdl_hierarchical_split`: Large with hierarchical splitting
+- `test_export_realistic_mcu`: ~288 registers (real-world MCU complexity)
+- `test_export_realistic_mcu_with_splitting`: Realistic MCU with split bindings
 
 ### TestBuildBenchmarks (marked as `slow`)
 
@@ -111,10 +114,10 @@ Tests how performance scales with different register counts:
 
 Typical performance on a modern laptop (for reference):
 
-| Operation | Simple | Medium | Large |
-|-----------|--------|--------|-------|
-| Export | ~10-50ms | ~50-100ms | ~100-300ms |
-| Build (wheel) | ~5-10s | ~10-20s | ~20-60s |
+| Operation | Simple | Medium | Large | Realistic MCU |
+|-----------|--------|--------|-------|---------------|
+| Export | ~10-50ms | ~50-100ms | ~100-300ms | ~800-1000ms |
+| Build (wheel) | ~5-10s | ~10-20s | ~20-60s | ~60-180s |
 
 Note: Build times heavily depend on:
 - CPU cores available (parallel compilation)

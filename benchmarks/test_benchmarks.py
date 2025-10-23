@@ -124,6 +124,49 @@ class TestExportBenchmarks:
                 return tmpdir
         
         result = benchmark(export_hierarchical)
+    
+    def test_export_realistic_mcu(self, benchmark, benchmark_dir):
+        """Benchmark export of realistic MCU RDL file (~288 registers, real-world complexity)
+        
+        This test uses a realistic microcontroller register map inspired by ARM Cortex-M
+        based MCUs with multiple UARTs, SPIs, I2C, Timers, ADC, DMA, GPIO banks, etc.
+        Represents real-world embedded systems design with 300+ registers.
+        """
+        rdl_file = benchmark_dir / "realistic_mcu.rdl"
+        
+        def export_realistic():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                rdl = RDLCompiler()
+                rdl.compile_file(str(rdl_file))
+                root = rdl.elaborate()
+                
+                exporter = Pybind11Exporter()
+                exporter.export(root.top, tmpdir, soc_name="realistic_mcu")
+                
+                # Verify output was created
+                assert os.path.exists(os.path.join(tmpdir, "realistic_mcu_descriptors.hpp"))
+                return tmpdir
+        
+        result = benchmark(export_realistic)
+    
+    def test_export_realistic_mcu_with_splitting(self, benchmark, benchmark_dir):
+        """Benchmark export of realistic MCU with binding splitting (split every 50 registers)"""
+        rdl_file = benchmark_dir / "realistic_mcu.rdl"
+        
+        def export_with_splitting():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                rdl = RDLCompiler()
+                rdl.compile_file(str(rdl_file))
+                root = rdl.elaborate()
+                
+                exporter = Pybind11Exporter()
+                exporter.export(root.top, tmpdir, soc_name="realistic_mcu", split_bindings=50)
+                
+                # Verify split files were created
+                assert os.path.exists(os.path.join(tmpdir, "realistic_mcu_bindings_0.cpp"))
+                return tmpdir
+        
+        result = benchmark(export_with_splitting)
 
 
 class TestBuildBenchmarks:

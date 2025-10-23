@@ -22,6 +22,8 @@ Benchmarks should be run on a consistent system. Record:
 | Large | 90-110 | 100-125 | 140-160 | ~70 | 15+ peripherals |
 | Large + Splitting | 95-115 | 115-130 | 160-175 | ~70 | Split every 10 |
 | Large + Hierarchical | 125-145 | 145-160 | 195-215 | ~70 | Split by hierarchy |
+| Realistic MCU | 780-850 | 830-870 | 880-920 | ~288 | Real-world MCU |
+| Realistic MCU + Splitting | 820-880 | 920-970 | 1000-1050 | ~288 | Split every 50 |
 
 ### Observations
 
@@ -33,9 +35,13 @@ Benchmarks should be run on a consistent system. Record:
 
 | Register Count | Mean Export Time (ms) | Time per Register (ms) |
 |----------------|----------------------|------------------------|
+| 3 (simple) | 32-35 | 10.7-11.7 |
 | 10 | 34-36 | 3.4-3.6 |
+| 20 (medium) | 46-52 | 2.3-2.6 |
 | 50 | 60-65 | 1.2-1.3 |
+| 70 (large) | 100-125 | 1.4-1.8 |
 | 100 | 95-105 | 0.95-1.05 |
+| 288 (realistic) | 830-870 | 2.9-3.0 |
 
 **Conclusion**: The exporter becomes more efficient per-register as designs scale up, likely due to fixed overhead amortization.
 
@@ -95,6 +101,13 @@ Parallel compilation (`make -j8`) is most effective with split bindings.
 - Export time: still fast (100-300ms)
 - Build time: significant benefit from splitting (2-3x faster)
 - **Recommendation**: Use `--split-bindings 50` or `--split-by-hierarchy`
+
+### For Real-World MCU/SoC Projects (200-400+ registers)
+- Split bindings are essential
+- Export time: under 1 second (700-1000ms)
+- Build time: 1-3 minutes with split bindings
+- **Recommendation**: Use `--split-bindings 30-50` for optimal balance
+- Consider hierarchical splitting if design has clear module boundaries
 
 ## Interpreting Benchmark Statistics
 
