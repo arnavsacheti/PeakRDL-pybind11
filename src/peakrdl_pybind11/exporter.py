@@ -223,64 +223,52 @@ class Pybind11Exporter:
                 f.write(chunk_output)
 
     def _group_registers_by_hierarchy(self, nodes: Nodes) -> OrderedDict[str, list[RegNode]]:
-        """Group registers by their parent addrmap or regfile for hierarchical splitting"""
+        """Group registers by their parent addrmap or regfile for hierarchical splitting
+        
+        This method groups registers based on their immediate parent addrmap or regfile.
+        Priority: regfile > addrmap > top_level
+        
+        Performance: O(n) where n is the number of registers, using a single pass with O(1) lookups.
+        """
         from collections import OrderedDict
 
         groups: OrderedDict[str, list[RegNode]] = OrderedDict()
-
-        # Iterate through regfiles and addrmaps (excluding top node)
-        for regfile in nodes["regfiles"]:
-            group_name = regfile.inst_name
-            group_regs: list[RegNode] = []
-
-            # Collect all registers under this regfile
-            for reg in nodes["regs"]:
-                # Check if this register is a descendant of this regfile
-                if self._is_descendant_of(reg, regfile):
-                    group_regs.append(reg)
-
-            if group_regs:
-                groups[group_name] = group_regs
-
-        # Handle addrmaps (excluding top node to avoid duplication)
-        for addrmap in nodes["addrmaps"]:
-            if addrmap == self.top_node:
-                continue
-
-            group_name = addrmap.inst_name
-            group_regs = []
-
-            # Collect all registers under this addrmap that aren't already in a regfile group
-            for reg in nodes["regs"]:
-                if self._is_descendant_of(reg, addrmap):
-                    # Check if not already added via regfile
-                    already_added = any(reg in regs for regs in groups.values())
-                    if not already_added:
-                        group_regs.append(reg)
-
-            if group_regs:
-                groups[group_name] = group_regs
-
-        # Handle orphan registers (direct children of top node)
-        orphan_regs: list[RegNode] = []
+        
+        # Create lookup dictionaries using object id for O(1) lookups
+        # Map id(node) -> node for quick membership testing
+        regfiles_map = {id(rf): rf for rf in nodes["regfiles"]}
+        addrmaps_map = {id(am): am for am in nodes["addrmaps"] if am != self.top_node}
+        
+        # Single pass through all registers to find their grouping parent
         for reg in nodes["regs"]:
-            already_added = any(reg in regs for regs in groups.values())
-            if not already_added:
-                orphan_regs.append(reg)
-
-        if orphan_regs:
-            groups["top_level"] = orphan_regs
+            # Walk up the hierarchy to find the first regfile or addrmap (excluding top)
+            group_parent = None
+            current = reg.parent
+            
+            while current is not None:
+                current_id = id(current)
+                # Prioritize regfiles over addrmaps
+                if current_id in regfiles_map:
+                    group_parent = current
+                    break
+                elif current_id in addrmaps_map:
+                    group_parent = current
+                    break
+                current = current.parent
+            
+            # Determine the group name and add the register
+            if group_parent is not None:
+                group_name = group_parent.inst_name
+                if group_name not in groups:
+                    groups[group_name] = []
+                groups[group_name].append(reg)
+            else:
+                # Orphan register (direct child of top node or no matching parent)
+                if "top_level" not in groups:
+                    groups["top_level"] = []
+                groups["top_level"].append(reg)
 
         return groups
-
-    def _is_descendant_of(self, child_node: Node, parent_node: Node) -> bool:
-        """Check if child_node is a descendant of parent_node in the hierarchy"""
-        current = child_node.parent
-        while current is not None:
-            if current == parent_node:
-                return True
-            current = current.parent
-        return False
 
     def _generate_python_runtime(self) -> None:
         """Generate Python runtime module"""

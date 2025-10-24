@@ -486,3 +486,36 @@ class TestScalabilityBenchmarks:
                 exporter.export(root.top, output_dir, soc_name=f"scale_{n}")
 
         benchmark(create_and_export)
+
+    def test_scaling_large_hierarchical(self, benchmark: BenchmarkFixture) -> None:
+        """Benchmark hierarchical export with 10k registers (100 regfiles x 100 regs each)
+        
+        This test validates the O(n) performance optimization for hierarchical splitting.
+        Previously this would take 5+ minutes, now should complete in <1 second.
+        """
+
+        def create_and_export() -> None:
+            # Create 10k registers in hierarchical structure
+            rdl_content = "addrmap large_hierarchical {\n"
+            for i in range(100):  # 100 regfiles
+                rdl_content += f"  regfile rf{i} {{\n"
+                for j in range(100):  # 100 registers per regfile
+                    rdl_content += f"    reg {{ field {{ sw = rw; }} f[7:0]; }} r{j} @ 0x{j*4:04x};\n"
+                rdl_content += f"  }} rf{i} @ 0x{i*0x1000:x};\n"
+            rdl_content += "};\n"
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                rdl_file = os.path.join(tmpdir, "test.rdl")
+                with open(rdl_file, "w") as f:
+                    f.write(rdl_content)
+
+                rdl = RDLCompiler()
+                rdl.compile_file(rdl_file)
+                root = rdl.elaborate()
+
+                output_dir = os.path.join(tmpdir, "output")
+                exporter = Pybind11Exporter()
+                # Use hierarchical splitting - this is what we optimized
+                exporter.export(root.top, output_dir, soc_name="large_hier", split_by_hierarchy=True)
+
+        benchmark(create_and_export)
