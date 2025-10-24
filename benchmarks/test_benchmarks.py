@@ -500,7 +500,7 @@ class TestScalabilityBenchmarks:
             for i in range(100):  # 100 regfiles
                 rdl_content += f"  regfile rf{i} {{\n"
                 for j in range(100):  # 100 registers per regfile
-                    rdl_content += f"    reg {{ field {{ sw = rw; }} f[7:0]; }} r{j} @ 0x{j*4:x};\n"
+                    rdl_content += f"    reg {{ field {{ sw = rw; }} f[7:0]; }} r{j} @ 0x{j*4:04x};\n"
                 rdl_content += f"  }} rf{i} @ 0x{i*0x1000:x};\n"
             rdl_content += "};\n"
 
