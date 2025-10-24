@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from pytest_benchmark.fixture import BenchmarkFixture
 from systemrdl.compiler import RDLCompiler
 
 from peakrdl_pybind11 import Pybind11Exporter
@@ -30,7 +31,7 @@ class TestExportBenchmarks:
         """Get the benchmarks directory"""
         return Path(__file__).parent / "rdl_files"
 
-    def test_export_simple_rdl(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_simple_rdl(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export of simple RDL file (3 registers)"""
         rdl_file = benchmark_dir / "simple.rdl"
 
@@ -49,7 +50,7 @@ class TestExportBenchmarks:
 
         result = benchmark(export_simple)
 
-    def test_export_medium_rdl(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_medium_rdl(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export of medium RDL file (~20 registers, 4 peripherals)"""
         rdl_file = benchmark_dir / "medium.rdl"
 
@@ -68,7 +69,7 @@ class TestExportBenchmarks:
 
         result = benchmark(export_medium)
 
-    def test_export_large_rdl(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_large_rdl(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export of large RDL file (~70 registers, 15+ peripherals)"""
         rdl_file = benchmark_dir / "large.rdl"
 
@@ -87,7 +88,7 @@ class TestExportBenchmarks:
 
         result = benchmark(export_large)
 
-    def test_export_large_rdl_with_splitting(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_large_rdl_with_splitting(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export with binding splitting enabled (split every 10 registers)"""
         rdl_file = benchmark_dir / "large.rdl"
 
@@ -106,7 +107,7 @@ class TestExportBenchmarks:
 
         result = benchmark(export_with_splitting)
 
-    def test_export_large_rdl_hierarchical_split(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_large_rdl_hierarchical_split(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export with hierarchical splitting enabled"""
         rdl_file = benchmark_dir / "large.rdl"
 
@@ -125,7 +126,7 @@ class TestExportBenchmarks:
 
         result = benchmark(export_hierarchical)
 
-    def test_export_realistic_mcu(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_realistic_mcu(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export of realistic MCU RDL file (~288 registers, real-world complexity)
 
         This test uses a realistic microcontroller register map inspired by ARM Cortex-M
@@ -149,7 +150,7 @@ class TestExportBenchmarks:
 
         result = benchmark(export_realistic)
 
-    def test_export_realistic_mcu_with_splitting(self, benchmark, benchmark_dir: Path) -> None:
+    def test_export_realistic_mcu_with_splitting(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Benchmark export of realistic MCU with binding splitting (split every 50 registers)"""
         rdl_file = benchmark_dir / "realistic_mcu.rdl"
 
@@ -223,7 +224,7 @@ class TestBuildBenchmarks:
         return tmpdir
 
     @pytest.mark.slow
-    def test_build_sdist_simple(self, benchmark, simple_export_dir: Path) -> None:
+    def test_build_sdist_simple(self, benchmark: BenchmarkFixture, simple_export_dir: Path) -> None:
         """Benchmark building source distribution (tar.gz) for simple project"""
 
         def build_sdist() -> bool:
@@ -246,7 +247,7 @@ class TestBuildBenchmarks:
             pytest.skip("python-build not installed")
 
     @pytest.mark.slow
-    def test_build_wheel_simple(self, benchmark, simple_export_dir: Path) -> None:
+    def test_build_wheel_simple(self, benchmark: BenchmarkFixture, simple_export_dir: Path) -> None:
         """Benchmark building wheel distribution for simple project"""
 
         def build_wheel() -> bool:
@@ -269,7 +270,7 @@ class TestBuildBenchmarks:
             pytest.skip("python-build not installed")
 
     @pytest.mark.slow
-    def test_build_sdist_medium(self, benchmark, medium_export_dir: Path) -> None:
+    def test_build_sdist_medium(self, benchmark: BenchmarkFixture, medium_export_dir: Path) -> None:
         """Benchmark building source distribution for medium project"""
 
         def build_sdist():
@@ -291,7 +292,7 @@ class TestBuildBenchmarks:
             pytest.skip("python-build not installed")
 
     @pytest.mark.slow
-    def test_build_wheel_medium(self, benchmark, medium_export_dir: Path) -> None:
+    def test_build_wheel_medium(self, benchmark: BenchmarkFixture, medium_export_dir: Path) -> None:
         """Benchmark building wheel distribution for medium project"""
 
         def build_wheel():
@@ -313,7 +314,7 @@ class TestBuildBenchmarks:
             pytest.skip("python-build not installed")
 
     @pytest.mark.slow
-    def test_build_sdist_large(self, benchmark, large_export_dir: Path) -> None:
+    def test_build_sdist_large(self, benchmark: BenchmarkFixture, large_export_dir: Path) -> None:
         """Benchmark building source distribution for large project"""
 
         def build_sdist():
@@ -335,7 +336,7 @@ class TestBuildBenchmarks:
             pytest.skip("python-build not installed")
 
     @pytest.mark.slow
-    def test_build_wheel_large(self, benchmark, large_export_dir: Path) -> None:
+    def test_build_wheel_large(self, benchmark: BenchmarkFixture, large_export_dir: Path) -> None:
         """Benchmark building wheel distribution for large project with split bindings"""
 
         def build_wheel() -> bool:
@@ -365,7 +366,7 @@ class TestMemoryBenchmarks:
         """Get the benchmarks directory"""
         return Path(__file__).parent / "rdl_files"
 
-    def test_memory_export_large(self, benchmark, benchmark_dir: Path) -> None:
+    def test_memory_export_large(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
         """Measure peak memory during large RDL export"""
         rdl_file = benchmark_dir / "large.rdl"
 
@@ -393,7 +394,7 @@ class TestMemoryBenchmarks:
 class TestScalabilityBenchmarks:
     """Test how performance scales with register count"""
 
-    def test_scaling_with_register_count(self, benchmark) -> None:
+    def test_scaling_with_register_count(self, benchmark: BenchmarkFixture) -> None:
         """Benchmark how export time scales with number of registers"""
 
         def create_and_export_n_registers(n: int) -> None:
@@ -428,7 +429,7 @@ class TestScalabilityBenchmarks:
         # Test with 10 registers (baseline)
         benchmark.pedantic(lambda: create_and_export_n_registers(10), iterations=5, rounds=3)
 
-    def test_scaling_50_registers(self, benchmark) -> None:
+    def test_scaling_50_registers(self, benchmark: BenchmarkFixture) -> None:
         """Benchmark export with 50 registers"""
 
         def create_and_export() -> None:
@@ -457,7 +458,7 @@ class TestScalabilityBenchmarks:
 
         benchmark(create_and_export)
 
-    def test_scaling_100_registers(self, benchmark) -> None:
+    def test_scaling_100_registers(self, benchmark: BenchmarkFixture) -> None:
         """Benchmark export with 100 registers"""
 
         def create_and_export() -> None:
