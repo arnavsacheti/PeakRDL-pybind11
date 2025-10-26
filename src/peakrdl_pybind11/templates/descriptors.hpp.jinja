@@ -415,7 +415,7 @@ class {{ soc_name }}_t : public NodeBase {
 public:
     {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {
         {% for child in top_node.children() %}
-        {% if child.inst_name %}
+        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
         {{ child.inst_name }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
@@ -429,7 +429,7 @@ public:
     void set_offset(uint64_t offset) {
         offset_ = offset;
         {% for child in top_node.children() %}
-        {% if child.inst_name %}
+        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
         {{ child.inst_name }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
