@@ -162,6 +162,7 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             num_chunks=num_chunks,
+            nodes=nodes,
         )
 
         assert self.output_dir is not None
@@ -205,6 +206,7 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             num_chunks=num_chunks,
+            nodes=nodes,
         )
 
         assert self.output_dir is not None
