@@ -39,7 +39,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("width", &RegisterBase::width)
         .def("read", &RegisterBase::read, "Read register value")
         .def("write", &RegisterBase::write, "Write register value")
-        .def("modify", &RegisterBase::modify, "Read-modify-write operation");
+        .def("modify", &RegisterBase::modify, "Read-modify-write operation")
+        .def("__enter__", &RegisterBase::__enter__, "Enter context manager")
+        .def("__exit__", &RegisterBase::__exit__, "Exit context manager");
     
     // NodeBase
     py::class_<NodeBase>(m, "NodeBase")
