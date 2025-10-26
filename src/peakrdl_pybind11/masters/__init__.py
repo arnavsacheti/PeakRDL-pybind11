@@ -5,7 +5,8 @@ Master interfaces for register access
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-__all__ = ["CallbackMaster", "MasterBase", "MockMaster", "OpenOCDMaster", "SSHMaster"]
+from .openocd import OpenOCDMaster
+from .ssh import SSHMaster
 
 
 class MasterBase(ABC):
@@ -101,13 +102,4 @@ class CallbackMaster(MasterBase):
         self.write_callback(address, value, width)
 
 
-# Import optional masters
-try:
-    from .openocd import OpenOCDMaster
-except ImportError:
-    OpenOCDMaster = None
-
-try:
-    from .ssh import SSHMaster
-except ImportError:
-    SSHMaster = None
+__all__ = ["CallbackMaster", "MasterBase", "MockMaster", "OpenOCDMaster", "SSHMaster"]

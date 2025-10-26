@@ -3,6 +3,7 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+from datetime import datetime
 import os
 import sys
 
@@ -13,7 +14,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'PeakRDL-pybind11'
-copyright = '2024, Arnav Sacheti'
+copyright = f'{datetime.now().year}, Arnav Sacheti'
 author = 'Arnav Sacheti'
 release = '0.1.0'
 

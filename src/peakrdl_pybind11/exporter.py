@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from jinja2 import Environment, PackageLoader, select_autoescape
-from systemrdl.node import AddrmapNode, FieldNode, Node, RegfileNode, RegNode, RootNode
+from systemrdl.node import AddrmapNode, FieldNode, MemNode, Node, RegfileNode, RegNode, RootNode
 
 
 class Nodes(TypedDict):
@@ -228,27 +228,27 @@ class Pybind11Exporter:
 
     def _group_registers_by_hierarchy(self, nodes: Nodes) -> OrderedDict[str, list[RegNode]]:
         """Group registers by their parent addrmap or regfile for hierarchical splitting
-        
+
         This method groups registers based on their immediate parent addrmap or regfile.
         Priority: regfile > addrmap > top_level
-        
+
         Performance: O(n) where n is the number of registers, using a single pass with O(1) lookups.
         """
         from collections import OrderedDict
 
         groups: OrderedDict[str, list[RegNode]] = OrderedDict()
-        
+
         # Create lookup dictionaries using object id for O(1) lookups
         # Map id(node) -> node for quick membership testing
         regfiles_map = {id(rf): rf for rf in nodes["regfiles"]}
         addrmaps_map = {id(am): am for am in nodes["addrmaps"] if am != self.top_node}
-        
+
         # Single pass through all registers to find their grouping parent
         for reg in nodes["regs"]:
             # Walk up the hierarchy to find the first regfile or addrmap (excluding top)
             group_parent = None
-            current = reg.parent
-            
+            current: AddrmapNode | MemNode | RegNode | RootNode | None = reg.parent
+
             while current is not None:
                 current_id = id(current)
                 # Prioritize regfiles over addrmaps
@@ -259,7 +259,7 @@ class Pybind11Exporter:
                     group_parent = current
                     break
                 current = current.parent
-            
+
             # Determine the group name and add the register
             if group_parent is not None:
                 group_name = group_parent.inst_name

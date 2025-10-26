@@ -486,23 +486,19 @@ dependencies = [
 cli = [
     { name = "peakrdl-cli" },
 ]
+
+[package.dev-dependencies]
+benchmark = [
+    { name = "build" },
+    { name = "pytest" },
+    { name = "pytest-benchmark" },
+]
 docs = [
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autodoc-typehints", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx-autodoc-typehints", version = "3.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-book-theme" },
-]
-
-[package.dev-dependencies]
-benchmark = [
-    { name = "pytest" },
-    { name = "pytest-benchmark" },
-]
-build-bench = [
-    { name = "build" },
-    { name = "pytest" },
-    { name = "pytest-benchmark" },
 ]
 test = [
     { name = "pytest" },
@@ -517,22 +513,20 @@ tools = [
 requires-dist = [
     { name = "jinja2" },
     { name = "peakrdl-cli", marker = "extra == 'cli'", specifier = ">=1.2.3" },
-    { name = "sphinx", marker = "extra == 'docs'", specifier = ">=7.0" },
-    { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=2.0" },
-    { name = "sphinx-book-theme", marker = "extra == 'docs'", specifier = ">=1.0" },
     { name = "systemrdl-compiler", specifier = ">=1.30.1" },
 ]
-provides-extras = ["cli", "docs"]
+provides-extras = ["cli"]
 
 [package.metadata.requires-dev]
 benchmark = [
-    { name = "pytest", specifier = ">=7.4.4" },
-    { name = "pytest-benchmark", specifier = ">=5.1.0" },
-]
-build-bench = [
     { name = "build", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=7.4.4" },
     { name = "pytest-benchmark", specifier = ">=5.1.0" },
+]
+docs = [
+    { name = "sphinx", specifier = ">=7.0" },
+    { name = "sphinx-autodoc-typehints", specifier = ">=2.0" },
+    { name = "sphinx-book-theme", specifier = ">=1.0" },
 ]
 test = [
     { name = "pytest", specifier = ">=7.4.4" },
