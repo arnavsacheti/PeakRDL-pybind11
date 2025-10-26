@@ -11,7 +11,6 @@ from systemrdl import RDLCompiler
 
 from peakrdl_pybind11 import Pybind11Exporter
 
-
 # Sample SystemRDL for testing context managers
 CONTEXT_MANAGER_RDL = """
 addrmap test_soc {
@@ -49,7 +48,7 @@ addrmap test_soc {
 class TestContextManager:
     """Test register context manager functionality"""
 
-    def test_context_manager_basic(self, tmpdir):
+    def test_context_manager_basic(self, tmpdir) -> None:
         """Test basic context manager usage"""
         import subprocess
         import sys
@@ -108,7 +107,7 @@ class TestContextManager:
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, %r)
+sys.path.insert(0, {!r})
 
 import importlib.util
 spec = importlib.util.spec_from_file_location("test_soc", os.path.join(os.path.dirname(__file__), "__init__.py"))
@@ -161,8 +160,7 @@ with soc.control as reg:
 assert soc.control.read() == expected
 
 print("All context manager tests passed!")
-"""
-            % str(Path(__file__).parent.parent / "src")
+""".format(str(Path(__file__).parent.parent / "src"))
         )
 
         # Run the test script
@@ -177,7 +175,7 @@ print("All context manager tests passed!")
         assert result.returncode == 0, f"Test script failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         assert "All context manager tests passed!" in result.stdout
 
-    def test_nested_context_error(self, tmpdir):
+    def test_nested_context_error(self, tmpdir) -> None:
         """Test that nested contexts raise an error"""
         import subprocess
         import sys
@@ -234,7 +232,7 @@ print("All context manager tests passed!")
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, %r)
+sys.path.insert(0, {!r})
 
 import importlib.util
 spec = importlib.util.spec_from_file_location("test_soc", os.path.join(os.path.dirname(__file__), "__init__.py"))
@@ -260,12 +258,11 @@ except RuntimeError as e:
     if "already in a context" in str(e):
         print("Correctly raised error for nested context")
     else:
-        print(f"ERROR: Wrong error message: {e}")
+        print(f"ERROR: Wrong error message: {{e}}")
         sys.exit(1)
 
 print("Nested context test passed!")
-"""
-            % str(Path(__file__).parent.parent / "src")
+""".format(str(Path(__file__).parent.parent / "src"))
         )
 
         # Run the test script
