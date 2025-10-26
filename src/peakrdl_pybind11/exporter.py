@@ -32,6 +32,7 @@ class Pybind11Exporter:
             lstrip_blocks=True,
         )
         self.soc_name: str | None = None
+        self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
         self.output_dir: Path | None = None
 
@@ -40,6 +41,7 @@ class Pybind11Exporter:
         top_node: RootNode | AddrmapNode,
         output_dir: str,
         soc_name: str | None = None,
+        soc_version: str = "0.1.0",
         gen_pyi: bool = True,
         split_bindings: int = 100,
         split_by_hierarchy: bool = False,
@@ -51,6 +53,7 @@ class Pybind11Exporter:
             top_node: Root node of the SystemRDL compilation
             output_dir: Directory to write output files
             soc_name: Name of the SoC module (default: derived from top node)
+            soc_version: Version string for the SoC module (default: "0.1.0")
             gen_pyi: Generate .pyi stub files for type hints
             split_bindings: Split bindings into multiple files when register count exceeds this threshold.
                            Set to 0 to disable splitting. Default: 100
@@ -62,6 +65,7 @@ class Pybind11Exporter:
         self.top_node = top_node.top if isinstance(top_node, RootNode) else top_node
         self.output_dir = Path(output_dir)
         self.soc_name = soc_name or self.top_node.inst_name or "soc"
+        self.soc_version = soc_version
         self.split_bindings = split_bindings
         self.split_by_hierarchy = split_by_hierarchy
 
@@ -325,6 +329,7 @@ class Pybind11Exporter:
         pyproject_template = self.env.get_template("pyproject_module.toml.jinja")
         pyproject_output = pyproject_template.render(
             soc_name=self.soc_name,
+            soc_version=self.soc_version,
         )
         pyproject_filepath = self.output_dir / "pyproject.toml"
         with pyproject_filepath.open("w") as f:

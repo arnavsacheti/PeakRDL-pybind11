@@ -39,6 +39,13 @@ class Exporter(ExporterSubcommandPlugin):
             help="Name of the generated SoC module (default: derived from input file)",
         )
         arg_group.add_argument(
+            "--soc-version",
+            dest="soc_version",
+            metavar="VERSION",
+            default="0.1.0",
+            help="Version string for the generated SoC module (default: 0.1.0)",
+        )
+        arg_group.add_argument(
             "--gen-pyi",
             dest="gen_pyi",
             action="store_true",
@@ -83,6 +90,7 @@ class Exporter(ExporterSubcommandPlugin):
         if soc_name is None:
             soc_name = top_node.inst_name or "soc"
 
+        soc_version = getattr(options, "soc_version", "0.1.0")
         gen_pyi = getattr(options, "gen_pyi", True)
         split_bindings = getattr(options, "split_bindings", 100)
         split_by_hierarchy = getattr(options, "split_by_hierarchy", False)
@@ -91,6 +99,7 @@ class Exporter(ExporterSubcommandPlugin):
             top_node,
             options.output,
             soc_name=soc_name,
+            soc_version=soc_version,
             gen_pyi=gen_pyi,
             split_bindings=split_bindings,
             split_by_hierarchy=split_by_hierarchy,
