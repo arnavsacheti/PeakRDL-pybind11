@@ -26,6 +26,46 @@ def create():
     Example:
         >>> soc = create()
         >>> from peakrdl_pybind11.masters import MockMaster
-        >>> soc.attach_master(MockMaster())
+        >>> # Wrap the MockMaster to work with this SoC
+        >>> mock = MockMaster()
+        >>> 
+        >>> class WrappedMaster(Master):
+        >>>     def read(self, addr, width):
+        >>>         return mock.read(addr, width)
+        >>>     def write(self, addr, val, width):
+        >>>         mock.write(addr, val, width)
+        >>> 
+        >>> soc.attach_master(WrappedMaster())
     """
     return {{ soc_name }}_t()
+
+def wrap_master(master_impl):
+    """
+    Wrap a Python master implementation to work with this SoC
+    
+    Args:
+        master_impl: A master object with read(addr, width) and write(addr, val, width) methods
+    
+    Returns:
+        Master: A wrapped master that can be attached to the SoC
+    
+    Example:
+        >>> from peakrdl_pybind11.masters import MockMaster
+        >>> soc = create()
+        >>> master = wrap_master(MockMaster())
+        >>> soc.attach_master(master)
+    """
+    class WrappedMaster(Master):
+        def __init__(self):
+            Master.__init__(self)
+            self.impl = master_impl
+            
+        def read(self, addr, width):
+            return self.impl.read(addr, width)
+            
+        def write(self, addr, val, width):
+            self.impl.write(addr, val, width)
+    
+    return WrappedMaster()
+
+__all__.append('wrap_master')

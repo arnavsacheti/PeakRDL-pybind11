@@ -13,11 +13,39 @@
 namespace py = pybind11;
 using namespace {{ soc_name }};
 
+// Trampoline class for Master to allow Python inheritance
+class PyMaster : public Master {
+public:
+    using Master::Master;
+    
+    uint64_t read(uint64_t address, size_t width) override {
+        PYBIND11_OVERRIDE_PURE(
+            uint64_t,
+            Master,
+            read,
+            address,
+            width
+        );
+    }
+    
+    void write(uint64_t address, uint64_t value, size_t width) override {
+        PYBIND11_OVERRIDE_PURE(
+            void,
+            Master,
+            write,
+            address,
+            value,
+            width
+        );
+    }
+};
+
 PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     m.doc() = "{{ soc_name }} register map generated from SystemRDL";
     
-    // Master interface
-    py::class_<Master>(m, "Master")
+    // Master interface with trampoline for Python inheritance
+    py::class_<Master, PyMaster>(m, "Master")
+        .def(py::init<>())
         .def("read", &Master::read, "Read from address")
         .def("write", &Master::write, "Write to address");
     
@@ -39,7 +67,11 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("width", &RegisterBase::width)
         .def("read", &RegisterBase::read, "Read register value")
         .def("write", &RegisterBase::write, "Write register value")
-        .def("modify", &RegisterBase::modify, "Read-modify-write operation");
+        .def("modify", &RegisterBase::modify, "Read-modify-write operation")
+        .def("__enter__", &RegisterBase::__enter__, "Enter context manager")
+        .def("__exit__", [](RegisterBase& self, py::object exc_type, py::object exc_value, py::object traceback) {
+            self.exit_context();
+        }, "Exit context manager");
     
     // NodeBase
     py::class_<NodeBase>(m, "NodeBase")
@@ -61,6 +93,58 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("read", &{{ reg.inst_name }}_t::{{ field.inst_name }}_field::read, "Read field value")
         .def("write", &{{ reg.inst_name }}_t::{{ field.inst_name }}_field::write, "Write field value");
     {% endfor %}
+    {% endfor %}
+    
+    {% for regfile in nodes.regfiles %}
+    // Regfile class: {{ regfile.inst_name }}
+    py::class_<{{ regfile.inst_name }}_t, NodeBase>(m, "{{ regfile.inst_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() }}"{% endif %})
+        .def(py::init<uint64_t>())
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        .def_readonly("{{ child.inst_name }}", &{{ regfile.inst_name }}_t::{{ child.inst_name }})
+        {% endif %}
+        {% endfor %}
+        ;
+    {% endfor %}
+    
+    {% for addrmap in nodes.addrmaps %}
+    {% if addrmap != top_node %}
+    // Addrmap class: {{ addrmap.inst_name }}
+    py::class_<{{ addrmap.inst_name }}_t, NodeBase>(m, "{{ addrmap.inst_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() }}"{% endif %})
+        .def(py::init<uint64_t>())
+        {% for child in addrmap.children() %}
+        {% if child.inst_name %}
+        .def_readonly("{{ child.inst_name }}", &{{ addrmap.inst_name }}_t::{{ child.inst_name }})
+        {% endif %}
+        {% endfor %}
+        ;
+    {% endif %}
+    {% endfor %}
+    
+    {% for regfile in nodes.regfiles %}
+    // Regfile class: {{ regfile.inst_name }}
+    py::class_<{{ regfile.inst_name }}_t, NodeBase>(m, "{{ regfile.inst_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() }}"{% endif %})
+        .def(py::init<uint64_t>())
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        .def_readonly("{{ child.inst_name }}", &{{ regfile.inst_name }}_t::{{ child.inst_name }})
+        {% endif %}
+        {% endfor %}
+        ;
+    {% endfor %}
+    
+    {% for addrmap in nodes.addrmaps %}
+    {% if addrmap != top_node %}
+    // Addrmap class: {{ addrmap.inst_name }}
+    py::class_<{{ addrmap.inst_name }}_t, NodeBase>(m, "{{ addrmap.inst_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() }}"{% endif %})
+        .def(py::init<uint64_t>())
+        {% for child in addrmap.children() %}
+        {% if child.inst_name %}
+        .def_readonly("{{ child.inst_name }}", &{{ addrmap.inst_name }}_t::{{ child.inst_name }})
+        {% endif %}
+        {% endfor %}
+        ;
+    {% endif %}
     {% endfor %}
     
     {% for mem in nodes.mems %}

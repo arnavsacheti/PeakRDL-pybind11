@@ -79,7 +79,8 @@ protected:
 class RegisterBase {
 public:
     RegisterBase(const std::string& name, uint64_t offset, size_t width)
-        : name_(name), offset_(offset), width_(width), master_(nullptr) {}
+        : name_(name), offset_(offset), width_(width), master_(nullptr), 
+          in_context_(false), cached_value_(0) {}
     
     virtual ~RegisterBase() = default;
     
@@ -96,6 +97,10 @@ public:
         if (!master_) {
             throw std::runtime_error("No master attached to register: " + name_);
         }
+        // If in context, return cached value
+        if (in_context_) {
+            return cached_value_;
+        }
         return master_->read(offset_, width_);
     }
     
@@ -106,7 +111,12 @@ public:
         if (!master_) {
             throw std::runtime_error("No master attached to register: " + name_);
         }
-        master_->write(offset_, value, width_);
+        // If in context, update cached value
+        if (in_context_) {
+            cached_value_ = value;
+        } else {
+            master_->write(offset_, value, width_);
+        }
     }
     
     /**
@@ -118,11 +128,43 @@ public:
         write(new_value);
     }
     
+    /**
+     * Enter context manager - read current value and cache it
+     */
+    RegisterBase* __enter__() {
+        if (in_context_) {
+            throw std::runtime_error("Register " + name_ + " is already in a context");
+        }
+        if (!master_) {
+            throw std::runtime_error("No master attached to register: " + name_);
+        }
+        // Read current value and cache it
+        cached_value_ = master_->read(offset_, width_);
+        in_context_ = true;
+        return this;
+    }
+    
+    /**
+     * Exit context manager - write cached value back to register
+     */
+    void exit_context() {
+        if (!in_context_) {
+            throw std::runtime_error("Register " + name_ + " is not in a context");
+        }
+        // Write cached value back to register
+        if (master_) {
+            master_->write(offset_, cached_value_, width_);
+        }
+        in_context_ = false;
+    }
+    
 protected:
     std::string name_;
     uint64_t offset_;
     size_t width_;
     Master* master_;
+    bool in_context_;
+    uint64_t cached_value_;
 };
 
 /**
@@ -372,7 +414,7 @@ class {{ soc_name }}_t : public NodeBase {
 public:
     {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {
         {% for child in top_node.children() %}
-        {% if child.inst_name %}
+        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
         {{ child.inst_name }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
@@ -386,7 +428,7 @@ public:
     void set_offset(uint64_t offset) {
         offset_ = offset;
         {% for child in top_node.children() %}
-        {% if child.inst_name %}
+        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
         {{ child.inst_name }}.set_offset(offset_);
         {% endif %}
         {% endfor %}

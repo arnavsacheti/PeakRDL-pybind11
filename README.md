@@ -19,8 +19,38 @@ PeakRDL-pybind11 is an exporter for the PeakRDL toolchain that generates PyBind1
   - `read()`: Read register values
   - `write()`: Write register values
   - `modify()`: Read-modify-write operations
+  - **Context Manager Support**: Batch field modifications for efficient register updates
 - **Type Safety**: Generated `.pyi` stub files for full IDE support and type checking
 - **Python-Based Testing**: Enable hardware testing with callbacks and custom logic
+
+## Context Manager Support
+
+The context manager feature allows you to batch multiple field modifications into a single bus transaction, significantly improving performance when updating multiple fields in the same register:
+
+```python
+# Traditional approach: Each field write is a separate read-modify-write cycle (6 bus transactions)
+soc.uart.control.enable.write(1)      # Read + Write
+soc.uart.control.baudrate.write(2)    # Read + Write
+soc.uart.control.parity.write(1)      # Read + Write
+
+# Context manager approach: All modifications batched into one transaction (2 bus transactions)
+with soc.uart.control as reg:
+    reg.enable.write(1)       # Cached
+    reg.baudrate.write(2)     # Cached
+    reg.parity.write(1)       # Cached
+    # All changes written atomically when exiting context
+
+# You can also read and manipulate field values within the context
+with soc.uart.control as reg:
+    current_mode = reg.mode.read()
+    reg.enable.write(current_mode & 0x1)
+    reg.baudrate.write(2)
+```
+
+Benefits:
+- **Performance**: Reduces bus transactions from N read + N write to 1 read + 1 write
+- **Atomicity**: All field changes are committed together
+- **Readability**: Cleaner code for complex field manipulations
 
 ## Installation
 
@@ -96,15 +126,35 @@ from peakrdl_pybind11.masters import MockMaster
 
 # Create and attach a master
 soc = MySoC.create()
-master = MockMaster()
+mock = MockMaster()
+master = MySoC.wrap_master(mock)
 soc.attach_master(master)
 
 # Read/write registers
 value = soc.peripherals.uart.control.read()
 soc.peripherals.uart.control.write(0x1234)
 
-# Modify specific fields
-soc.peripherals.uart.control.modify(enable=1, mode=2)
+# Access individual fields
+soc.peripherals.uart.control.enable.write(1)
+enable_value = soc.peripherals.uart.control.enable.read()
+
+# Modify specific fields (traditional approach - each field modification is a separate bus transaction)
+soc.peripherals.uart.control.enable.write(1)
+soc.peripherals.uart.control.baudrate.write(2)
+soc.peripherals.uart.control.parity.write(1)
+
+# Use context manager for batched field modifications (recommended)
+# Only 1 read + 1 write transaction to the bus
+with soc.peripherals.uart.control as reg:
+    reg.enable.write(1)
+    reg.baudrate.write(2)
+    reg.parity.write(1)
+    # All changes are cached and written atomically when exiting the context
+
+# Copy and modify field values within a context
+with soc.peripherals.uart.control as reg:
+    current_baudrate = reg.baudrate.read()
+    reg.enable.write(current_baudrate & 0x1)  # Use one field value to set another
 ```
 
 ## Requirements

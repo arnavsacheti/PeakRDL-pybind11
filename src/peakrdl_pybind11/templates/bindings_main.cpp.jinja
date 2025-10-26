@@ -13,6 +13,33 @@
 namespace py = pybind11;
 using namespace {{ soc_name }};
 
+// Trampoline class for Master to allow Python inheritance
+class PyMaster : public Master {
+public:
+    using Master::Master;
+    
+    uint64_t read(uint64_t address, size_t width) override {
+        PYBIND11_OVERRIDE_PURE(
+            uint64_t,
+            Master,
+            read,
+            address,
+            width
+        );
+    }
+    
+    void write(uint64_t address, uint64_t value, size_t width) override {
+        PYBIND11_OVERRIDE_PURE(
+            void,
+            Master,
+            write,
+            address,
+            value,
+            width
+        );
+    }
+};
+
 // Forward declarations for chunk binding functions
 {% for i in range(num_chunks) %}
 void bind_registers_chunk_{{ i }}(py::module& m);
@@ -21,8 +48,9 @@ void bind_registers_chunk_{{ i }}(py::module& m);
 PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     m.doc() = "{{ soc_name }} register map generated from SystemRDL";
     
-    // Master interface
-    py::class_<Master>(m, "Master")
+    // Master interface with trampoline for Python inheritance
+    py::class_<Master, PyMaster>(m, "Master")
+        .def(py::init<>())
         .def("read", &Master::read, "Read from address")
         .def("write", &Master::write, "Write to address");
     
@@ -44,7 +72,11 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("width", &RegisterBase::width)
         .def("read", &RegisterBase::read, "Read register value")
         .def("write", &RegisterBase::write, "Write register value")
-        .def("modify", &RegisterBase::modify, "Read-modify-write operation");
+        .def("modify", &RegisterBase::modify, "Read-modify-write operation")
+        .def("__enter__", &RegisterBase::__enter__, "Enter context manager")
+        .def("__exit__", [](RegisterBase& self, py::object exc_type, py::object exc_value, py::object traceback) {
+            self.exit_context();
+        }, "Exit context manager");
     
     // NodeBase
     py::class_<NodeBase>(m, "NodeBase")
