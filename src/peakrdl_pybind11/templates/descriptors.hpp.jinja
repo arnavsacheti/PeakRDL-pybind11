@@ -13,6 +13,7 @@
 #include <memory>
 #include <functional>
 #include <stdexcept>
+#include <vector>
 
 namespace {{ soc_name }} {
 
@@ -147,6 +148,67 @@ protected:
     Master* master_;
 };
 
+/**
+ * Base class for memory arrays
+ * Provides list-like interface for accessing memory entries
+ */
+template<typename EntryType>
+class MemoryBase : public NodeBase {
+public:
+    MemoryBase(const std::string& name, uint64_t base_offset, size_t num_entries, size_t entry_size)
+        : NodeBase(name, base_offset), num_entries_(num_entries), entry_size_(entry_size) {
+        // Pre-allocate all entries
+        entries_.reserve(num_entries);
+        for (size_t i = 0; i < num_entries; ++i) {
+            entries_.emplace_back(base_offset + i * entry_size);
+        }
+    }
+    
+    virtual ~MemoryBase() = default;
+    
+    void set_master(Master* master) override {
+        NodeBase::set_master(master);
+        for (auto& entry : entries_) {
+            entry.set_master(master);
+        }
+    }
+    
+    /**
+     * Get entry at specific index
+     */
+    EntryType& operator[](size_t index) {
+        if (index >= num_entries_) {
+            throw std::out_of_range("Memory index out of range: " + std::to_string(index));
+        }
+        return entries_[index];
+    }
+    
+    const EntryType& operator[](size_t index) const {
+        if (index >= num_entries_) {
+            throw std::out_of_range("Memory index out of range: " + std::to_string(index));
+        }
+        return entries_[index];
+    }
+    
+    /**
+     * Get number of entries
+     */
+    size_t size() const { return num_entries_; }
+    
+    /**
+     * Iterator support
+     */
+    typename std::vector<EntryType>::iterator begin() { return entries_.begin(); }
+    typename std::vector<EntryType>::iterator end() { return entries_.end(); }
+    typename std::vector<EntryType>::const_iterator begin() const { return entries_.begin(); }
+    typename std::vector<EntryType>::const_iterator end() const { return entries_.end(); }
+    
+protected:
+    std::vector<EntryType> entries_;
+    size_t num_entries_;
+    size_t entry_size_;
+};
+
 {% for addrmap in nodes.addrmaps %}
 {% if addrmap != top_node %}
 // Forward declaration for {{ addrmap.inst_name }}
@@ -157,6 +219,11 @@ class {{ addrmap.inst_name }}_t;
 {% for regfile in nodes.regfiles %}
 // Forward declaration for {{ regfile.inst_name }}
 class {{ regfile.inst_name }}_t;
+{% endfor %}
+
+{% for mem in nodes.mems %}
+// Forward declaration for memory {{ mem.inst_name }}
+class {{ mem.inst_name }}_t;
 {% endfor %}
 
 {% for reg in nodes.regs %}
@@ -234,6 +301,31 @@ public:
     {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
     {% endif %}
     {% endfor %}
+};
+
+{% endfor %}
+
+{% for mem in nodes.mems %}
+// Memory: {{ mem.inst_name }}
+{%- set entry_reg = mem.children()|list|first %}
+
+class {{ mem.inst_name }}_t : public MemoryBase<{{ entry_reg.inst_name }}_t> {
+public:
+    {{ mem.inst_name }}_t(uint64_t base_offset) 
+        : MemoryBase<{{ entry_reg.inst_name }}_t>("{{ mem.inst_name }}", base_offset, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
+    
+    void set_offset(uint64_t base_offset) {
+        offset_ = base_offset;
+        // Update all entry offsets
+        size_t entry_size = {{ entry_reg.size }};
+        for (size_t i = 0; i < entries_.size(); ++i) {
+            entries_[i] = {{ entry_reg.inst_name }}_t(base_offset + i * entry_size);
+        }
+        // Re-apply master if set
+        if (master_) {
+            set_master(master_);
+        }
+    }
 };
 
 {% endfor %}

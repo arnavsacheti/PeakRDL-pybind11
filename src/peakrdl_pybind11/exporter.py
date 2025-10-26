@@ -17,6 +17,7 @@ class Nodes(TypedDict):
     regfiles: list[RegfileNode]
     regs: list[RegNode]
     fields: list[FieldNode]
+    mems: list[MemNode]
 
 
 class Pybind11Exporter:
@@ -161,6 +162,7 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             num_chunks=num_chunks,
+            nodes=nodes,
         )
 
         assert self.output_dir is not None
@@ -204,6 +206,7 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             num_chunks=num_chunks,
+            nodes=nodes,
         )
 
         assert self.output_dir is not None
@@ -358,6 +361,7 @@ class Pybind11Exporter:
                 "regfiles": [],
                 "regs": [],
                 "fields": [],
+                "mems": [],
             }
 
         if isinstance(node, AddrmapNode):
@@ -366,6 +370,10 @@ class Pybind11Exporter:
                 self._collect_nodes(child, nodes)
         elif isinstance(node, RegfileNode):
             nodes["regfiles"].append(node)
+            for child in node.children():
+                self._collect_nodes(child, nodes)
+        elif isinstance(node, MemNode):
+            nodes["mems"].append(node)
             for child in node.children():
                 self._collect_nodes(child, nodes)
         elif isinstance(node, RegNode):
