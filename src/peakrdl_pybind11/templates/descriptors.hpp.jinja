@@ -14,7 +14,6 @@
 #include <functional>
 #include <stdexcept>
 #include <vector>
-#include <pybind11/pybind11.h>
 
 namespace {{ soc_name }} {
 
@@ -148,7 +147,7 @@ public:
     /**
      * Exit context manager - write cached value back to register
      */
-    void __exit__(pybind11::object exc_type, pybind11::object exc_value, pybind11::object traceback) {
+    void exit_context() {
         if (!in_context_) {
             throw std::runtime_error("Register " + name_ + " is not in a context");
         }
