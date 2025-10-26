@@ -10,12 +10,11 @@ This script shows how memory types can be accessed like Python lists:
 """
 
 import os
-import sys
 import tempfile
-from pathlib import Path
 
 from systemrdl import RDLCompiler
 from peakrdl_pybind11 import Pybind11Exporter
+
 
 
 # Sample SystemRDL with memory
