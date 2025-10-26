@@ -99,6 +99,38 @@ class TestExporter:
             assert os.path.exists(os.path.join(tmpdir, 'custom_name_descriptors.hpp'))
             assert os.path.exists(os.path.join(tmpdir, 'custom_name_bindings.cpp'))
     
+    def test_custom_soc_version(self):
+        """Test export with custom SoC version"""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SIMPLE_RDL))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            exporter.export(root.top, tmpdir, soc_name="test_soc", soc_version="2.0.1")
+            
+            # Verify pyproject.toml uses custom version
+            with open(os.path.join(tmpdir, 'pyproject.toml'), 'r') as f:
+                content = f.read()
+            
+            assert 'version = "2.0.1"' in content
+    
+    def test_default_soc_version(self):
+        """Test export with default SoC version"""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SIMPLE_RDL))
+        root = rdl.elaborate()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            exporter.export(root.top, tmpdir, soc_name="test_soc")
+            
+            # Verify pyproject.toml uses default version 0.1.0
+            with open(os.path.join(tmpdir, 'pyproject.toml'), 'r') as f:
+                content = f.read()
+            
+            assert 'version = "0.1.0"' in content
+    
     def test_no_pyi_generation(self):
         """Test export without .pyi stub generation"""
         rdl = RDLCompiler()
