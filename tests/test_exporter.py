@@ -4,8 +4,6 @@ Basic tests for PeakRDL-pybind11 exporter
 
 import os
 import tempfile
-import shutil
-from pathlib import Path
 
 import pytest
 from systemrdl import RDLCompiler
@@ -155,7 +153,7 @@ class TestExporter:
             exporter.export(root.top, tmpdir, soc_name="test_soc")
             
             # Read generated header
-            with open(os.path.join(tmpdir, 'test_soc_descriptors.hpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'test_soc_descriptors.hpp')) as f:
                 content = f.read()
             
             # Verify key elements are present
@@ -175,7 +173,7 @@ class TestExporter:
             exporter.export(root.top, tmpdir, soc_name="test_soc")
             
             # Read generated bindings
-            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp')) as f:
                 content = f.read()
             
             # Verify key elements are present
@@ -214,7 +212,7 @@ class TestExporter:
             assert os.path.exists(os.path.join(tmpdir, 'large_soc_bindings_1.cpp'))
             
             # Read main bindings file
-            with open(os.path.join(tmpdir, 'large_soc_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'large_soc_bindings.cpp')) as f:
                 main_content = f.read()
             
             # Verify it has forward declarations and calls to chunk functions
@@ -222,7 +220,7 @@ class TestExporter:
             assert 'bind_registers_chunk_1' in main_content
             
             # Read chunk file
-            with open(os.path.join(tmpdir, 'large_soc_bindings_0.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'large_soc_bindings_0.cpp')) as f:
                 chunk_content = f.read()
             
             # Verify chunk has register bindings
@@ -230,7 +228,7 @@ class TestExporter:
             assert '#include <pybind11/pybind11.h>' in chunk_content
             
             # Verify CMakeLists.txt includes all source files
-            with open(os.path.join(tmpdir, 'CMakeLists.txt'), 'r') as f:
+            with open(os.path.join(tmpdir, 'CMakeLists.txt')) as f:
                 cmake_content = f.read()
             
             assert 'large_soc_bindings.cpp' in cmake_content
@@ -280,7 +278,7 @@ addrmap hierarchical_soc {
             assert os.path.exists(os.path.join(tmpdir, 'hierarchical_soc_bindings_1.cpp'))
             
             # Read main bindings file
-            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings.cpp')) as f:
                 main_content = f.read()
             
             # Verify it has forward declarations and calls to chunk functions
@@ -288,13 +286,13 @@ addrmap hierarchical_soc {
             assert 'bind_registers_chunk_1' in main_content
             
             # Read chunk file and verify it has register bindings
-            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings_0.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'hierarchical_soc_bindings_0.cpp')) as f:
                 chunk_content = f.read()
             
             assert 'void bind_registers_chunk_0' in chunk_content
             
             # Verify CMakeLists.txt includes all source files
-            with open(os.path.join(tmpdir, 'CMakeLists.txt'), 'r') as f:
+            with open(os.path.join(tmpdir, 'CMakeLists.txt')) as f:
                 cmake_content = f.read()
             
             assert 'hierarchical_soc_bindings.cpp' in cmake_content
@@ -319,7 +317,7 @@ addrmap hierarchical_soc {
             assert not os.path.exists(os.path.join(tmpdir, 'test_soc_bindings_0.cpp'))
             
             # Read bindings file and verify it's not using split mode
-            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp')) as f:
                 content = f.read()
             
             assert 'bind_registers_chunk' not in content

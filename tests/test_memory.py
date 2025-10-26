@@ -4,7 +4,6 @@ Tests for memory type support in PeakRDL-pybind11
 
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
 from systemrdl import RDLCompiler
@@ -92,7 +91,7 @@ class TestMemoryExport:
             exporter.export(root.top, tmpdir, soc_name="mem_test")
             
             # Read generated header
-            with open(os.path.join(tmpdir, 'mem_test_descriptors.hpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'mem_test_descriptors.hpp')) as f:
                 content = f.read()
             
             # Verify MemoryBase class is present
@@ -120,7 +119,7 @@ class TestMemoryExport:
             exporter.export(root.top, tmpdir, soc_name="mem_test")
             
             # Read generated bindings
-            with open(os.path.join(tmpdir, 'mem_test_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'mem_test_bindings.cpp')) as f:
                 content = f.read()
             
             # Verify list-like interface bindings
@@ -149,7 +148,7 @@ class TestMemoryExport:
             exporter.export(root.top, tmpdir, soc_name="mem_test")
             
             # Read generated stubs
-            with open(os.path.join(tmpdir, '__init__.pyi'), 'r') as f:
+            with open(os.path.join(tmpdir, '__init__.pyi')) as f:
                 content = f.read()
             
             # Verify memory class stubs
@@ -182,7 +181,7 @@ class TestMemoryExport:
             exporter.export(root.top, tmpdir, soc_name="mem_test")
             
             # Read generated header
-            with open(os.path.join(tmpdir, 'mem_test_descriptors.hpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'mem_test_descriptors.hpp')) as f:
                 content = f.read()
             
             # Verify memory members in top-level class
@@ -225,7 +224,7 @@ addrmap large_soc {
             assert os.path.exists(os.path.join(tmpdir, 'large_soc_bindings.cpp'))
             
             # Read main bindings and verify memory is bound
-            with open(os.path.join(tmpdir, 'large_soc_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'large_soc_bindings.cpp')) as f:
                 content = f.read()
             
             # Memory bindings should be in the main file
@@ -243,7 +242,7 @@ addrmap large_soc {
             exporter.export(root.top, tmpdir, soc_name="mem_test")
             
             # Read generated header
-            with open(os.path.join(tmpdir, 'mem_test_descriptors.hpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'mem_test_descriptors.hpp')) as f:
                 content = f.read()
             
             # Verify set_offset method exists in memory class

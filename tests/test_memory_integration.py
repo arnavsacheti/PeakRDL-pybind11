@@ -4,10 +4,8 @@ This test generates code, attempts to build it, and verify the Python list-like 
 """
 
 import os
-import sys
-import tempfile
 import subprocess
-from pathlib import Path
+import tempfile
 
 import pytest
 from systemrdl import RDLCompiler
@@ -87,7 +85,7 @@ class TestMemoryIntegration:
                 assert os.path.exists(filepath), f"Missing file: {filename}"
             
             # Verify descriptor content has memory base class
-            with open(os.path.join(tmpdir, 'integration_test_descriptors.hpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'integration_test_descriptors.hpp')) as f:
                 descriptor_content = f.read()
             
             assert 'class MemoryBase' in descriptor_content
@@ -100,7 +98,7 @@ class TestMemoryIntegration:
             assert 'RegisterBase("entry", base_offset + 0x1000, 4)' in descriptor_content
             
             # Verify bindings content has memory interface
-            with open(os.path.join(tmpdir, 'integration_test_bindings.cpp'), 'r') as f:
+            with open(os.path.join(tmpdir, 'integration_test_bindings.cpp')) as f:
                 bindings_content = f.read()
             
             # Verify Python list-like interface bindings
@@ -113,7 +111,7 @@ class TestMemoryIntegration:
             assert 'slice.compute' in bindings_content
             
             # Verify stubs have proper typing
-            with open(os.path.join(tmpdir, '__init__.pyi'), 'r') as f:
+            with open(os.path.join(tmpdir, '__init__.pyi')) as f:
                 stub_content = f.read()
             
             assert 'class ctrl_mem_t' in stub_content
