@@ -14,7 +14,9 @@ except ImportError as e:
     print(f"  cd <output_dir> && python setup.py build_ext --inplace", file=sys.stderr)
     raise
 
-__all__ = ['{{ soc_name }}_t', 'Master', 'create']
+from peakrdl_pybind11.int_types import RegisterInt, FieldInt
+
+__all__ = ['{{ soc_name }}_t', 'Master', 'create', 'RegisterInt', 'FieldInt']
 
 def create():
     """
@@ -69,3 +71,109 @@ def wrap_master(master_impl):
     return WrappedMaster()
 
 __all__.append('wrap_master')
+
+# Add enhanced read/write methods that use RegisterInt/FieldInt
+# These will be mixed in after the module is loaded
+
+def _make_enhanced_register_read(reg_class):
+    """Create enhanced read method for a register class."""
+    original_read = reg_class.read
+    
+    def enhanced_read(self):
+        value = original_read(self)
+        
+        # Build fields dictionary from field attributes
+        fields = {}
+        for attr_name in dir(self):
+            if not attr_name.startswith('_') and attr_name not in [
+                'name', 'offset', 'width', 'read', 'write', 'modify', 
+                'set_master', 'is_readable', 'is_writable'
+            ]:
+                try:
+                    attr = getattr(self, attr_name)
+                    if hasattr(attr, 'lsb') and hasattr(attr, 'width'):
+                        fields[attr_name] = (attr.lsb, attr.width)
+                except:
+                    pass
+        
+        return RegisterInt(value, self.offset, self.width, fields)
+    
+    return enhanced_read
+
+
+def _make_enhanced_register_write(reg_class):
+    """Create enhanced write method for a register class."""
+    original_write = reg_class.write
+    original_modify = reg_class.modify
+    
+    def enhanced_write(self, value):
+        if isinstance(value, FieldInt):
+            # Read-modify-write for FieldInt
+            # Extract the field value and position from FieldInt
+            field_value = int(value)
+            mask = value.mask
+            # Shift the field value to the correct position
+            shifted_value = (field_value << value.lsb) & mask
+            original_modify(self, shifted_value, mask)
+        else:
+            # Direct write for int or RegisterInt
+            original_write(self, int(value))
+    
+    return enhanced_write
+
+
+def _make_enhanced_field_read(field_class):
+    """Create enhanced read method for a field class."""
+    original_read = field_class.read
+    
+    def enhanced_read(self):
+        value = original_read(self)
+        return FieldInt(value, self.lsb, self.width, self.offset)
+    
+    return enhanced_read
+
+
+def _make_enhanced_field_write(field_class):
+    """Create enhanced write method for a field class."""
+    original_write = field_class.write
+    
+    def enhanced_write(self, value):
+        # Accept both int and FieldInt
+        original_write(self, int(value))
+    
+    return enhanced_write
+
+
+# Enhance all generated register and field classes
+# We need to do this after all classes are defined
+_register_types = []
+_field_types = []
+
+# Collect register types (classes ending in _t with read/write/offset/width)
+for _name in list(globals().keys()):
+    _obj = globals()[_name]
+    if isinstance(_obj, type):
+        if _name.endswith('_t') and hasattr(_obj, 'read') and hasattr(_obj, 'write'):
+            if hasattr(_obj, 'offset') and hasattr(_obj, 'width') and hasattr(_obj, 'modify'):
+                _register_types.append(_obj)
+        elif '_field' in _name and hasattr(_obj, 'read') and hasattr(_obj, 'write'):
+            if hasattr(_obj, 'lsb') and hasattr(_obj, 'width'):
+                _field_types.append(_obj)
+
+# Apply enhancements
+for _reg_type in _register_types:
+    _reg_type.read = _make_enhanced_register_read(_reg_type)
+    _reg_type.write = _make_enhanced_register_write(_reg_type)
+
+for _field_type in _field_types:
+    _field_type.read = _make_enhanced_field_read(_field_type)
+    _field_type.write = _make_enhanced_field_write(_field_type)
+
+# Clean up temporary variables
+del _register_types, _field_types, _name, _obj
+if '_reg_type' in dir():
+    del _reg_type
+if '_field_type' in dir():
+    del _field_type
+
+
