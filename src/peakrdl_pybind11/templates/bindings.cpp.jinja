@@ -47,7 +47,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     py::class_<Master, PyMaster>(m, "Master")
         .def(py::init<>())
         .def("read", &Master::read, "Read from address")
-        .def("write", &Master::write, "Write to address");
+        .def("write", &Master::write, "Write to address")
+        .def("__repr__", &Master::__repr__)
+        .def("__str__", &Master::__repr__);
     
     // FieldBase
     py::class_<FieldBase>(m, "FieldBase")
@@ -58,7 +60,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("width", &FieldBase::width)
         .def_property_readonly("is_readable", &FieldBase::is_readable)
         .def_property_readonly("is_writable", &FieldBase::is_writable)
-        .def_property_readonly("mask", &FieldBase::mask);
+        .def_property_readonly("mask", &FieldBase::mask)
+        .def("__repr__", &FieldBase::__repr__)
+        .def("__str__", &FieldBase::__repr__);
     
     // RegisterBase
     py::class_<RegisterBase>(m, "RegisterBase")
@@ -71,12 +75,16 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("__enter__", &RegisterBase::__enter__, "Enter context manager")
         .def("__exit__", [](RegisterBase& self, py::object exc_type, py::object exc_value, py::object traceback) {
             self.exit_context();
-        }, "Exit context manager");
+        }, "Exit context manager")
+        .def("__repr__", &RegisterBase::__repr__)
+        .def("__str__", &RegisterBase::__repr__);
     
     // NodeBase
     py::class_<NodeBase>(m, "NodeBase")
         .def_property_readonly("name", &NodeBase::name)
-        .def_property_readonly("offset", &NodeBase::offset);
+        .def_property_readonly("offset", &NodeBase::offset)
+        .def("__repr__", &NodeBase::__repr__)
+        .def("__str__", &NodeBase::__repr__);
     
     {% for reg in nodes.regs %}
     // Register class: {{ reg.inst_name }}
