@@ -5,6 +5,8 @@ These classes extend Python's int to include position and width information,
 enabling smart read-modify-write operations.
 """
 
+from typing import Self
+
 
 class FieldInt(int):
     """
@@ -17,7 +19,7 @@ class FieldInt(int):
         offset: Register offset address
     """
     
-    def __new__(cls, value: int, lsb: int, width: int, offset: int):
+    def __new__(cls, value: int, lsb: int, width: int, offset: int) -> Self:
         """
         Create a new FieldInt.
         
@@ -73,7 +75,7 @@ class RegisterInt(int):
         _fields: Dictionary mapping field names to FieldInt values
     """
     
-    def __new__(cls, value: int, offset: int, width: int, fields: dict = None):
+    def __new__(cls, value: int, offset: int, width: int, fields: dict | None = None) -> Self:
         """
         Create a new RegisterInt.
         
@@ -107,7 +109,7 @@ class RegisterInt(int):
         """Register width in bytes."""
         return self._width
     
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> "FieldInt":
         """
         Access fields as attributes.
         

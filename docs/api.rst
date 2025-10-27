@@ -8,4 +8,5 @@ This section provides detailed API documentation for PeakRDL-pybind11.
 
    api/exporter
    api/masters
+   api/int_types
 
