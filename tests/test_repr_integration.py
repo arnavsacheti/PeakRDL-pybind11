@@ -5,7 +5,6 @@ This test actually builds and imports the generated module to verify __repr__ wo
 
 import os
 import subprocess
-import sys
 import tempfile
 
 import pytest

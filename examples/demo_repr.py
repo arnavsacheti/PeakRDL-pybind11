@@ -6,10 +6,12 @@ This script shows what the generated __repr__ methods look like for various clas
 Note: This is a demonstration of the generated C++ code structure, not a working runtime example.
 """
 
-from systemrdl import RDLCompiler
-from peakrdl_pybind11 import Pybind11Exporter
-import tempfile
 import os
+import tempfile
+
+from systemrdl import RDLCompiler
+
+from peakrdl_pybind11 import Pybind11Exporter
 
 # Sample RDL
 RDL_CONTENT = """
@@ -109,7 +111,7 @@ addrmap demo_soc {
 };
 """
 
-def main():
+def main() -> None:
     print("=" * 80)
     print("PeakRDL-pybind11 __repr__ and __str__ Demonstration")
     print("=" * 80)
@@ -238,7 +240,7 @@ def main():
             os.unlink(rdl_file)
 
 
-def _write_rdl(content):
+def _write_rdl(content: str) -> str:
     """Write RDL content to a temporary file"""
     import tempfile
     fd, path = tempfile.mkstemp(suffix='.rdl')
