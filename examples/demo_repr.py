@@ -242,7 +242,6 @@ def main() -> None:
 
 def _write_rdl(content: str) -> str:
     """Write RDL content to a temporary file"""
-    import tempfile
     fd, path = tempfile.mkstemp(suffix='.rdl')
     os.write(fd, content.encode('utf-8'))
     os.close(fd)
