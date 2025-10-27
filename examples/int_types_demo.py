@@ -6,10 +6,10 @@ This script shows how to use the new RegisterInt and FieldInt classes
 for enhanced register manipulation with metadata preservation.
 """
 
-from peakrdl_pybind11 import RegisterInt, FieldInt
+from peakrdl_pybind11 import FieldInt, RegisterInt
 
 
-def main():
+def main() -> None:
     print("=" * 70)
     print("RegisterInt and FieldInt Example")
     print("=" * 70)
@@ -19,7 +19,7 @@ def main():
     print("1. Creating a FieldInt")
     print("-" * 70)
     field = FieldInt(0x5, lsb=2, width=3, offset=0x1000)
-    print(f"   field = FieldInt(0x5, lsb=2, width=3, offset=0x1000)")
+    print("   field = FieldInt(0x5, lsb=2, width=3, offset=0x1000)")
     print(f"   Value: {int(field)}")
     print(f"   LSB: {field.lsb}")
     print(f"   MSB: {field.msb}")
@@ -36,13 +36,13 @@ def main():
         offset=0x2000,
         width=4,
         fields={
-            'enable': (0, 1),
-            'mode': (1, 3),
-            'status': (4, 4),
-            'data': (8, 8),
-        }
+            "enable": (0, 1),
+            "mode": (1, 3),
+            "status": (4, 4),
+            "data": (8, 8),
+        },
     )
-    print(f"   reg = RegisterInt(0xABCD, offset=0x2000, width=4, fields={{...}})")
+    print("   reg = RegisterInt(0xABCD, offset=0x2000, width=4, fields={...})")
     print(f"   Value: {int(reg):#06x}")
     print(f"   Offset: {reg.offset:#x}")
     print(f"   Width: {reg.width} bytes")
@@ -59,9 +59,9 @@ def main():
     print("-" * 70)
     field1 = FieldInt(5, lsb=0, width=4, offset=0)
     field2 = FieldInt(3, lsb=0, width=4, offset=0)
-    
-    print(f"   field1 = FieldInt(5, ...)")
-    print(f"   field2 = FieldInt(3, ...)")
+
+    print("   field1 = FieldInt(5, ...)")
+    print("   field2 = FieldInt(3, ...)")
     print(f"   field1 > field2: {field1 > field2}")
     print(f"   field1 == 5: {field1 == 5}")
     print(f"   field2 < 5: {field2 < 5}")
@@ -75,47 +75,47 @@ def main():
     print("     - mode (bits 3:1)")
     print("     - priority (bits 7:4)")
     print()
-    
+
     # Initial register value
     initial_value = RegisterInt(
         0x5B,  # 0b0101_1011
         offset=0x3000,
         width=4,
         fields={
-            'enable': (0, 1),
-            'mode': (1, 3),
-            'priority': (4, 4),
-        }
+            "enable": (0, 1),
+            "mode": (1, 3),
+            "priority": (4, 4),
+        },
     )
-    
+
     print(f"   Initial register value: {int(initial_value):#04x}")
     print(f"     enable   = {int(initial_value.enable)} (bit 0)")
     print(f"     mode     = {int(initial_value.mode)} (bits 3:1)")
     print(f"     priority = {int(initial_value.priority)} (bits 7:4)")
     print()
-    
+
     # Create a FieldInt to modify only the mode field
     new_mode = FieldInt(7, lsb=1, width=3, offset=0x3000)
-    print(f"   Want to change mode to 7 (leaving other fields unchanged)")
-    print(f"   new_mode = FieldInt(7, lsb=1, width=3, offset=0x3000)")
+    print("   Want to change mode to 7 (leaving other fields unchanged)")
+    print("   new_mode = FieldInt(7, lsb=1, width=3, offset=0x3000)")
     print(f"   new_mode.mask = {new_mode.mask:#010b}")
     print()
-    
+
     # Simulate RMW operation
     current_val = int(initial_value)
     new_val = (current_val & ~new_mode.mask) | ((int(new_mode) << new_mode.lsb) & new_mode.mask)
-    
+
     result = RegisterInt(
         new_val,
         offset=0x3000,
         width=4,
         fields={
-            'enable': (0, 1),
-            'mode': (1, 3),
-            'priority': (4, 4),
-        }
+            "enable": (0, 1),
+            "mode": (1, 3),
+            "priority": (4, 4),
+        },
     )
-    
+
     print(f"   After RMW: {int(result):#04x}")
     print(f"     enable   = {int(result.enable)} (unchanged)")
     print(f"     mode     = {int(result.mode)} (changed to 7)")
