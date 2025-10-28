@@ -14,6 +14,8 @@
 #include <functional>
 #include <stdexcept>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 
 namespace {{ soc_name }} {
 
@@ -38,6 +40,13 @@ public:
      * Write a value to the given address
      */
     virtual void write(uint64_t address, uint64_t value, size_t width) = 0;
+    
+    /**
+     * String representation
+     */
+    virtual std::string __repr__() const {
+        return "<Master>";
+    }
 };
 
 /**
@@ -62,6 +71,17 @@ public:
     
     uint64_t mask() const { 
         return ((1ULL << width_) - 1) << lsb_; 
+    }
+    
+    /**
+     * String representation
+     */
+    std::string __repr__() const {
+        std::ostringstream oss;
+        oss << "<Field '" << name_ << "' @ 0x" << std::hex << offset_ 
+            << " [" << std::dec << static_cast<int>(msb()) << ":" << static_cast<int>(lsb()) << "]"
+            << (readable_ ? " R" : "") << (writable_ ? "W" : "") << ">";
+        return oss.str();
     }
     
 protected:
@@ -158,6 +178,16 @@ public:
         in_context_ = false;
     }
     
+    /**
+     * String representation
+     */
+    std::string __repr__() const {
+        std::ostringstream oss;
+        oss << "<Register '" << name_ << "' @ 0x" << std::hex << std::setfill('0') 
+            << std::setw(4) << offset_ << " (" << std::dec << width_ << " bits)>";
+        return oss.str();
+    }
+    
 protected:
     std::string name_;
     uint64_t offset_;
@@ -182,6 +212,16 @@ public:
     
     virtual void set_master(Master* master) { 
         master_ = master;
+    }
+    
+    /**
+     * String representation
+     */
+    virtual std::string __repr__() const {
+        std::ostringstream oss;
+        oss << "<Node '" << name_ << "' @ 0x" << std::hex << std::setfill('0') 
+            << std::setw(4) << offset_ << ">";
+        return oss.str();
     }
     
 protected:
@@ -244,6 +284,16 @@ public:
     typename std::vector<EntryType>::iterator end() { return entries_.end(); }
     typename std::vector<EntryType>::const_iterator begin() const { return entries_.begin(); }
     typename std::vector<EntryType>::const_iterator end() const { return entries_.end(); }
+    
+    /**
+     * String representation
+     */
+    std::string __repr__() const override {
+        std::ostringstream oss;
+        oss << "<Memory '" << name_ << "' @ 0x" << std::hex << std::setfill('0') 
+            << std::setw(4) << offset_ << " [" << std::dec << num_entries_ << " entries]>";
+        return oss.str();
+    }
     
 protected:
     std::vector<EntryType> entries_;
