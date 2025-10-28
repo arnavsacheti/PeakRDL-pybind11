@@ -111,76 +111,77 @@ addrmap demo_soc {
 };
 """
 
+
 def main() -> None:
     print("=" * 80)
     print("PeakRDL-pybind11 __repr__ and __str__ Demonstration")
     print("=" * 80)
     print()
-    
+
     # Compile RDL
     rdl = RDLCompiler()
     rdl_file = _write_rdl(RDL_CONTENT)
-    
+
     try:
         rdl.compile_file(rdl_file)
         root = rdl.elaborate()
-        
+
         # Export to temporary directory
         with tempfile.TemporaryDirectory() as tmpdir:
             exporter = Pybind11Exporter()
             exporter.export(root.top, tmpdir, soc_name="demo_soc")
-            
+
             print("Generated files in:", tmpdir)
             print()
-            
+
             # Show the __repr__ implementations
-            with open(os.path.join(tmpdir, 'demo_soc_descriptors.hpp')) as f:
+            with open(os.path.join(tmpdir, "demo_soc_descriptors.hpp")) as f:
                 content = f.read()
-            
+
             print("__repr__ Methods in Generated C++ Code")
             print("-" * 80)
             print()
-            
+
             # Extract and display each __repr__ method
             classes = [
                 ("Master", "Abstract bus master interface"),
                 ("FieldBase", "Register field base class"),
                 ("RegisterBase", "Register base class"),
                 ("NodeBase", "Addrmap/Regfile base class"),
-                ("MemoryBase", "Memory array base class")
+                ("MemoryBase", "Memory array base class"),
             ]
-            
-            lines = content.split('\n')
+
+            lines = content.split("\n")
             for class_name, description in classes:
                 print(f"{class_name} - {description}")
                 print("─" * 80)
-                
+
                 # Find the __repr__ method for this class
                 for i, line in enumerate(lines):
-                    if f'class {class_name}' in line or f'class {class_name}<' in line:
+                    if f"class {class_name}" in line or f"class {class_name}<" in line:
                         # Look for __repr__ in the next 100 lines
                         for j in range(i, min(i + 100, len(lines))):
-                            if '__repr__() const' in lines[j]:
+                            if "__repr__() const" in lines[j]:
                                 # Print the __repr__ method
                                 k = j
-                                while k < len(lines) and 'return' not in lines[k]:
+                                while k < len(lines) and "return" not in lines[k]:
                                     print(f"  {lines[k]}")
                                     k += 1
                                 # Print the return line and closing brace
                                 if k < len(lines):
                                     print(f"  {lines[k]}")
                                     k += 1
-                                if k < len(lines) and '}' in lines[k]:
+                                if k < len(lines) and "}" in lines[k]:
                                     print(f"  {lines[k]}")
                                 break
                         break
                 print()
-            
+
             print()
             print("Example Output (what Python users would see)")
             print("─" * 80)
             print()
-            
+
             # Show example outputs
             examples = [
                 ("Field 'enable'", "<Field 'enable' @ 0x0 [0:0] RW>"),
@@ -198,13 +199,13 @@ def main() -> None:
                 ("", ""),
                 ("Master interface", "<Master>"),
             ]
-            
+
             for label, output in examples:
                 if label:
                     print(f"{label:.<40} {output}")
                 else:
                     print()
-            
+
             print()
             print("=" * 80)
             print("Usage in Python")
@@ -234,7 +235,7 @@ def main() -> None:
             print("  print(repr(soc.buffer))         # <Memory 'buffer' @ 0x2000 [32 entries]>")
             print()
             print("=" * 80)
-            
+
     finally:
         if os.path.exists(rdl_file):
             os.unlink(rdl_file)
@@ -242,8 +243,8 @@ def main() -> None:
 
 def _write_rdl(content: str) -> str:
     """Write RDL content to a temporary file"""
-    fd, path = tempfile.mkstemp(suffix='.rdl')
-    os.write(fd, content.encode('utf-8'))
+    fd, path = tempfile.mkstemp(suffix=".rdl")
+    os.write(fd, content.encode("utf-8"))
     os.close(fd)
     return path
 
