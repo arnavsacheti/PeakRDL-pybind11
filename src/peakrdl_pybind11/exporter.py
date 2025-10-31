@@ -373,12 +373,28 @@ class Pybind11Exporter:
             for child in node.children():
                 self._collect_nodes(child, nodes)
         elif isinstance(node, MemNode):
-            nodes["mems"].append(node)
-            for child in node.children():
-                self._collect_nodes(child, nodes)
+            if node.is_array:
+                for element in node.unrolled():
+                    children = list(element.children())
+                    if children:
+                        nodes["mems"].append(element)
+                        for child in children:
+                            self._collect_nodes(child, nodes)
+            else:
+                children = list(node.children())
+                if children:
+                    nodes["mems"].append(node)
+                    for child in children:
+                        self._collect_nodes(child, nodes)
         elif isinstance(node, RegNode):
-            nodes["regs"].append(node)
-            for field in node.fields():
-                nodes["fields"].append(field)
+            if node.is_array:
+                for element in node.unrolled():
+                    nodes["regs"].append(element)
+                    for field in element.fields():
+                        nodes["fields"].append(field)
+            else:
+                nodes["regs"].append(node)
+                for field in node.fields():
+                    nodes["fields"].append(field)
 
         return nodes
