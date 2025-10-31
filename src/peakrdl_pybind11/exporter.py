@@ -375,6 +375,7 @@ class Pybind11Exporter:
         elif isinstance(node, MemNode):
             if node.is_array:
                 for element in node.unrolled():
+                    assert isinstance(element, MemNode)
                     children = list(element.children())
                     if children:
                         nodes["mems"].append(element)
@@ -389,6 +390,7 @@ class Pybind11Exporter:
         elif isinstance(node, RegNode):
             if node.is_array:
                 for element in node.unrolled():
+                    assert isinstance(element, RegNode)
                     nodes["regs"].append(element)
                     for field in element.fields():
                         nodes["fields"].append(field)
