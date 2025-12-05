@@ -281,9 +281,10 @@ discrete states.
    Mode = example.mode_Enum
    
    # Enum members are named in UPPERCASE based on field names
-   idle_mode = Mode.IDLE       # Value: 1
-   running_mode = Mode.RUNNING # Value: 2
-   paused_mode = Mode.PAUSED   # Value: 4
+   # Values are calculated as 2^lsb (representing which bit position is set)
+   idle_mode = Mode.IDLE       # Value: 1 (bit 0 set)
+   running_mode = Mode.RUNNING # Value: 2 (bit 1 set)
+   paused_mode = Mode.PAUSED   # Value: 4 (bit 2 set)
 
    # Compare states
    current_mode = soc.mode.read()  # Returns an IntEnum value

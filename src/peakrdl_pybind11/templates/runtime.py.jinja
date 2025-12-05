@@ -225,7 +225,7 @@ __all__.append('{{ reg.inst_name }}_Enum')
 {% endfor %}
 
 # Clean up temporary variables
-del _register_types, _field_types, _name, _obj
+del _register_types, _field_types, _name, _obj, _special_register_types
 if '_reg_type' in dir():
     del _reg_type
 if '_field_type' in dir():
