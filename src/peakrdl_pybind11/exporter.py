@@ -18,6 +18,8 @@ class Nodes(TypedDict):
     regs: list[RegNode]
     fields: list[FieldNode]
     mems: list[MemNode]
+    flag_regs: list[RegNode]  # Registers with flag UDP property
+    enum_regs: list[RegNode]  # Registers with enum UDP property
 
 
 class Pybind11Exporter:
@@ -86,7 +88,7 @@ class Pybind11Exporter:
         self._generate_bindings(nodes)
 
         # Generate Python runtime
-        self._generate_python_runtime()
+        self._generate_python_runtime(nodes)
 
         # Generate setup.py for building the module
         self._generate_setup_py(nodes)
@@ -277,18 +279,20 @@ class Pybind11Exporter:
 
         return groups
 
-    def _generate_python_runtime(self) -> None:
+    def _generate_python_runtime(self, nodes: Nodes) -> None:
         """Generate Python runtime module"""
         template = self.env.get_template("runtime.py.jinja")
 
         output = template.render(
             soc_name=self.soc_name,
             top_node=self.top_node,
+            nodes=nodes,
         )
 
         assert self.output_dir is not None
         filepath = self.output_dir / "__init__.py"
         with filepath.open("w") as f:
+            f.write(output)
             f.write(output)
 
     def _generate_setup_py(self, nodes: Nodes) -> None:
@@ -362,6 +366,8 @@ class Pybind11Exporter:
                 "regs": [],
                 "fields": [],
                 "mems": [],
+                "flag_regs": [],
+                "enum_regs": [],
             }
 
         if isinstance(node, AddrmapNode):
@@ -392,10 +398,32 @@ class Pybind11Exporter:
                 for element in node.unrolled():
                     assert isinstance(element, RegNode)
                     nodes["regs"].append(element)
+                    # Check for flag/is_enum UDP properties (may not be defined)
+                    try:
+                        if element.get_property('flag'):
+                            nodes["flag_regs"].append(element)
+                    except LookupError:
+                        pass
+                    try:
+                        if element.get_property('is_enum'):
+                            nodes["enum_regs"].append(element)
+                    except LookupError:
+                        pass
                     for field in element.fields():
                         nodes["fields"].append(field)
             else:
                 nodes["regs"].append(node)
+                # Check for flag/is_enum UDP properties (may not be defined)
+                try:
+                    if node.get_property('flag'):
+                        nodes["flag_regs"].append(node)
+                except LookupError:
+                    pass
+                try:
+                    if node.get_property('is_enum'):
+                        nodes["enum_regs"].append(node)
+                except LookupError:
+                    pass
                 for field in node.fields():
                     nodes["fields"].append(field)
 

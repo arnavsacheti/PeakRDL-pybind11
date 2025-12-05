@@ -14,9 +14,9 @@ except ImportError as e:
     print(f"  cd <output_dir> && python setup.py build_ext --inplace", file=sys.stderr)
     raise
 
-from peakrdl_pybind11.int_types import RegisterInt, FieldInt
+from peakrdl_pybind11.int_types import RegisterInt, FieldInt, RegisterIntFlag, RegisterIntEnum
 
-__all__ = ['{{ soc_name }}_t', 'Master', 'create', 'RegisterInt', 'FieldInt']
+__all__ = ['{{ soc_name }}_t', 'Master', 'create', 'RegisterInt', 'FieldInt', 'RegisterIntFlag', 'RegisterIntEnum']
 
 def create():
     """
@@ -75,12 +75,34 @@ __all__.append('wrap_master')
 # Add enhanced read/write methods that use RegisterInt/FieldInt
 # These will be mixed in after the module is loaded
 
+# Map of register class names to their flag/enum types
+_special_register_types = {}
+{% for reg in nodes.flag_regs %}
+_special_register_types['{{ reg.inst_name }}_t'] = ('flag', '{{ reg.inst_name }}_Flags')
+{% endfor %}
+{% for reg in nodes.enum_regs %}
+_special_register_types['{{ reg.inst_name }}_t'] = ('enum', '{{ reg.inst_name }}_Enum')
+{% endfor %}
+
 def _make_enhanced_register_read(reg_class):
     """Create enhanced read method for a register class."""
     original_read = reg_class.read
     
     def enhanced_read(self):
         value = original_read(self)
+        
+        # Check if this is a special register type (flag or enum)
+        class_name = self.__class__.__name__
+        if class_name in _special_register_types:
+            special_type, special_class_name = _special_register_types[class_name]
+            special_class = globals()[special_class_name]
+            # Return the appropriate enum/flag value
+            # Try to find a matching member, or return the raw value
+            try:
+                return special_class(value)
+            except ValueError:
+                # If the value doesn't match any member, return raw int
+                return value
         
         # Build fields dictionary from field attributes
         fields = {}
@@ -168,6 +190,34 @@ for _reg_type in _register_types:
 for _field_type in _field_types:
     _field_type.read = _make_enhanced_field_read(_field_type)
     _field_type.write = _make_enhanced_field_write(_field_type)
+
+# Generate IntFlag classes for registers with flag UDP property
+{% for reg in nodes.flag_regs %}
+# Create IntFlag for {{ reg.inst_name }}
+{{ reg.inst_name }}_Flags = RegisterIntFlag('{{ reg.inst_name }}_Flags', {
+    {% for field in reg.fields() %}
+    '{{ field.inst_name.upper() }}': {% if field.width == 1 %}{{ 2 ** field.lsb }}{% else %}{{ (2 ** field.width - 1) * (2 ** field.lsb) }}{% endif %},
+    {% endfor %}
+})
+{{ reg.inst_name }}_Flags._offset = {{ reg.absolute_address }}  # type: ignore[attr-defined]
+{{ reg.inst_name }}_Flags._width = {{ (reg.size + 7) // 8 }}  # type: ignore[attr-defined]
+__all__.append('{{ reg.inst_name }}_Flags')
+
+{% endfor %}
+
+# Generate IntEnum classes for registers with enum UDP property
+{% for reg in nodes.enum_regs %}
+# Create IntEnum for {{ reg.inst_name }}
+{{ reg.inst_name }}_Enum = RegisterIntEnum('{{ reg.inst_name }}_Enum', {
+    {% for field in reg.fields() %}
+    '{{ field.inst_name.upper() }}': {{ 2 ** field.lsb }},
+    {% endfor %}
+})
+{{ reg.inst_name }}_Enum._offset = {{ reg.absolute_address }}  # type: ignore[attr-defined]
+{{ reg.inst_name }}_Enum._width = {{ (reg.size + 7) // 8 }}  # type: ignore[attr-defined]
+__all__.append('{{ reg.inst_name }}_Enum')
+
+{% endfor %}
 
 # Clean up temporary variables
 del _register_types, _field_types, _name, _obj
