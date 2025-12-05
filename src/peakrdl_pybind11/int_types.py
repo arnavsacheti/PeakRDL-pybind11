@@ -5,7 +5,15 @@ These classes extend Python's int to include position and width information,
 enabling smart read-modify-write operations.
 """
 
+from enum import IntEnum, IntFlag
 from typing import Self
+
+# Re-export IntEnum and IntFlag for use by generated code
+# These will have metadata (_offset, _width) added dynamically
+RegisterIntFlag = IntFlag
+RegisterIntEnum = IntEnum
+
+__all__ = ["FieldInt", "RegisterInt", "RegisterIntFlag", "RegisterIntEnum"]
 
 
 class FieldInt(int):
