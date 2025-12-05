@@ -11,7 +11,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
 
-__all__ = ["FieldInt", "Pybind11Exporter", "RegisterInt"]
+__all__ = ["FieldInt", "Pybind11Exporter", "RegisterInt", "RegisterIntFlag", "RegisterIntEnum"]
 
 
 def __getattr__(name: str) -> type:
@@ -27,4 +27,12 @@ def __getattr__(name: str) -> type:
         from .int_types import FieldInt
 
         return FieldInt
+    if name == "RegisterIntFlag":
+        from .int_types import RegisterIntFlag
+
+        return RegisterIntFlag
+    if name == "RegisterIntEnum":
+        from .int_types import RegisterIntEnum
+
+        return RegisterIntEnum
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
