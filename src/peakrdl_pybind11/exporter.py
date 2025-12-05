@@ -293,7 +293,6 @@ class Pybind11Exporter:
         filepath = self.output_dir / "__init__.py"
         with filepath.open("w") as f:
             f.write(output)
-            f.write(output)
 
     def _generate_setup_py(self, nodes: Nodes) -> None:
         """Generate CMakeLists.txt and pyproject.toml for building the C++ extension"""

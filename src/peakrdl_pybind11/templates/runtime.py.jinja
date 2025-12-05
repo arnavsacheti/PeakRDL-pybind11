@@ -192,10 +192,13 @@ for _field_type in _field_types:
     _field_type.write = _make_enhanced_field_write(_field_type)
 
 # Generate IntFlag classes for registers with flag UDP property
+# Each field becomes a flag member with a value corresponding to its bit position(s)
 {% for reg in nodes.flag_regs %}
 # Create IntFlag for {{ reg.inst_name }}
 {{ reg.inst_name }}_Flags = RegisterIntFlag('{{ reg.inst_name }}_Flags', {
     {% for field in reg.fields() %}
+    # Field {{ field.inst_name }} at bits {{ field.msb }}:{{ field.lsb }}
+    # Single-bit fields get value 2^lsb, multi-bit fields get a bitmask
     '{{ field.inst_name.upper() }}': {% if field.width == 1 %}{{ 2 ** field.lsb }}{% else %}{{ (2 ** field.width - 1) * (2 ** field.lsb) }}{% endif %},
     {% endfor %}
 })
@@ -206,10 +209,12 @@ __all__.append('{{ reg.inst_name }}_Flags')
 {% endfor %}
 
 # Generate IntEnum classes for registers with enum UDP property
+# Each field becomes an enum member with a value of 2^lsb (representing the bit position)
 {% for reg in nodes.enum_regs %}
 # Create IntEnum for {{ reg.inst_name }}
 {{ reg.inst_name }}_Enum = RegisterIntEnum('{{ reg.inst_name }}_Enum', {
     {% for field in reg.fields() %}
+    # Field {{ field.inst_name }} at bit position {{ field.lsb }} gets value 2^{{ field.lsb }} = {{ 2 ** field.lsb }}
     '{{ field.inst_name.upper() }}': {{ 2 ** field.lsb }},
     {% endfor %}
 })
