@@ -165,6 +165,138 @@ Both ``RegisterInt`` and ``FieldInt`` are fully compatible with Python's ``int``
    hex_str = f"{field:#x}" # "0x5"
 
 
+RegisterIntFlag
+---------------
+
+.. autoclass:: peakrdl_pybind11.RegisterIntFlag
+   :members:
+   :show-inheritance:
+
+When a register in SystemRDL has the ``flag`` UDP property set to true, PeakRDL-pybind11 generates
+a Python ``IntFlag`` class where each field becomes a flag member. This is ideal for status and
+control registers where each bit or field has independent meaning.
+
+**Example SystemRDL:**
+
+.. code-block:: systemrdl
+
+   property flag {
+       component = reg;
+       type = boolean;
+   };
+
+   addrmap example {
+       reg {
+           name = "Status Register";
+           flag = true;
+           
+           field { sw = r; hw = w; } ready[0:0];
+           field { sw = r; hw = w; } error[1:1];
+           field { sw = r; hw = w; } busy[2:2];
+       } status @ 0x00;
+   };
+
+**Generated Python Usage:**
+
+.. code-block:: python
+
+   import example
+   from peakrdl_pybind11.masters import MockMaster
+
+   # Setup
+   soc = example.create()
+   master = example.wrap_master(MockMaster())
+   soc.attach_master(master)
+
+   # Access the generated IntFlag class
+   Flags = example.status_Flags
+   
+   # Flag members are named in UPPERCASE based on field names
+   ready_flag = Flags.READY    # Value: 1
+   error_flag = Flags.ERROR    # Value: 2
+   busy_flag = Flags.BUSY      # Value: 4
+
+   # Combine flags with bitwise operations
+   ready_and_error = Flags.READY | Flags.ERROR  # Value: 3
+   
+   # Check membership
+   status = soc.status.read()  # Returns an IntFlag value
+   if Flags.READY in status:
+       print("System is ready")
+   if Flags.ERROR in status:
+       print("Error occurred")
+
+   # Write flags
+   soc.status.write(Flags.READY | Flags.BUSY)
+
+**Note:** When the ``flag`` UDP property is set, fields are NOT accessible as attributes on the 
+register. Instead, use the generated IntFlag class and its members.
+
+
+RegisterIntEnum
+---------------
+
+.. autoclass:: peakrdl_pybind11.RegisterIntEnum
+   :members:
+   :show-inheritance:
+
+When a register in SystemRDL has the ``is_enum`` UDP property set to true (note: ``enum`` is a
+reserved keyword, so use ``is_enum``), PeakRDL-pybind11 generates a Python ``IntEnum`` class where 
+each field becomes an enum member. This is ideal for mode or state registers where values represent 
+discrete states.
+
+**Example SystemRDL:**
+
+.. code-block:: systemrdl
+
+   property is_enum {
+       component = reg;
+       type = boolean;
+   };
+
+   addrmap example {
+       reg {
+           name = "Mode Register";
+           is_enum = true;
+           
+           field { sw = rw; hw = r; } idle[0:0];
+           field { sw = rw; hw = r; } running[1:1];
+           field { sw = rw; hw = r; } paused[2:2];
+       } mode @ 0x04;
+   };
+
+**Generated Python Usage:**
+
+.. code-block:: python
+
+   import example
+   from peakrdl_pybind11.masters import MockMaster
+
+   # Setup
+   soc = example.create()
+   master = example.wrap_master(MockMaster())
+   soc.attach_master(master)
+
+   # Access the generated IntEnum class
+   Mode = example.mode_Enum
+   
+   # Enum members are named in UPPERCASE based on field names
+   idle_mode = Mode.IDLE       # Value: 1
+   running_mode = Mode.RUNNING # Value: 2
+   paused_mode = Mode.PAUSED   # Value: 4
+
+   # Compare states
+   current_mode = soc.mode.read()  # Returns an IntEnum value
+   if current_mode == Mode.RUNNING:
+       print("System is running")
+
+   # Write states
+   soc.mode.write(Mode.IDLE)
+
+**Note:** When the ``is_enum`` UDP property is set, fields are NOT accessible as attributes on the
+register. Instead, use the generated IntEnum class and its members.
+
+
 Complete Example
 ---------------
 

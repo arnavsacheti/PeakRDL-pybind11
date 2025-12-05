@@ -20,6 +20,7 @@ PeakRDL-pybind11 is an exporter for the PeakRDL toolchain that generates PyBind1
   - `write()`: Write register values
   - `modify()`: Read-modify-write operations
   - **Context Manager Support**: Batch field modifications for efficient register updates
+  - **IntFlag/IntEnum Support**: UDP properties for flag and enum registers
 - **Type Safety**: Generated `.pyi` stub files for full IDE support and type checking
 - **Python-Based Testing**: Enable hardware testing with callbacks and custom logic
 
@@ -51,6 +52,92 @@ Benefits:
 - **Performance**: Reduces bus transactions from N read + N write to 1 read + 1 write
 - **Atomicity**: All field changes are committed together
 - **Readability**: Cleaner code for complex field manipulations
+
+## UDP Properties for Flags and Enums
+
+PeakRDL-pybind11 supports special UDP (User Defined Property) properties that allow registers to be treated as Python IntFlag or IntEnum types. This is useful for status/control registers where fields represent independent flags or discrete states.
+
+### Flag Registers
+
+When a register has the `flag` UDP property set to `true`, each field becomes a flag member that can be combined using bitwise operations:
+
+**SystemRDL:**
+```systemrdl
+property flag {
+    component = reg;
+    type = boolean;
+};
+
+addrmap example {
+    reg {
+        flag = true;
+        field { sw = r; hw = w; } ready[0:0];
+        field { sw = r; hw = w; } error[1:1];
+        field { sw = r; hw = w; } busy[2:2];
+    } status @ 0x00;
+};
+```
+
+**Python Usage:**
+```python
+import example
+
+soc = example.create()
+# ... attach master ...
+
+# Access the generated IntFlag class (field names are UPPERCASE)
+Flags = example.status_Flags
+
+# Combine flags with bitwise operations
+soc.status.write(Flags.READY | Flags.BUSY)
+
+# Check flags
+status = soc.status.read()
+if Flags.ERROR in status:
+    print("Error occurred!")
+```
+
+### Enum Registers
+
+When a register has the `is_enum` UDP property set to `true` (note: `enum` is a SystemRDL keyword, so use `is_enum`), each field becomes an enum member representing a discrete state:
+
+**SystemRDL:**
+```systemrdl
+property is_enum {
+    component = reg;
+    type = boolean;
+};
+
+addrmap example {
+    reg {
+        is_enum = true;
+        field { sw = rw; hw = r; } idle[0:0];
+        field { sw = rw; hw = r; } running[1:1];
+        field { sw = rw; hw = r; } paused[2:2];
+    } mode @ 0x04;
+};
+```
+
+**Python Usage:**
+```python
+import example
+
+soc = example.create()
+# ... attach master ...
+
+# Access the generated IntEnum class (field names are UPPERCASE)
+Mode = example.mode_Enum
+
+# Write states
+soc.mode.write(Mode.RUNNING)
+
+# Compare states
+current = soc.mode.read()
+if current == Mode.IDLE:
+    print("System is idle")
+```
+
+**Note:** When `flag` or `is_enum` UDP properties are set, fields are NOT accessible as individual attributes. Use the generated Flag or Enum class instead.
 
 ## Installation
 
