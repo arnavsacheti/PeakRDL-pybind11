@@ -59,18 +59,18 @@ PeakRDL-pybind11 supports special UDP (User Defined Property) properties that al
 
 ### Flag Registers
 
-When a register has the `flag` UDP property set to `true`, each field becomes a flag member that can be combined using bitwise operations:
+When a register has the `is_flag` UDP property set to `true`, each field becomes a flag member that can be combined using bitwise operations:
 
 **SystemRDL:**
 ```systemrdl
-property flag {
+property is_flag {
     component = reg;
     type = boolean;
 };
 
 addrmap example {
     reg {
-        flag = true;
+        is_flag = true;
         field { sw = r; hw = w; } ready[0:0];
         field { sw = r; hw = w; } error[1:1];
         field { sw = r; hw = w; } busy[2:2];
@@ -137,7 +137,7 @@ if current == Mode.IDLE:
     print("System is idle")
 ```
 
-**Note:** When `flag` or `is_enum` UDP properties are set, fields are NOT accessible as individual attributes. Use the generated Flag or Enum class instead.
+**Note:** When `is_flag` or `is_enum` UDP properties are set, fields are NOT accessible as individual attributes. Use the generated Flag or Enum class instead.
 
 ## Installation
 

@@ -172,7 +172,7 @@ RegisterIntFlag
    :members:
    :show-inheritance:
 
-When a register in SystemRDL has the ``flag`` UDP property set to true, PeakRDL-pybind11 generates
+When a register in SystemRDL has the ``is_flag`` UDP property set to true, PeakRDL-pybind11 generates
 a Python ``IntFlag`` class where each field becomes a flag member. This is ideal for status and
 control registers where each bit or field has independent meaning.
 
@@ -180,7 +180,7 @@ control registers where each bit or field has independent meaning.
 
 .. code-block:: systemrdl
 
-   property flag {
+   property is_flag {
        component = reg;
        type = boolean;
    };
@@ -188,7 +188,7 @@ control registers where each bit or field has independent meaning.
    addrmap example {
        reg {
            name = "Status Register";
-           flag = true;
+           is_flag = true;
            
            field { sw = r; hw = w; } ready[0:0];
            field { sw = r; hw = w; } error[1:1];
@@ -229,7 +229,7 @@ control registers where each bit or field has independent meaning.
    # Write flags
    soc.status.write(Flags.READY | Flags.BUSY)
 
-**Note:** When the ``flag`` UDP property is set, fields are NOT accessible as attributes on the 
+**Note:** When the ``is_flag`` UDP property is set, fields are NOT accessible as attributes on the 
 register. Instead, use the generated IntFlag class and its members.
 
 

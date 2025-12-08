@@ -78,7 +78,7 @@ __all__.append('wrap_master')
 # Map of register class names to their flag/enum types
 _special_register_types = {}
 {% for reg in nodes.flag_regs %}
-_special_register_types['{{ reg.inst_name }}_t'] = ('flag', '{{ reg.inst_name }}_Flags')
+_special_register_types['{{ reg.inst_name }}_t'] = ('is_flag', '{{ reg.inst_name }}_Flags')
 {% endfor %}
 {% for reg in nodes.enum_regs %}
 _special_register_types['{{ reg.inst_name }}_t'] = ('enum', '{{ reg.inst_name }}_Enum')
@@ -191,7 +191,7 @@ for _field_type in _field_types:
     _field_type.read = _make_enhanced_field_read(_field_type)
     _field_type.write = _make_enhanced_field_write(_field_type)
 
-# Generate IntFlag classes for registers with flag UDP property
+# Generate IntFlag classes for registers with is_flag UDP property
 # Each field becomes a flag member with a value corresponding to its bit position(s)
 {% for reg in nodes.flag_regs %}
 # Create IntFlag for {{ reg.inst_name }}
@@ -208,7 +208,7 @@ __all__.append('{{ reg.inst_name }}_Flags')
 
 {% endfor %}
 
-# Generate IntEnum classes for registers with enum UDP property
+# Generate IntEnum classes for registers with is_enum UDP property
 # Each field becomes an enum member with a value of 2^lsb (representing the bit position)
 {% for reg in nodes.enum_regs %}
 # Create IntEnum for {{ reg.inst_name }}

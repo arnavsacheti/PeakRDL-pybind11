@@ -13,7 +13,7 @@ from typing import Self
 RegisterIntFlag = IntFlag
 RegisterIntEnum = IntEnum
 
-__all__ = ["FieldInt", "RegisterInt", "RegisterIntFlag", "RegisterIntEnum"]
+__all__ = ["FieldInt", "RegisterInt", "RegisterIntEnum", "RegisterIntFlag"]
 
 
 class FieldInt(int):

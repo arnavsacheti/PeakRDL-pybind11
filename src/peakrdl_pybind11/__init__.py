@@ -11,7 +11,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
 
-__all__ = ["FieldInt", "Pybind11Exporter", "RegisterInt", "RegisterIntFlag", "RegisterIntEnum"]
+__all__ = ["FieldInt", "Pybind11Exporter", "RegisterInt", "RegisterIntEnum", "RegisterIntFlag"]
 
 
 def __getattr__(name: str) -> type:

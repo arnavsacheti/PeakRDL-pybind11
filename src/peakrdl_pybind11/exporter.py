@@ -18,8 +18,8 @@ class Nodes(TypedDict):
     regs: list[RegNode]
     fields: list[FieldNode]
     mems: list[MemNode]
-    flag_regs: list[RegNode]  # Registers with flag UDP property
-    enum_regs: list[RegNode]  # Registers with enum UDP property
+    flag_regs: list[RegNode]  # Registers with is_flag UDP property
+    enum_regs: list[RegNode]  # Registers with is_enum UDP property
 
 
 class Pybind11Exporter:
@@ -397,14 +397,14 @@ class Pybind11Exporter:
                 for element in node.unrolled():
                     assert isinstance(element, RegNode)
                     nodes["regs"].append(element)
-                    # Check for flag/is_enum UDP properties (may not be defined)
+                    # Check for is_flag/is_enum UDP properties (may not be defined)
                     try:
-                        if element.get_property('flag'):
+                        if element.get_property("is_flag"):
                             nodes["flag_regs"].append(element)
                     except LookupError:
                         pass
                     try:
-                        if element.get_property('is_enum'):
+                        if element.get_property("is_enum"):
                             nodes["enum_regs"].append(element)
                     except LookupError:
                         pass
@@ -412,14 +412,14 @@ class Pybind11Exporter:
                         nodes["fields"].append(field)
             else:
                 nodes["regs"].append(node)
-                # Check for flag/is_enum UDP properties (may not be defined)
+                # Check for is_flag/is_enum UDP properties (may not be defined)
                 try:
-                    if node.get_property('flag'):
+                    if node.get_property("is_flag"):
                         nodes["flag_regs"].append(node)
                 except LookupError:
                     pass
                 try:
-                    if node.get_property('is_enum'):
+                    if node.get_property("is_enum"):
                         nodes["enum_regs"].append(node)
                 except LookupError:
                     pass
