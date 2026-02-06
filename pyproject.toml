@@ -37,7 +37,7 @@ docs = [
 ]
 benchmark = ["pytest >= 7.4.4", "pytest-benchmark >= 5.1.0", "build >= 1.0.0"]
 test = ["pytest >= 7.4.4", "pytest-cov >= 4.1.0"]
-tools = ["pyrefly >= 0.37.0", "ruff >= 0.14.0"]
+tools = ["ty >= 0.0.15", "ruff >= 0.14.0"]
 
 [project.urls]
 Homepage = "https://github.com/arnavsacheti/PeakRDL-pybind11"
@@ -50,10 +50,11 @@ pybind11 = "peakrdl_pybind11.__peakrdl__:Exporter"
 [tool.setuptools.package-data]
 peakrdl_pybind11 = ["templates/*.jinja"]
 
+# ---------------------- RUFF ----------------------
 [tool.ruff]
 line-length = 110
 target-version = "py310"
-extend-exclude = ["CVS", "parser", "docs", "tests", "benchmarks"]
+extend-exclude = ["CVS", "parser", "docs", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -79,5 +80,13 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 
+# ------------------- PYREFLY --------------------
 [tool.pyrefly]
 project_includes = ["src/**"]
+
+# ---------------------- TY ----------------------
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+include = ["src"]

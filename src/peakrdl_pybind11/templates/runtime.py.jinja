@@ -14,9 +14,17 @@ except ImportError as e:
     print(f"  cd <output_dir> && python setup.py build_ext --inplace", file=sys.stderr)
     raise
 
-from peakrdl_pybind11.int_types import RegisterInt, FieldInt
+from peakrdl_pybind11.int_types import RegisterInt, FieldInt, RegisterIntFlag, RegisterIntEnum
 
-__all__ = ['{{ soc_name }}_t', 'Master', 'create', 'RegisterInt', 'FieldInt']
+__all__ = [
+    '{{ soc_name }}_t',
+    'Master',
+    'create',
+    'RegisterInt',
+    'FieldInt',
+    'RegisterIntFlag',
+    'RegisterIntEnum',
+]
 
 def create():
     """
@@ -72,15 +80,63 @@ def wrap_master(master_impl):
 
 __all__.append('wrap_master')
 
-# Add enhanced read/write methods that use RegisterInt/FieldInt
+# Generated flag/enum types from SystemRDL fields
+{% if nodes.flag_regs %}
+{% for reg in nodes.flag_regs %}
+class {{ reg.inst_name }}_f(RegisterIntFlag):
+    """Bit flags for {{ reg.inst_name }}."""
+    {% set fields = reg.fields()|list %}
+    {% if fields %}
+    {% for field in fields %}
+    {{ field.inst_name }} = {{ ((2 ** field.width) - 1) * (2 ** field.low) if field.width > 1 else (2 ** field.low) }}
+    {% set alias = field.inst_name | enum_member %}
+    {% if alias != field.inst_name %}
+    {{ alias }} = {{ field.inst_name }}
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    pass
+    {% endif %}
+
+__all__.append('{{ reg.inst_name }}_f')
+{% endfor %}
+{% endif %}
+
+{% if nodes.enum_regs %}
+{% for reg in nodes.enum_regs %}
+class {{ reg.inst_name }}_e(RegisterIntEnum):
+    """Enum for {{ reg.inst_name }}."""
+    {% set fields = reg.fields()|list %}
+    {% if fields %}
+    {% for field in fields %}
+    {{ field.inst_name }} = {{ 2 ** field.low }}
+    {% set alias = field.inst_name | enum_member %}
+    {% if alias != field.inst_name %}
+    {{ alias }} = {{ field.inst_name }}
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    pass
+    {% endif %}
+
+__all__.append('{{ reg.inst_name }}_e')
+{% endfor %}
+{% endif %}
+
+# Add enhanced read/write methods that use RegisterInt/FieldInt (or flag/enum types)
 # These will be mixed in after the module is loaded
 
-def _make_enhanced_register_read(reg_class):
+def _make_enhanced_register_read(reg_class, flag_type=None, enum_type=None):
     """Create enhanced read method for a register class."""
     original_read = reg_class.read
     
     def enhanced_read(self):
         value = original_read(self)
+
+        if flag_type is not None:
+            return flag_type(value)
+        if enum_type is not None:
+            return enum_type(value)
         
         # Build fields dictionary from field attributes
         fields = {}
@@ -144,6 +200,19 @@ def _make_enhanced_field_write(field_class):
     return enhanced_write
 
 
+# Map register classes to generated flag/enum types
+_FLAG_REG_TYPES = {
+{% for reg in nodes.flag_regs %}
+    {{ reg.inst_name }}_t: {{ reg.inst_name }}_f,
+{% endfor %}
+}
+
+_ENUM_REG_TYPES = {
+{% for reg in nodes.enum_regs %}
+    {{ reg.inst_name }}_t: {{ reg.inst_name }}_e,
+{% endfor %}
+}
+
 # Enhance all generated register and field classes
 # We need to do this after all classes are defined
 _register_types = []
@@ -162,7 +231,11 @@ for _name in list(globals().keys()):
 
 # Apply enhancements
 for _reg_type in _register_types:
-    _reg_type.read = _make_enhanced_register_read(_reg_type)
+    _reg_type.read = _make_enhanced_register_read(
+        _reg_type,
+        _FLAG_REG_TYPES.get(_reg_type),
+        _ENUM_REG_TYPES.get(_reg_type),
+    )
     _reg_type.write = _make_enhanced_register_write(_reg_type)
 
 for _field_type in _field_types:
@@ -175,5 +248,3 @@ if '_reg_type' in dir():
     del _reg_type
 if '_field_type' in dir():
     del _field_type
-
-

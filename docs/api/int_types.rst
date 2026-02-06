@@ -165,6 +165,61 @@ Both ``RegisterInt`` and ``FieldInt`` are fully compatible with Python's ``int``
    hex_str = f"{field:#x}" # "0x5"
 
 
+Flags and Enums
+---------------
+
+PeakRDL-pybind11 can generate enum-style types for registers when you mark them with UDP properties.
+Registers tagged with ``is_flag`` generate ``IntFlag``-compatible classes (named ``<reg>_f``), and
+registers tagged with ``is_enum`` generate ``IntEnum``-compatible classes (named ``<reg>_e``).
+These are also exported as
+``RegisterIntFlag`` and ``RegisterIntEnum`` from the core package. Reads from these registers
+return the generated flag/enum type instead of ``RegisterInt``.
+
+**SystemRDL UDPs:**
+
+.. code-block:: systemrdl
+
+   property is_flag { component = reg; type = boolean; };
+   property is_enum { component = reg; type = boolean; };
+
+   addrmap example {
+       reg {
+           is_flag = true;
+           field { sw = r; hw = w; } ready[0:0];
+           field { sw = r; hw = w; } error[1:1];
+       } status @ 0x00;
+
+       reg {
+           is_enum = true;
+           field { sw = rw; hw = r; } idle[0:0];
+           field { sw = rw; hw = r; } running[1:1];
+       } mode @ 0x04;
+   };
+
+**Python usage:**
+
+.. code-block:: python
+
+   import example
+   soc = example.create()
+   # ... attach master ...
+
+   # IntFlag operations
+   Flags = example.status_f
+   soc.status.write(Flags.Ready | Flags.Error)
+   if Flags.Ready in soc.status.read():
+       print("Ready")
+
+   # IntEnum operations
+   Mode = example.mode_e
+   soc.mode.write(Mode.Running)
+   if soc.mode.read() == Mode.Idle:
+       print("Idle")
+
+For ``is_flag`` registers, single-bit fields map to ``2**lsb`` and multi-bit fields map to the
+full field bitmask. For ``is_enum`` registers, fields map to ``2**lsb`` (bit position).
+
+
 Complete Example
 ---------------
 

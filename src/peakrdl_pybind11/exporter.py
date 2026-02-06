@@ -18,6 +18,8 @@ class Nodes(TypedDict):
     regs: list[RegNode]
     fields: list[FieldNode]
     mems: list[MemNode]
+    flag_regs: list[RegNode]
+    enum_regs: list[RegNode]
 
 
 class Pybind11Exporter:
@@ -32,10 +34,13 @@ class Pybind11Exporter:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self.env.filters["pybind_name"] = self._pybind_name_from_node
+        self.env.filters["enum_member"] = self._enum_member_name
         self.soc_name: str | None = None
         self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
         self.output_dir: Path | None = None
+        self._name_cache: dict[str, str] = {}
 
     def export(
         self,
@@ -86,7 +91,7 @@ class Pybind11Exporter:
         self._generate_bindings(nodes)
 
         # Generate Python runtime
-        self._generate_python_runtime()
+        self._generate_python_runtime(nodes)
 
         # Generate setup.py for building the module
         self._generate_setup_py(nodes)
@@ -103,6 +108,28 @@ class Pybind11Exporter:
         if name and name[0].isdigit():
             name = "_" + name
         return name or "soc"
+
+    def _pybind_name_from_node(self, value: Node | str) -> str:
+        """Return a unique, sanitized identifier for a node."""
+        if isinstance(value, Node):
+            path = value.get_path()
+        else:
+            path = str(value)
+
+        if path not in self._name_cache:
+            sanitized_path = path.replace(".", "__").replace("[", "_").replace("]", "_")
+            self._name_cache[path] = self._sanitize_identifier(sanitized_path)
+        return self._name_cache[path]
+
+    def _enum_member_name(self, name: str) -> str:
+        """Convert a field name into a suitable enum member name."""
+        parts = re.split(r"[^a-zA-Z0-9]+", name)
+        camel = "".join(part[:1].upper() + part[1:] for part in parts if part)
+        candidate = camel or name
+        candidate = re.sub(r"[^a-zA-Z0-9_]", "_", candidate)
+        if candidate and candidate[0].isdigit():
+            candidate = "_" + candidate
+        return candidate or "Field"
 
     def _generate_descriptors(self, nodes: Nodes) -> None:
         """Generate C++ descriptor header file"""
@@ -277,13 +304,14 @@ class Pybind11Exporter:
 
         return groups
 
-    def _generate_python_runtime(self) -> None:
+    def _generate_python_runtime(self, nodes: Nodes) -> None:
         """Generate Python runtime module"""
         template = self.env.get_template("runtime.py.jinja")
 
         output = template.render(
             soc_name=self.soc_name,
             top_node=self.top_node,
+            nodes=nodes,
         )
 
         assert self.output_dir is not None
@@ -362,6 +390,8 @@ class Pybind11Exporter:
                 "regs": [],
                 "fields": [],
                 "mems": [],
+                "flag_regs": [],
+                "enum_regs": [],
             }
 
         if isinstance(node, AddrmapNode):
@@ -373,30 +403,29 @@ class Pybind11Exporter:
             for child in node.children():
                 self._collect_nodes(child, nodes)
         elif isinstance(node, MemNode):
-            if node.is_array:
-                for element in node.unrolled():
-                    assert isinstance(element, MemNode)
-                    children = list(element.children())
-                    if children:
-                        nodes["mems"].append(element)
-                        for child in children:
-                            self._collect_nodes(child, nodes)
-            else:
-                children = list(node.children())
-                if children:
-                    nodes["mems"].append(node)
-                    for child in children:
-                        self._collect_nodes(child, nodes)
+            children = list(node.children())
+            if children:
+                nodes["mems"].append(node)
+                for child in children:
+                    self._collect_nodes(child, nodes)
         elif isinstance(node, RegNode):
-            if node.is_array:
-                for element in node.unrolled():
-                    assert isinstance(element, RegNode)
-                    nodes["regs"].append(element)
-                    for field in element.fields():
-                        nodes["fields"].append(field)
-            else:
-                nodes["regs"].append(node)
-                for field in node.fields():
-                    nodes["fields"].append(field)
+            nodes["regs"].append(node)
+            is_flag = self._get_bool_property(node, "is_flag")
+            is_enum = self._get_bool_property(node, "is_enum")
+            # If both are set, is_flag takes precedence.
+            if is_flag:
+                nodes["flag_regs"].append(node)
+            elif is_enum:
+                nodes["enum_regs"].append(node)
+            for field in node.fields():
+                nodes["fields"].append(field)
 
         return nodes
+
+    def _get_bool_property(self, node: Node, name: str) -> bool:
+        """Safely read a boolean property from a node."""
+        try:
+            value = node.get_property(name)
+        except Exception:
+            return False
+        return bool(value)

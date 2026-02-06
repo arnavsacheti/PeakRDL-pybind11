@@ -107,7 +107,9 @@ class TestExportBenchmarks:
 
         result = benchmark(export_with_splitting)
 
-    def test_export_large_rdl_hierarchical_split(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
+    def test_export_large_rdl_hierarchical_split(
+        self, benchmark: BenchmarkFixture, benchmark_dir: Path
+    ) -> None:
         """Benchmark export with hierarchical splitting enabled"""
         rdl_file = benchmark_dir / "large.rdl"
 
@@ -150,7 +152,9 @@ class TestExportBenchmarks:
 
         result = benchmark(export_realistic)
 
-    def test_export_realistic_mcu_with_splitting(self, benchmark: BenchmarkFixture, benchmark_dir: Path) -> None:
+    def test_export_realistic_mcu_with_splitting(
+        self, benchmark: BenchmarkFixture, benchmark_dir: Path
+    ) -> None:
         """Benchmark export of realistic MCU with binding splitting (split every 50 registers)"""
         rdl_file = benchmark_dir / "realistic_mcu.rdl"
 
@@ -489,7 +493,7 @@ class TestScalabilityBenchmarks:
 
     def test_scaling_large_hierarchical(self, benchmark: BenchmarkFixture) -> None:
         """Benchmark hierarchical export with 10k registers (100 regfiles x 100 regs each)
-        
+
         This test validates the O(n) performance optimization for hierarchical splitting.
         Previously this would take 5+ minutes, now should complete in <1 second.
         """
@@ -500,8 +504,8 @@ class TestScalabilityBenchmarks:
             for i in range(100):  # 100 regfiles
                 rdl_content += f"  regfile rf{i} {{\n"
                 for j in range(100):  # 100 registers per regfile
-                    rdl_content += f"    reg {{ field {{ sw = rw; }} f[7:0]; }} r{j} @ 0x{j*4:04x};\n"
-                rdl_content += f"  }} rf{i} @ 0x{i*0x1000:x};\n"
+                    rdl_content += f"    reg {{ field {{ sw = rw; }} f[7:0]; }} r{j} @ 0x{j * 4:04x};\n"
+                rdl_content += f"  }} rf{i} @ 0x{i * 0x1000:x};\n"
             rdl_content += "};\n"
 
             with tempfile.TemporaryDirectory() as tmpdir:
