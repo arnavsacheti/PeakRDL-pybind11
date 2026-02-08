@@ -480,6 +480,7 @@ class TestScalabilityBenchmarks:
 
         benchmark(create_and_export)
 
+    @pytest.mark.slow
     def test_scaling_large_hierarchical(self, benchmark: BenchmarkFixture) -> None:
         """Benchmark hierarchical export with 10k registers (100 regfiles x 100 regs each)
 
