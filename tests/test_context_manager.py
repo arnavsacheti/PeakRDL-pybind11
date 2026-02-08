@@ -79,9 +79,9 @@ class TestContextManager:
         if result.returncode != 0:
             pytest.skip(f"CMake failed (pybind11 may not be installed): {result.stderr}")
 
-        # Run make
+        # Build (use cmake --build for cross-platform support)
         result = subprocess.run(
-            ["make", "-j4"],
+            ["cmake", "--build", ".", "--config", "Release"],
             cwd=build_dir,
             capture_output=True,
             text=True,
@@ -91,12 +91,14 @@ class TestContextManager:
 
         # Copy built module to output directory
         import glob
-
-        so_files = glob.glob(str(build_dir / "*.so"))
-        if not so_files:
-            pytest.skip("No .so file found after build")
-
         import shutil
+
+        so_files = (
+            glob.glob(str(build_dir / "**" / "*.so"), recursive=True)
+            + glob.glob(str(build_dir / "**" / "*.pyd"), recursive=True)
+        )
+        if not so_files:
+            pytest.skip("No extension module found after build")
 
         shutil.copy(so_files[0], output_dir)
 
@@ -206,9 +208,9 @@ print("All context manager tests passed!")
         if result.returncode != 0:
             pytest.skip(f"CMake failed (pybind11 may not be installed): {result.stderr}")
 
-        # Run make
+        # Build (use cmake --build for cross-platform support)
         result = subprocess.run(
-            ["make", "-j4"],
+            ["cmake", "--build", ".", "--config", "Release"],
             cwd=build_dir,
             capture_output=True,
             text=True,
@@ -220,9 +222,12 @@ print("All context manager tests passed!")
         import glob
         import shutil
 
-        so_files = glob.glob(str(build_dir / "*.so"))
+        so_files = (
+            glob.glob(str(build_dir / "**" / "*.so"), recursive=True)
+            + glob.glob(str(build_dir / "**" / "*.pyd"), recursive=True)
+        )
         if not so_files:
-            pytest.skip("No .so file found after build")
+            pytest.skip("No extension module found after build")
         shutil.copy(so_files[0], output_dir)
 
         # Create a test script that tests nested context error
