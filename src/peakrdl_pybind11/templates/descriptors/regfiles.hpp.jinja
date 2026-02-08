@@ -1,0 +1,34 @@
+{% for regfile in nodes.regfiles %}
+// Regfile: {{ regfile.inst_name }}
+class {{ regfile.inst_name }}_t : public NodeBase {
+public:
+    {{ regfile.inst_name }}_t(uint64_t base_offset)
+        : NodeBase("{{ regfile.inst_name }}", base_offset) {
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name }}.set_master(master_);
+        {% endif %}
+        {% endfor %}
+    }
+
+    void set_master(Master* master) override {
+        NodeBase::set_master(master);
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name }}.set_master(master);
+        {% endif %}
+        {% endfor %}
+    }
+
+    void set_offset(uint64_t base_offset) {
+        offset_ = base_offset;
+    }
+
+    {% for child in regfile.children() %}
+    {% if child.inst_name %}
+    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {% endif %}
+    {% endfor %}
+};
+
+{% endfor %}
