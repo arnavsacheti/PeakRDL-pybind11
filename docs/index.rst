@@ -92,6 +92,7 @@ Contents
 
    installation
    usage
+   feature_matrix
 
 .. toctree::
    :maxdepth: 2
