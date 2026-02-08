@@ -1,0 +1,43 @@
+{% for reg in nodes.regs %}
+// Register: {{ reg.inst_name }}
+class {{ reg.inst_name }}_t : public RegisterBase {
+public:
+    {{ reg.inst_name }}_t(uint64_t base_offset)
+        : RegisterBase("{{ reg.inst_name }}", base_offset + 0x{{ "%x" | format(reg.absolute_address) }}, {{ reg.size }}) {}
+
+    {% for field in reg.fields() %}
+    // Field: {{ field.inst_name }}
+    class {{ field.inst_name }}_field : public FieldBase {
+    public:
+        {{ field.inst_name }}_field({{ reg.inst_name }}_t* parent)
+            : FieldBase("{{ field.inst_name }}", parent->offset(),
+                       {{ field.low }}, {{ field.width }},
+                       {{ 'true' if field.is_hw_readable or field.is_sw_readable else 'false' }},
+                       {{ 'true' if field.is_hw_writable or field.is_sw_writable else 'false' }}),
+              parent_(parent) {}
+
+        uint64_t read() {
+            if (!is_readable()) {
+                throw std::runtime_error("Field {{ field.inst_name }} is not readable");
+            }
+            uint64_t reg_val = parent_->read();
+            return (reg_val & mask()) >> lsb_;
+        }
+
+        void write(uint64_t value) {
+            if (!is_writable()) {
+                throw std::runtime_error("Field {{ field.inst_name }} is not writable");
+            }
+            uint64_t field_val = (value << lsb_) & mask();
+            parent_->modify(field_val, mask());
+        }
+
+    private:
+        {{ reg.inst_name }}_t* parent_;
+    };
+
+    {{ field.inst_name }}_field {{ field.inst_name }}{this};
+    {% endfor %}
+};
+
+{% endfor %}
