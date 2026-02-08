@@ -3,7 +3,14 @@ PeakRDL-pybind11
 Export SystemRDL to PyBind11 modules for Python-based hardware testing
 """
 
+from __future__ import annotations
+
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .exporter import Pybind11Exporter
+    from .int_types import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
 
 try:
     __version__ = version("peakrdl-pybind11")
