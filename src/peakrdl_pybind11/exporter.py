@@ -426,6 +426,6 @@ class Pybind11Exporter:
         """Safely read a boolean property from a node."""
         try:
             value = node.get_property(name)
-        except Exception:
+        except LookupError:
             return False
         return bool(value)
