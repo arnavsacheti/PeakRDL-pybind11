@@ -4,6 +4,7 @@ This test actually builds and imports the generated module to verify __repr__ wo
 """
 
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -51,7 +52,7 @@ addrmap repr_integration {
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not os.path.exists("/usr/bin/g++"), reason="g++ not available")
+@pytest.mark.skipif(not shutil.which("g++"), reason="g++ not available")
 def test_repr_integration_build_and_use():
     """
     Integration test: Build the generated module and verify __repr__ works

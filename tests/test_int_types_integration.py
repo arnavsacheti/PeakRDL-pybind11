@@ -258,9 +258,9 @@ class TestIntTypesIntegration:
         if result.returncode != 0:
             return None
 
-        # Run make
+        # Build (use cmake --build for cross-platform support)
         result = subprocess.run(
-            ["make", "-j4"],
+            ["cmake", "--build", ".", "--config", "Release"],
             cwd=build_dir,
             capture_output=True,
             text=True,
@@ -272,7 +272,10 @@ class TestIntTypesIntegration:
         import glob
         import shutil
 
-        so_files = glob.glob(str(build_dir / "*.so"))
+        so_files = (
+            glob.glob(str(build_dir / "**" / "*.so"), recursive=True)
+            + glob.glob(str(build_dir / "**" / "*.pyd"), recursive=True)
+        )
         if not so_files:
             return None
 

@@ -11,6 +11,7 @@ The benchmarks use different complexity levels:
 - Large: ~70 registers across 15+ peripherals
 """
 
+import importlib.util
 import os
 import subprocess
 import tempfile
@@ -73,7 +74,7 @@ class TestExportBenchmarks:
         """Benchmark export of large RDL file (~70 registers, 15+ peripherals)"""
         rdl_file = benchmark_dir / "large.rdl"
 
-        def export_large():
+        def export_large() -> str:
             with tempfile.TemporaryDirectory() as tmpdir:
                 rdl = RDLCompiler()
                 rdl.compile_file(str(rdl_file))
@@ -158,7 +159,7 @@ class TestExportBenchmarks:
         """Benchmark export of realistic MCU with binding splitting (split every 50 registers)"""
         rdl_file = benchmark_dir / "realistic_mcu.rdl"
 
-        def export_with_splitting():
+        def export_with_splitting() -> str:
             with tempfile.TemporaryDirectory() as tmpdir:
                 rdl = RDLCompiler()
                 rdl.compile_file(str(rdl_file))
@@ -242,13 +243,11 @@ class TestBuildBenchmarks:
             return result.returncode == 0
 
         # Only run if build tools are available
-        try:
-            import build
-
-            success = benchmark(build_sdist)
-            assert success, "sdist build failed"
-        except ImportError:
+        if not importlib.util.find_spec("build"):
             pytest.skip("python-build not installed")
+
+        success = benchmark(build_sdist)
+        assert success, "sdist build failed"
 
     @pytest.mark.slow
     def test_build_wheel_simple(self, benchmark: BenchmarkFixture, simple_export_dir: Path) -> None:
@@ -265,19 +264,17 @@ class TestBuildBenchmarks:
             return result.returncode == 0
 
         # Only run if build tools are available
-        try:
-            import build
-
-            success = benchmark(build_wheel)
-            assert success, "wheel build failed"
-        except ImportError:
+        if not importlib.util.find_spec("build"):
             pytest.skip("python-build not installed")
+
+        success = benchmark(build_wheel)
+        assert success, "wheel build failed"
 
     @pytest.mark.slow
     def test_build_sdist_medium(self, benchmark: BenchmarkFixture, medium_export_dir: Path) -> None:
         """Benchmark building source distribution for medium project"""
 
-        def build_sdist():
+        def build_sdist() -> bool:
             result = subprocess.run(
                 ["python", "-m", "build", "--sdist", "--outdir", "/tmp/dist"],
                 cwd=medium_export_dir,
@@ -287,19 +284,17 @@ class TestBuildBenchmarks:
             )
             return result.returncode == 0
 
-        try:
-            import build
-
-            success = benchmark(build_sdist)
-            assert success, "sdist build failed"
-        except ImportError:
+        if not importlib.util.find_spec("build"):
             pytest.skip("python-build not installed")
+
+        success = benchmark(build_sdist)
+        assert success, "sdist build failed"
 
     @pytest.mark.slow
     def test_build_wheel_medium(self, benchmark: BenchmarkFixture, medium_export_dir: Path) -> None:
         """Benchmark building wheel distribution for medium project"""
 
-        def build_wheel():
+        def build_wheel() -> bool:
             result = subprocess.run(
                 ["python", "-m", "build", "--wheel", "--outdir", "/tmp/dist"],
                 cwd=medium_export_dir,
@@ -309,19 +304,17 @@ class TestBuildBenchmarks:
             )
             return result.returncode == 0
 
-        try:
-            import build
-
-            success = benchmark(build_wheel)
-            assert success, "wheel build failed"
-        except ImportError:
+        if not importlib.util.find_spec("build"):
             pytest.skip("python-build not installed")
+
+        success = benchmark(build_wheel)
+        assert success, "wheel build failed"
 
     @pytest.mark.slow
     def test_build_sdist_large(self, benchmark: BenchmarkFixture, large_export_dir: Path) -> None:
         """Benchmark building source distribution for large project"""
 
-        def build_sdist():
+        def build_sdist() -> bool:
             result = subprocess.run(
                 ["python", "-m", "build", "--sdist", "--outdir", "/tmp/dist"],
                 cwd=large_export_dir,
@@ -331,13 +324,11 @@ class TestBuildBenchmarks:
             )
             return result.returncode == 0
 
-        try:
-            import build
-
-            success = benchmark(build_sdist)
-            assert success, "sdist build failed"
-        except ImportError:
+        if not importlib.util.find_spec("build"):
             pytest.skip("python-build not installed")
+
+        success = benchmark(build_sdist)
+        assert success, "sdist build failed"
 
     @pytest.mark.slow
     def test_build_wheel_large(self, benchmark: BenchmarkFixture, large_export_dir: Path) -> None:
@@ -353,13 +344,11 @@ class TestBuildBenchmarks:
             )
             return result.returncode == 0
 
-        try:
-            import build
-
-            success = benchmark(build_wheel)
-            assert success, "wheel build failed"
-        except ImportError:
+        if not importlib.util.find_spec("build"):
             pytest.skip("python-build not installed")
+
+        success = benchmark(build_wheel)
+        assert success, "wheel build failed"
 
 
 class TestMemoryBenchmarks:
@@ -491,6 +480,7 @@ class TestScalabilityBenchmarks:
 
         benchmark(create_and_export)
 
+    @pytest.mark.slow
     def test_scaling_large_hierarchical(self, benchmark: BenchmarkFixture) -> None:
         """Benchmark hierarchical export with 10k registers (100 regfiles x 100 regs each)
 
