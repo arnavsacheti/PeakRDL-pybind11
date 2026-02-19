@@ -36,7 +36,7 @@ docs = [
     "sphinx-autodoc-typehints >= 2.0",
 ]
 benchmark = ["pytest >= 7.4.4", "pytest-benchmark >= 5.1.0", "build >= 1.0.0"]
-test = ["pytest >= 7.4.4", "pytest-cov >= 4.1.0"]
+test = ["pytest >= 7.4.4", "pytest-cov >= 4.1.0", "hypothesis >= 6.0"]
 tools = ["ty >= 0.0.15", "ruff >= 0.14.0"]
 
 [project.urls]
