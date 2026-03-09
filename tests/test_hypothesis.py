@@ -3,14 +3,12 @@ Property-based tests using Hypothesis for PeakRDL-pybind11.
 """
 
 import re
-import string
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from peakrdl_pybind11 import FieldInt, RegisterInt
 from peakrdl_pybind11.masters import MockMaster
-
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -49,13 +47,17 @@ def non_overlapping_fields(draw: st.DrawFn) -> tuple[int, int, dict[str, tuple[i
         # Only one possible field: bit 0 with width 1
         boundaries = [0, 1]
     else:
-        splits = sorted(draw(st.lists(
-            st.integers(min_value=1, max_value=total_bits - 1),
-            min_size=num_fields - 1,
-            max_size=num_fields - 1,
-            unique=True,
-        )))
-        boundaries = [0] + splits + [total_bits]
+        splits = sorted(
+            draw(
+                st.lists(
+                    st.integers(min_value=1, max_value=total_bits - 1),
+                    min_size=num_fields - 1,
+                    max_size=num_fields - 1,
+                    unique=True,
+                )
+            )
+        )
+        boundaries = [0, *splits, total_bits]
 
     fields: dict[str, tuple[int, int]] = {}
     for i in range(len(boundaries) - 1):
@@ -80,9 +82,7 @@ class TestFieldIntProperties:
         width=st.integers(min_value=1, max_value=64),
         offset=st.integers(min_value=0, max_value=(1 << 32) - 1),
     )
-    def test_mask_has_correct_popcount(
-        self, value: int, lsb: int, width: int, offset: int
-    ) -> None:
+    def test_mask_has_correct_popcount(self, value: int, lsb: int, width: int, offset: int) -> None:
         """The mask should have exactly `width` bits set."""
         field = FieldInt(value, lsb=lsb, width=width, offset=offset)
         assert bin(field.mask).count("1") == width
@@ -93,9 +93,7 @@ class TestFieldIntProperties:
         width=st.integers(min_value=1, max_value=64),
         offset=st.integers(min_value=0, max_value=(1 << 32) - 1),
     )
-    def test_mask_starts_at_lsb(
-        self, value: int, lsb: int, width: int, offset: int
-    ) -> None:
+    def test_mask_starts_at_lsb(self, value: int, lsb: int, width: int, offset: int) -> None:
         """Shifting the mask right by `lsb` should give a contiguous run of `width` ones."""
         field = FieldInt(value, lsb=lsb, width=width, offset=offset)
         assert field.mask >> lsb == (1 << width) - 1
@@ -106,9 +104,7 @@ class TestFieldIntProperties:
         width=st.integers(min_value=1, max_value=64),
         offset=st.integers(min_value=0, max_value=(1 << 32) - 1),
     )
-    def test_msb_equals_lsb_plus_width_minus_one(
-        self, value: int, lsb: int, width: int, offset: int
-    ) -> None:
+    def test_msb_equals_lsb_plus_width_minus_one(self, value: int, lsb: int, width: int, offset: int) -> None:
         """msb should always equal lsb + width - 1."""
         field = FieldInt(value, lsb=lsb, width=width, offset=offset)
         assert field.msb == lsb + width - 1
@@ -119,9 +115,7 @@ class TestFieldIntProperties:
         width=st.integers(min_value=1, max_value=64),
         offset=st.integers(min_value=0, max_value=(1 << 32) - 1),
     )
-    def test_mask_no_bits_below_lsb(
-        self, value: int, lsb: int, width: int, offset: int
-    ) -> None:
+    def test_mask_no_bits_below_lsb(self, value: int, lsb: int, width: int, offset: int) -> None:
         """No bits below position `lsb` should be set in the mask."""
         field = FieldInt(value, lsb=lsb, width=width, offset=offset)
         if lsb > 0:
@@ -171,9 +165,7 @@ class TestRegisterIntFieldExtraction:
         assert reconstructed == (value & mask)
 
     @given(data=non_overlapping_fields())
-    def test_field_metadata_preserved(
-        self, data: tuple[int, int, dict[str, tuple[int, int]]]
-    ) -> None:
+    def test_field_metadata_preserved(self, data: tuple[int, int, dict[str, tuple[int, int]]]) -> None:
         """Field metadata (lsb, width, offset) should be faithfully preserved."""
         value, width_bytes, fields = data
         offset = 0x4000
@@ -277,11 +269,7 @@ class TestSanitizeIdentifier:
         twice = self._sanitize(once)
         assert once == twice
 
-    @given(
-        name=st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]*", fullmatch=True).filter(
-            lambda s: 1 <= len(s) <= 100
-        )
-    )
+    @given(name=st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]*", fullmatch=True).filter(lambda s: 1 <= len(s) <= 100))
     def test_valid_identifiers_are_unchanged(self, name: str) -> None:
         """Strings that are already valid identifiers should pass through unchanged."""
         result = self._sanitize(name)
