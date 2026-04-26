@@ -157,6 +157,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     // Register class: {{ reg.get_path() }}
     py::class_<{{ reg | pybind_name }}_t, RegisterBase>(m, "{{ reg | pybind_name }}_t"{% if reg.get_property('desc') %}, "{{ reg.get_html_desc() | cpp_string }}"{% endif %})
         .def(py::init<uint64_t>())
+        .def("write_fields", &{{ reg | pybind_name }}_t::write_fields,
+             py::arg("mask"), py::arg("value"),
+             "Combined multi-field RMW: single read+write on the master")
         {% for field in reg.fields() %}
         .def_readonly("{{ field.inst_name | safe_id }}", &{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }})
         {% endfor %}

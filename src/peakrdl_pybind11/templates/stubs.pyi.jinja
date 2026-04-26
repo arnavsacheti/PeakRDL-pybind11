@@ -150,6 +150,14 @@ class RegisterBase:
         """Write full register value from a plain int (skips wrapping)."""
         ...
 
+    def write_fields(self, **kwargs: int) -> None:
+        """Atomically write multiple fields in a single read-modify-write.
+
+        Accepts ``field_name=value`` keyword arguments. Unknown field names
+        raise ``KeyError``; read-only fields raise ``PermissionError``.
+        """
+        ...
+
 class NodeBase:
     """Base class for address maps and register files"""
 
