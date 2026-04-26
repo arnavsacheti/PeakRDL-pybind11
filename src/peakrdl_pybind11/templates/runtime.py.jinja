@@ -171,20 +171,36 @@ def _enhanced_field_write(original_write):
 def _enhance_register_class(cls, fields_spec):
     if getattr(cls.read, "__peakrdl_enhanced__", False):
         return
+    raw_read = cls.read
+    raw_write = cls.write
     cls.read = _enhanced_register_read(
-        cls.read,
+        raw_read,
         _FLAG_REG_TYPES.get(cls),
         _ENUM_REG_TYPES.get(cls),
         fields_spec,
     )
-    cls.write = _enhanced_register_write(cls.write, cls.modify)
+    cls.write = _enhanced_register_write(raw_write, cls.modify)
+    # Fast-path scalar accessors: bypass RegisterInt wrapping / FieldInt
+    # handling. ``read_raw`` returns a plain ``int``; ``write_raw`` accepts
+    # a plain ``int`` and writes it directly via the underlying C++ method.
+    cls.read_raw = raw_read
+    cls.write_raw = raw_write
 
 
 def _enhance_field_class(cls):
     if getattr(cls.read, "__peakrdl_enhanced__", False):
         return
-    cls.read = _enhanced_field_read(cls.read)
-    cls.write = _enhanced_field_write(cls.write)
+    raw_read = cls.read
+    raw_write = cls.write
+    cls.read = _enhanced_field_read(raw_read)
+    cls.write = _enhanced_field_write(raw_write)
+    # Fast-path scalar accessors: ``read_raw`` returns a plain ``int`` (the
+    # field-space value, identical to what the C++ getter returns -- no
+    # ``FieldInt`` allocation). ``write_raw`` takes a plain ``int`` in
+    # field-space and forwards directly to the C++ setter (which performs
+    # the shift+mask+modify on the underlying register).
+    cls.read_raw = raw_read
+    cls.write_raw = raw_write
 
 
 for _reg_cls, _spec in _REGISTER_FIELDS.items():
