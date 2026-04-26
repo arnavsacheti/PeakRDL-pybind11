@@ -24,6 +24,74 @@ public:
 };
 
 /**
+ * MockMaster: in-memory backing for tests, fully native.
+ *
+ * Lives entirely in C++ -- no Python ↔ C++ boundary on read/write -- so
+ * register-access loops avoid the pybind11 trampoline that a Python
+ * subclass of Master would incur.
+ */
+class MockMaster : public Master {
+public:
+    uint64_t read(uint64_t address, size_t width) override {
+        uint64_t mask = (width >= 8) ? ~uint64_t(0) : (uint64_t(1) << (width * 8)) - 1;
+        auto it = memory_.find(address);
+        return (it == memory_.end() ? 0 : it->second) & mask;
+    }
+
+    void write(uint64_t address, uint64_t value, size_t width) override {
+        uint64_t mask = (width >= 8) ? ~uint64_t(0) : (uint64_t(1) << (width * 8)) - 1;
+        memory_[address] = value & mask;
+    }
+
+    void reset() { memory_.clear(); }
+    size_t size() const { return memory_.size(); }
+
+    std::string __repr__() const override {
+        std::ostringstream oss;
+        oss << "<MockMaster (" << memory_.size() << " entries)>";
+        return oss.str();
+    }
+
+private:
+    std::unordered_map<uint64_t, uint64_t> memory_;
+};
+
+/**
+ * CallbackMaster: bridges to user-supplied read/write callables.
+ *
+ * The callables are stored as std::function so they can be Python lambdas
+ * (cheaper than subclassing Master from Python and going through the
+ * pybind11 OVERRIDE trampoline) or, in pure-C++ embedding scenarios,
+ * native function pointers.
+ */
+class CallbackMaster : public Master {
+public:
+    using ReadFn = std::function<uint64_t(uint64_t, size_t)>;
+    using WriteFn = std::function<void(uint64_t, uint64_t, size_t)>;
+
+    CallbackMaster() = default;
+    CallbackMaster(ReadFn r, WriteFn w) : read_(std::move(r)), write_(std::move(w)) {}
+
+    void set_read(ReadFn r) { read_ = std::move(r); }
+    void set_write(WriteFn w) { write_ = std::move(w); }
+
+    uint64_t read(uint64_t address, size_t width) override {
+        if (!read_) throw std::runtime_error("CallbackMaster: no read callback configured");
+        return read_(address, width);
+    }
+    void write(uint64_t address, uint64_t value, size_t width) override {
+        if (!write_) throw std::runtime_error("CallbackMaster: no write callback configured");
+        write_(address, value, width);
+    }
+
+    std::string __repr__() const override { return "<CallbackMaster>"; }
+
+private:
+    ReadFn read_;
+    WriteFn write_;
+};
+
+/**
  * Base class for registers
  *
  * The constructor takes ``base_offset`` (the parent's absolute offset) and

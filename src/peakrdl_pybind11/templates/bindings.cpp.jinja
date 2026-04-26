@@ -51,6 +51,27 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("__repr__", &Master::__repr__)
         .def("__str__", &Master::__repr__);
 
+    // Native C++ MockMaster: no Python in the read/write hot path. Fastest
+    // option for tests, fixtures, and benchmarks where the storage is just
+    // an in-memory dict.
+    py::class_<MockMaster, Master>(m, "MockMaster")
+        .def(py::init<>())
+        .def("reset", &MockMaster::reset, "Clear all stored values")
+        .def_property_readonly("size", &MockMaster::size,
+                               "Number of populated addresses")
+        .def("__repr__", &MockMaster::__repr__);
+
+    // Native C++ CallbackMaster: stores Python callables as std::function so
+    // dispatch goes through one C++→Python jump per access (vs two for a
+    // Python subclass of Master via the trampoline).
+    py::class_<CallbackMaster, Master>(m, "CallbackMaster")
+        .def(py::init<>())
+        .def(py::init<CallbackMaster::ReadFn, CallbackMaster::WriteFn>(),
+             py::arg("read"), py::arg("write"))
+        .def("set_read", &CallbackMaster::set_read, py::arg("read"))
+        .def("set_write", &CallbackMaster::set_write, py::arg("write"))
+        .def("__repr__", &CallbackMaster::__repr__);
+
     // FieldBase
     py::class_<FieldBase>(m, "FieldBase")
         .def_property_readonly("name", &FieldBase::name)

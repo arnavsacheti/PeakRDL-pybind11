@@ -18,6 +18,26 @@ class Master(Protocol):
         """Write a value to the given address"""
         ...
 
+class MockMaster(Master):
+    """In-memory native master. No Python in the read/write hot path."""
+
+    def __init__(self) -> None: ...
+
+    def reset(self) -> None: ...
+
+    @property
+    def size(self) -> int: ...
+
+class CallbackMaster(Master):
+    """Native master that dispatches to user-supplied Python callables."""
+
+    def __init__(self,
+                 read: object | None = ...,
+                 write: object | None = ...) -> None: ...
+
+    def set_read(self, read: object) -> None: ...
+    def set_write(self, write: object) -> None: ...
+
 class FieldBase:
     """Base class for register fields"""
 
