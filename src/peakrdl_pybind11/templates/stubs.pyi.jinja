@@ -295,6 +295,16 @@ class {{ mem | pybind_name }}_t(NodeBase):
         """Iterate over memory entries"""
         ...
 
+    def read_block(self, start: int, count: int) -> list[int]:
+        """Read ``count`` consecutive entries starting at ``start`` in one
+        batched master call. Returns a list of ints (one per entry)."""
+        ...
+
+    def write_block(self, start: int, values: list[int]) -> None:
+        """Write ``values`` to consecutive entries starting at ``start``
+        in one batched master call."""
+        ...
+
 {% endfor %}
 
 class {{ soc_name }}_t(NodeBase):

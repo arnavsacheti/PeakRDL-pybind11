@@ -457,6 +457,57 @@ public:
     size_t size() const { return num_entries_; }
 
     /**
+     * Batched read of ``count`` consecutive entries starting at ``start``.
+     *
+     * Builds one ``AccessOp`` vector and dispatches a single
+     * ``master_->read_many`` call, collapsing what would otherwise be
+     * ``count`` Python<->C++ boundary crossings (one per ``mem[i].read()``)
+     * into one.
+     */
+    std::vector<uint64_t> read_block(size_t start, size_t count) {
+        if (start + count > num_entries_ || start + count < start) {
+            throw std::out_of_range(
+                "Memory read_block out of range: start=" + std::to_string(start)
+                + " count=" + std::to_string(count)
+                + " size=" + std::to_string(num_entries_));
+        }
+        if (!master_) {
+            throw std::runtime_error("No master attached to memory: " + name_);
+        }
+        std::vector<AccessOp> ops;
+        ops.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            const auto& entry = entries_[start + i];
+            ops.push_back({entry.offset(), 0, entry.width()});
+        }
+        return master_->read_many(ops);
+    }
+
+    /**
+     * Batched write of ``values`` to ``values.size()`` consecutive entries
+     * starting at ``start``. Single ``master_->write_many`` call.
+     */
+    void write_block(size_t start, const std::vector<uint64_t>& values) {
+        size_t count = values.size();
+        if (start + count > num_entries_ || start + count < start) {
+            throw std::out_of_range(
+                "Memory write_block out of range: start=" + std::to_string(start)
+                + " count=" + std::to_string(count)
+                + " size=" + std::to_string(num_entries_));
+        }
+        if (!master_) {
+            throw std::runtime_error("No master attached to memory: " + name_);
+        }
+        std::vector<AccessOp> ops;
+        ops.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            const auto& entry = entries_[start + i];
+            ops.push_back({entry.offset(), values[i], entry.width()});
+        }
+        master_->write_many(ops);
+    }
+
+    /**
      * Iterator support
      */
     typename std::vector<EntryType>::iterator begin() { return entries_.begin(); }
