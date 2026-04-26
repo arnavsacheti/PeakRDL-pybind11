@@ -1,4 +1,17 @@
 /**
+ * Single register access operation, used by the batched ``read_many`` /
+ * ``write_many`` paths to amortize the Python <-> C++ boundary across N ops.
+ *
+ * For reads, ``value`` is ignored (and conventionally zero); for writes it
+ * carries the value to write.
+ */
+struct AccessOp {
+    uint64_t address;
+    uint64_t value;
+    size_t   width;
+};
+
+/**
  * Abstract Master interface for register access
  */
 class Master {
@@ -14,6 +27,29 @@ public:
      * Write a value to the given address
      */
     virtual void write(uint64_t address, uint64_t value, size_t width) = 0;
+
+    /**
+     * Batched read. Default implementation loops over single-op ``read``;
+     * subclasses can override with a fast path that touches the underlying
+     * transport once instead of N times.
+     */
+    virtual std::vector<uint64_t> read_many(const std::vector<AccessOp>& ops) {
+        std::vector<uint64_t> out;
+        out.reserve(ops.size());
+        for (const auto& op : ops) {
+            out.push_back(read(op.address, op.width));
+        }
+        return out;
+    }
+
+    /**
+     * Batched write. Default implementation loops over single-op ``write``.
+     */
+    virtual void write_many(const std::vector<AccessOp>& ops) {
+        for (const auto& op : ops) {
+            write(op.address, op.value, op.width);
+        }
+    }
 
     /**
      * String representation
@@ -43,6 +79,28 @@ public:
         memory_[address] = value & mask;
     }
 
+    // Tight-loop overrides that touch ``memory_`` directly, avoiding the
+    // virtual dispatch back through ``read``/``write`` for each op.
+    std::vector<uint64_t> read_many(const std::vector<AccessOp>& ops) override {
+        std::vector<uint64_t> out;
+        out.reserve(ops.size());
+        for (const auto& op : ops) {
+            uint64_t mask = (op.width >= 8) ? ~uint64_t(0)
+                                            : (uint64_t(1) << (op.width * 8)) - 1;
+            auto it = memory_.find(op.address);
+            out.push_back((it == memory_.end() ? 0 : it->second) & mask);
+        }
+        return out;
+    }
+
+    void write_many(const std::vector<AccessOp>& ops) override {
+        for (const auto& op : ops) {
+            uint64_t mask = (op.width >= 8) ? ~uint64_t(0)
+                                            : (uint64_t(1) << (op.width * 8)) - 1;
+            memory_[op.address] = op.value & mask;
+        }
+    }
+
     void reset() { memory_.clear(); }
     size_t size() const { return memory_.size(); }
 
@@ -68,12 +126,16 @@ class CallbackMaster : public Master {
 public:
     using ReadFn = std::function<uint64_t(uint64_t, size_t)>;
     using WriteFn = std::function<void(uint64_t, uint64_t, size_t)>;
+    using ReadManyFn = std::function<std::vector<uint64_t>(const std::vector<AccessOp>&)>;
+    using WriteManyFn = std::function<void(const std::vector<AccessOp>&)>;
 
     CallbackMaster() = default;
     CallbackMaster(ReadFn r, WriteFn w) : read_(std::move(r)), write_(std::move(w)) {}
 
     void set_read(ReadFn r) { read_ = std::move(r); }
     void set_write(WriteFn w) { write_ = std::move(w); }
+    void set_read_many(ReadManyFn r) { read_many_ = std::move(r); }
+    void set_write_many(WriteManyFn w) { write_many_ = std::move(w); }
 
     uint64_t read(uint64_t address, size_t width) override {
         if (!read_) throw std::runtime_error("CallbackMaster: no read callback configured");
@@ -84,11 +146,35 @@ public:
         write_(address, value, width);
     }
 
+    // If a batch callback is set, dispatch the whole vector in one C++ ->
+    // Python jump. Otherwise fall back to looping the single-op callback,
+    // which still costs N hops but at least keeps the API uniform.
+    std::vector<uint64_t> read_many(const std::vector<AccessOp>& ops) override {
+        if (read_many_) return read_many_(ops);
+        if (!read_) throw std::runtime_error("CallbackMaster: no read callback configured");
+        std::vector<uint64_t> out;
+        out.reserve(ops.size());
+        for (const auto& op : ops) {
+            out.push_back(read_(op.address, op.width));
+        }
+        return out;
+    }
+
+    void write_many(const std::vector<AccessOp>& ops) override {
+        if (write_many_) { write_many_(ops); return; }
+        if (!write_) throw std::runtime_error("CallbackMaster: no write callback configured");
+        for (const auto& op : ops) {
+            write_(op.address, op.value, op.width);
+        }
+    }
+
     std::string __repr__() const override { return "<CallbackMaster>"; }
 
 private:
     ReadFn read_;
     WriteFn write_;
+    ReadManyFn read_many_;
+    WriteManyFn write_many_;
 };
 
 /**

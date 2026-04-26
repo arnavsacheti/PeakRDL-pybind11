@@ -1,4 +1,21 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+
+@dataclass
+class AccessOp:
+    """One register-access operation used by batched ``read_many`` /
+    ``write_many``.
+
+    For reads, ``value`` is ignored and conventionally zero; for writes it
+    carries the value to write. Mirrors the C++ ``AccessOp`` struct exposed
+    by every generated module.
+    """
+
+    address: int
+    value: int = 0
+    width: int = 4
 
 
 class MasterBase(ABC):
@@ -44,3 +61,17 @@ class MasterBase(ABC):
             width: Width of the register in bytes
         """
         pass
+
+    def read_many(self, ops: Sequence[AccessOp]) -> list[int]:
+        """Batched read. Default impl loops single-op :meth:`read`.
+
+        Subclasses can override with a fast path that performs one
+        transport round-trip for N ops (e.g. one socket exchange instead
+        of N).
+        """
+        return [self.read(op.address, op.width) for op in ops]
+
+    def write_many(self, ops: Sequence[AccessOp]) -> None:
+        """Batched write. Default impl loops single-op :meth:`write`."""
+        for op in ops:
+            self.write(op.address, op.value, op.width)

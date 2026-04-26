@@ -1,4 +1,6 @@
-from .base import MasterBase
+from collections.abc import Sequence
+
+from .base import AccessOp, MasterBase
 
 
 class MockMaster(MasterBase):
@@ -24,3 +26,19 @@ class MockMaster(MasterBase):
     def reset(self) -> None:
         """Clear all stored values"""
         self.memory.clear()
+
+    def read_many(self, ops: Sequence[AccessOp]) -> list[int]:
+        """Batched read; touches the dict directly without per-op dispatch."""
+        out: list[int] = []
+        mem = self.memory
+        for op in ops:
+            mask = (1 << (op.width * 8)) - 1
+            out.append(mem.get(op.address, 0) & mask)
+        return out
+
+    def write_many(self, ops: Sequence[AccessOp]) -> None:
+        """Batched write; touches the dict directly without per-op dispatch."""
+        mem = self.memory
+        for op in ops:
+            mask = (1 << (op.width * 8)) - 1
+            mem[op.address] = op.value & mask
