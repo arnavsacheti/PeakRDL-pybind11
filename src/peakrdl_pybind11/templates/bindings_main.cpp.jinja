@@ -95,7 +95,33 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     {% for i in range(num_chunks) %}
     bind_registers_chunk_{{ i }}(m);
     {% endfor %}
-    
+
+    {% for regfile in nodes.regfiles %}
+    // Regfile class: {{ regfile.inst_name }}
+    py::class_<{{ regfile.inst_name }}_t, NodeBase>(m, "{{ regfile.inst_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() }}"{% endif %})
+        .def(py::init<uint64_t>())
+        {% for child in regfile.children() %}
+        {% if child.inst_name %}
+        .def_readonly("{{ child.inst_name }}", &{{ regfile.inst_name }}_t::{{ child.inst_name }})
+        {% endif %}
+        {% endfor %}
+        ;
+    {% endfor %}
+
+    {% for addrmap in nodes.addrmaps %}
+    {% if addrmap != top_node %}
+    // Addrmap class: {{ addrmap.inst_name }}
+    py::class_<{{ addrmap.inst_name }}_t, NodeBase>(m, "{{ addrmap.inst_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() }}"{% endif %})
+        .def(py::init<uint64_t>())
+        {% for child in addrmap.children() %}
+        {% if child.inst_name %}
+        .def_readonly("{{ child.inst_name }}", &{{ addrmap.inst_name }}_t::{{ child.inst_name }})
+        {% endif %}
+        {% endfor %}
+        ;
+    {% endif %}
+    {% endfor %}
+
     {% for mem in nodes.mems %}
     {%- set entry_reg = mem.children()|list|first %}
     // Memory class: {{ mem.inst_name }}

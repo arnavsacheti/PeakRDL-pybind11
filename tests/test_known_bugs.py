@@ -80,10 +80,6 @@ addrmap hier_soc {
 # ---------------------------------------------------------------------------
 # Issue #30: regfiles/addrmaps registered twice in single-file bindings
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(
-    reason="Issue #30: bindings.cpp.jinja registers regfile/addrmap classes twice",
-    strict=True,
-)
 def test_issue_30_no_duplicate_class_registrations() -> None:
     out = _export(HIERARCHICAL_RDL, "hier_soc", split_bindings=0)
     bindings = _read(os.path.join(out, "hier_soc_bindings.cpp"))
@@ -100,10 +96,6 @@ def test_issue_30_no_duplicate_class_registrations() -> None:
 # ---------------------------------------------------------------------------
 # Issue #31: split-bindings never registers regfile/addrmap
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(
-    reason="Issue #31: bindings_main.cpp.jinja omits regfile/addrmap class registration",
-    strict=True,
-)
 def test_issue_31_split_bindings_register_regfiles() -> None:
     out = _export(HIERARCHICAL_RDL, "hier_soc", split_by_hierarchy=True)
 
