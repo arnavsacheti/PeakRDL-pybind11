@@ -50,6 +50,28 @@ python3 smoke_test.py     # round-trip writes/reads on uart, aes, gpio, i2c, hma
 - **swaccess mapping** uses the table at the top of `hjson_to_rdl.py`. A few
   exotic OpenTitan modes (`rw0c`, `r0w1c`) are approximated to the closest
   SystemRDL semantics (`woclr`).
+## Why we don't use HEP-SoC/PeakRDL-opentitan
+
+`peakrdl-opentitan` exists ([HEP-SoC/PeakRDL-opentitan](https://github.com/HEP-SoC/PeakRDL-opentitan))
+and does HJSON ↔ SystemRDL conversion — in principle exactly what we
+need. In practice, only ~5 of top_earlgrey's ~36 unique IP types
+survive its importer:
+
+- `TypeError: expected string or bytes-like object, got 'bool'` in
+  `create_signal_definition` for any IP with bool-typed alert/intr
+  signal entries (most IPs)
+- `RDLCompileError: High bit … exceeds MSb of parent register` for
+  multiregs wider than the parent (rv_plic, csrng, pattgen, …)
+- `KeyError: 'name'` on certain register descriptors (hmac)
+- The 0.0.1 wheel is also missing `sig_props.rdl` — would need a
+  manual copy from the source repo.
+
+`build_ot.py` in this directory is the alternative pipeline using their
+importer; it succeeds on 11/44 module instances. Until those upstream
+bugs are fixed it isn't a viable replacement, so the supported path
+remains `hjson_to_rdl.py` (which uses OpenTitan's own `reggen.IpBlock`
+parser and handles all 44 modules).
+
 ## Exporter fixes that landed alongside this work
 
 The first version of this directory needed three workarounds. They have all
