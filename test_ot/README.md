@@ -57,6 +57,54 @@ Build time is dominated by the LTO link of ~2 600 register classes; per
 the README in the parent project, splitting by hierarchy (`split_by_hierarchy=True`)
 is what makes the parallel compile feasible at all.
 
+## Comparison with PeakRDL-PyRAL
+
+[PeakRDL-PyRAL](https://github.com/SystemRDL/PeakRDL-PyRAL) is a pure-Python
+register abstraction layer that targets the same problem space — generate a
+typed Python view of an RDL register map, attach a HW I/O callback, do
+read/write/field operations. Same `top_earlgrey.rdl` (27 k lines, 2 611
+registers) exported through both, measured on the same M1:
+
+| metric                                    | PeakRDL-PyRAL              | PeakRDL-pybind11 (this) |
+|-------------------------------------------|----------------------------|--------------------------|
+| Export time                               | **0.05 s**                 | 5 s                      |
+| Build/install                             | **none** (pure Python)     | 21 m 11 s LTO compile    |
+| Output footprint                          | 1.7 MB (`.py` + 492 KB SQLite db + `.pyi`) | 69 MB `.so`        |
+| Cold import                               | **0.02 s**                 | 0.14 s                   |
+| `get_ral()` / `create()`                  | 0.66 ms                    | <1 ms                    |
+| 10 000 round-trips, Python HW callback    | **5.5 ms (0.55 µs each)**  | 40 ms (4.0 µs each)      |
+| Generated artifact format                 | SQLite-backed registry, late-bound types | C++ classes + pybind11 wrappers |
+
+**Why PyRAL wins on Python-callback throughput.** pybind11 has to cross the
+Python ↔ C++ boundary twice per access (Python `reg.write()` → C++ → pybind11
+trampoline → Python `WrappedMaster.write()`), and that round-trip dominates
+the cost when the underlying master is itself Python. PyRAL stays in pure
+Python the whole way, so a dictionary-backed mock is a tight loop.
+
+**Where PeakRDL-pybind11 still has the edge.**
+
+- **C++ master integration.** When the master is also C++ (a real bus driver,
+  an OpenOCD/JTAG bridge, an mmap'd peripheral region in a C extension), the
+  trampoline cost vanishes and the C++ descriptor classes shine. PyRAL still
+  has to call back into Python.
+- **Static typing in C++.** The generated descriptor header gives you typed
+  C++ classes you can use from other C++ code, not just from Python.
+- **Reference-stable hierarchy.** Each register/regfile/addrmap is a real
+  C++ object; `set_offset()` rewrites in-place and pybind11 references stay
+  valid.
+
+**Where PeakRDL-PyRAL is the obvious choice.**
+
+- Iterating on RDL design (sub-second turnaround vs 21-minute rebuilds).
+- Distribution: `pip install` of a small wheel is far simpler than shipping a
+  platform-specific 69 MB `.so` per Python version.
+- All-Python test setups, CI, notebooks, exploration.
+
+In short: if your I/O callback is Python, PyRAL is faster *and* lighter. If
+your I/O lives in C++ and you want to drive it from a Python harness without
+crossing the boundary per access, PeakRDL-pybind11's design starts to pay
+off. The two tools point at meaningfully different deployment shapes.
+
 ## Conversion notes / known simplifications
 
 - **Multiregs** are expanded by reggen's `flat_regs`, so each replica becomes
