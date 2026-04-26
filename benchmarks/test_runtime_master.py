@@ -17,7 +17,7 @@ import importlib.util
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from typing import Any
 
 import pytest
 from systemrdl import RDLCompiler
@@ -36,7 +36,7 @@ addrmap bench_soc {
 
 
 @pytest.fixture(scope="module")
-def native(tmp_path_factory):
+def native(tmp_path_factory: pytest.TempPathFactory) -> Any:  # noqa: ANN401
     workdir = tmp_path_factory.mktemp("bench_master")
     rdl_path = workdir / "bench.rdl"
     rdl_path.write_text(_BENCH_RDL)
@@ -52,11 +52,14 @@ def native(tmp_path_factory):
     build_dir = output_dir / "build"
     build_dir.mkdir()
 
-    if subprocess.run(["cmake", ".."], cwd=build_dir,
-                      capture_output=True, text=True).returncode != 0:
+    if subprocess.run(["cmake", ".."], cwd=build_dir, capture_output=True, text=True).returncode != 0:
         pytest.skip("cmake configure failed (pybind11 unavailable?)")
-    if subprocess.run(["cmake", "--build", ".", "--config", "Release"],
-                      cwd=build_dir, capture_output=True, text=True).returncode != 0:
+    if (
+        subprocess.run(
+            ["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, capture_output=True, text=True
+        ).returncode
+        != 0
+    ):
         pytest.skip("cmake build failed")
 
     so_files = list(build_dir.glob("**/*.so")) + list(build_dir.glob("**/*.pyd"))
@@ -68,9 +71,7 @@ def native(tmp_path_factory):
     shutil.copy(so_files[0], pkg_dir)
     sys.path.insert(0, str(output_dir))
 
-    spec = importlib.util.spec_from_file_location(
-        "bench_soc", str(pkg_dir / "__init__.py")
-    )
+    spec = importlib.util.spec_from_file_location("bench_soc", str(pkg_dir / "__init__.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules["bench_soc"] = module
     spec.loader.exec_module(module)
@@ -80,16 +81,16 @@ def native(tmp_path_factory):
 N_OPS = 1000
 
 
-def test_callback_single_op_writes(benchmark, native):
+def test_callback_single_op_writes(benchmark: Any, native: Any) -> None:  # noqa: ANN401
     """1000 individual write() calls -> 1000 C++ <-> Python hops."""
     counter = [0]
 
-    def write_cb(addr, value, width):
+    def write_cb(addr: int, value: int, width: int) -> None:
         counter[0] += 1
 
     cb = native.CallbackMaster(lambda a, w: 0, write_cb)
 
-    def run():
+    def run() -> None:
         counter[0] = 0
         for i in range(N_OPS):
             cb.write(i * 4, i, 4)
@@ -98,12 +99,12 @@ def test_callback_single_op_writes(benchmark, native):
     assert counter[0] == N_OPS
 
 
-def test_callback_batched_writes(benchmark, native):
+def test_callback_batched_writes(benchmark: Any, native: Any) -> None:  # noqa: ANN401
     """One write_many() with 1000 ops -> 1 C++ <-> Python hop."""
     counter = [0]
     op_counter = [0]
 
-    def write_many(ops):
+    def write_many(ops: Any) -> None:  # noqa: ANN401
         counter[0] += 1
         op_counter[0] += len(ops)
 
@@ -112,7 +113,7 @@ def test_callback_batched_writes(benchmark, native):
 
     ops = [native.AccessOp(i * 4, i, 4) for i in range(N_OPS)]
 
-    def run():
+    def run() -> None:
         cb.write_many(ops)
 
     benchmark(run)
