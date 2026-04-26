@@ -52,6 +52,30 @@ class Nodes(TypedDict):
     mems: list[MemNode]
     flag_regs: list[RegNode]
     enum_regs: list[RegNode]
+    # Per-register flag/enum members: keyed by id(reg) -> [(name, value), ...].
+    # Populated for entries in flag_regs and enum_regs.
+    register_members: dict[int, list[tuple[str, int]]]
+
+
+# UDPs that the exporter understands. CLI users declare these in their RDL
+# (or call ``Pybind11Exporter.register_udps(rdl_compiler)`` when invoking
+# the compiler programmatically).
+#
+# - is_flag, is_enum   (reg, bool)   : tag a register as IntFlag / IntEnum
+# - flag_disable        (field, str) : comma-separated list of bit indices
+#                                      within the field (0 = lsb) to drop
+#                                      from the generated enum/flag.
+# - flag_names          (field, str) : comma-separated identifiers, mapped
+#                                      1:1 to the bits remaining after
+#                                      flag_disable. Trailing positions
+#                                      without an entry fall back to the
+#                                      default "{field}_{i}" naming.
+_KNOWN_UDPS: tuple[tuple[str, str, type], ...] = (
+    ("is_flag", "reg", bool),
+    ("is_enum", "reg", bool),
+    ("flag_disable", "field", str),
+    ("flag_names", "field", str),
+)
 
 
 class Pybind11Exporter:
@@ -70,6 +94,10 @@ class Pybind11Exporter:
         self.env.filters["enum_member"] = self._enum_member_name
         self.env.filters["cpp_string"] = self._cpp_string_escape
         self.env.filters["safe_id"] = self._sanitize_identifier
+        # Lazily resolves to the (name, value) list for an is_flag / is_enum
+        # register; populated by _collect_nodes.
+        self._members_by_id: dict[int, list[tuple[str, int]]] = {}
+        self.env.filters["members"] = self._members_for_node
         self.soc_name: str | None = None
         self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
@@ -117,6 +145,7 @@ class Pybind11Exporter:
 
         # Collect all nodes first
         nodes = self._collect_nodes(self.top_node)
+        self._members_by_id = nodes["register_members"]
 
         # Generate C++ descriptor header
         self._generate_descriptors(nodes)
@@ -454,6 +483,7 @@ class Pybind11Exporter:
                 "mems": [],
                 "flag_regs": [],
                 "enum_regs": [],
+                "register_members": {},
             }
 
         if isinstance(node, AddrmapNode):
@@ -477,8 +507,10 @@ class Pybind11Exporter:
             # If both are set, is_flag takes precedence.
             if is_flag:
                 nodes["flag_regs"].append(node)
+                nodes["register_members"][id(node)] = self._register_member_layout(node)
             elif is_enum:
                 nodes["enum_regs"].append(node)
+                nodes["register_members"][id(node)] = self._register_member_layout(node)
             for field in node.fields():
                 nodes["fields"].append(field)
 
@@ -491,3 +523,139 @@ class Pybind11Exporter:
         except LookupError:
             return False
         return bool(value)
+
+    def _members_for_node(self, node: Node) -> list[tuple[str, int]]:
+        """Jinja filter: return the (name, value) members for a flag/enum reg."""
+        return self._members_by_id.get(id(node), [])
+
+    @staticmethod
+    def _get_string_property(node: Node, name: str) -> str | None:
+        """Safely read a string property from a node, returning None if absent."""
+        try:
+            value = node.get_property(name)
+        except LookupError:
+            return None
+        if value is None or value == "":
+            return None
+        return str(value)
+
+    @staticmethod
+    def _parse_index_list(value: str, *, width: int, where: str) -> set[int]:
+        """Parse a comma-separated bit-index list and validate against ``width``."""
+        result: set[int] = set()
+        for token in value.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                idx = int(token, 0)
+            except ValueError as e:
+                raise ValueError(f"{where}: cannot parse {token!r} as an integer") from e
+            if idx < 0 or idx >= width:
+                raise ValueError(
+                    f"{where}: bit index {idx} is out of range for a width-{width} field"
+                )
+            result.add(idx)
+        return result
+
+    @staticmethod
+    def _parse_name_list(value: str) -> list[str]:
+        """Parse a comma-separated identifier list, dropping empty entries."""
+        return [s.strip() for s in value.split(",") if s.strip()]
+
+    def _register_member_layout(self, reg: RegNode) -> list[tuple[str, int]]:
+        """Compute (name, value) pairs for an is_flag/is_enum register.
+
+        Each field contributes one member per *enabled* bit position. The
+        ``flag_disable`` field UDP drops bit positions (indices 0..width-1,
+        where 0 is the field's lsb) before naming. The ``flag_names`` field
+        UDP supplies explicit identifiers mapped 1:1 to the remaining bits
+        in ascending order; trailing positions without an entry fall back
+        to ``{field}_{i}`` (where i is the bit-position-within-field).
+        """
+        members: list[tuple[str, int]] = []
+        for field in reg.fields():
+            width = field.width
+            low = field.low
+
+            disable_str = self._get_string_property(field, "flag_disable")
+            if disable_str:
+                disabled = self._parse_index_list(
+                    disable_str, width=width, where=f"flag_disable on {field.get_path()}"
+                )
+            else:
+                disabled = set()
+            enabled = [i for i in range(width) if i not in disabled]
+
+            names_str = self._get_string_property(field, "flag_names")
+            if names_str:
+                names = self._parse_name_list(names_str)
+                if len(names) > len(enabled):
+                    raise ValueError(
+                        f"flag_names on {field.get_path()} has {len(names)} entries "
+                        f"but only {len(enabled)} bit(s) remain after flag_disable"
+                    )
+            else:
+                names = []
+
+            base_name = self._sanitize_identifier(field.inst_name)
+            for slot, bit_index in enumerate(enabled):
+                if slot < len(names):
+                    name = self._sanitize_identifier(names[slot])
+                elif width == 1:
+                    name = base_name
+                else:
+                    name = f"{base_name}_{bit_index}"
+                members.append((name, 1 << (low + bit_index)))
+        return members
+
+    @classmethod
+    def register_udps(cls, rdl_compiler: object) -> None:
+        """Register every UDP this exporter recognizes with the given compiler.
+
+        For programmatic use:
+
+            from systemrdl import RDLCompiler
+            from peakrdl_pybind11 import Pybind11Exporter
+
+            rdl = RDLCompiler()
+            Pybind11Exporter.register_udps(rdl)
+            rdl.compile_file(...)
+
+        CLI users can equivalently declare the UDPs in their RDL.
+        """
+        for prop_name, component, prop_type in _KNOWN_UDPS:
+            cls._register_udp(rdl_compiler, prop_name, component, prop_type)
+
+    @staticmethod
+    def _register_udp(rdl_compiler: object, prop_name: str, component: str, prop_type: type) -> None:
+        from systemrdl import component as _comp
+        from systemrdl.udp import UDPDefinition
+
+        component_cls_map = {
+            "reg": _comp.Reg,
+            "field": _comp.Field,
+        }
+        try:
+            comp_cls = component_cls_map[component]
+        except KeyError as e:
+            raise ValueError(f"Unsupported UDP component scope: {component!r}") from e
+
+        udp_class = type(
+            f"_UDPDef_{prop_name}",
+            (UDPDefinition,),
+            {
+                "name": prop_name,
+                "valid_components": {comp_cls},
+                "valid_type": prop_type,
+            },
+        )
+        register = getattr(rdl_compiler, "register_udp", None)
+        if register is None:
+            raise TypeError(
+                "rdl_compiler does not look like a systemrdl RDLCompiler "
+                "(no register_udp method)"
+            )
+        # soft=False so the UDP is recognized immediately without the user
+        # also having to declare `property is_flag { ... };` in their RDL.
+        register(udp_class, soft=False)

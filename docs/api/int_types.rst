@@ -179,8 +179,12 @@ return the generated flag/enum type instead of ``RegisterInt``.
 
 .. code-block:: systemrdl
 
-   property is_flag { component = reg; type = boolean; };
-   property is_enum { component = reg; type = boolean; };
+   // Required for CLI users; programmatic callers can instead use
+   // Pybind11Exporter.register_udps(rdlc) to register them all at once.
+   property is_flag      { component = reg;   type = boolean; };
+   property is_enum      { component = reg;   type = boolean; };
+   property flag_disable { component = field; type = string;  };
+   property flag_names   { component = field; type = string;  };
 
    addrmap example {
        reg {
@@ -216,8 +220,33 @@ return the generated flag/enum type instead of ``RegisterInt``.
    if soc.mode.read() == Mode.Idle:
        print("Idle")
 
-For ``is_flag`` registers, single-bit fields map to ``2**lsb`` and multi-bit fields map to the
-full field bitmask. For ``is_enum`` registers, fields map to ``2**lsb`` (bit position).
+**Member generation rules** (apply to both ``is_flag`` and ``is_enum`` registers):
+
+For each field, every enabled bit position contributes one member with value
+``1 << (field.lsb + i)``. A single-bit field uses the field's name; a width-N
+field defaults to ``{field}_0 .. {field}_{N-1}``. Two field-level UDPs let you
+shape this:
+
+* ``flag_disable`` — comma-separated list of bit indices within the field
+  (``0`` = lsb) to drop. Disabled positions never produce a member, and the
+  remaining members keep their original bit-position index in the default
+  name. Example: a width-4 field with ``flag_disable = "1,3";`` emits
+  ``field_0`` and ``field_2``.
+* ``flag_names`` — comma-separated identifiers, mapped 1:1 to the bits that
+  remain after ``flag_disable``, in ascending order. Trailing positions
+  without a name fall back to ``{field}_{i}``. Providing more names than
+  remaining bits is an error.
+
+Example combining the two on a width-4 field where bits 1 and 3 are unused
+in hardware::
+
+   field {
+       sw = rw; hw = r;
+       flag_disable = "1,3";
+       flag_names    = "low,high";
+   } quad[3:0];
+
+generates ``low = 1`` (bit 0) and ``high = 4`` (bit 2).
 
 
 Complete Example

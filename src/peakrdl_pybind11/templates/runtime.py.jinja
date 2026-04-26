@@ -62,14 +62,10 @@ def wrap_master(master_impl):
 {% for reg in nodes.flag_regs %}
 class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
     """Bit flags for {{ reg.inst_name | safe_id }}."""
-    {% set fields = reg.fields()|list %}
-    {% if fields %}
-    {% for field in fields %}
-    {{ field.inst_name | safe_id }} = {{ ((2 ** field.width) - 1) * (2 ** field.low) if field.width > 1 else (2 ** field.low) }}
-    {% set alias = field.inst_name | enum_member %}
-    {% if alias != (field.inst_name | safe_id) %}
-    {{ alias }} = {{ field.inst_name | safe_id }}
-    {% endif %}
+    {% set members = reg | members %}
+    {% if members %}
+    {% for name, value in members %}
+    {{ name }} = {{ value }}
     {% endfor %}
     {% else %}
     pass
@@ -81,14 +77,10 @@ __all__.append('{{ reg.inst_name | safe_id }}_f')
 {% for reg in nodes.enum_regs %}
 class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
     """Enum for {{ reg.inst_name | safe_id }}."""
-    {% set fields = reg.fields()|list %}
-    {% if fields %}
-    {% for field in fields %}
-    {{ field.inst_name | safe_id }} = {{ 2 ** field.low }}
-    {% set alias = field.inst_name | enum_member %}
-    {% if alias != (field.inst_name | safe_id) %}
-    {{ alias }} = {{ field.inst_name | safe_id }}
-    {% endif %}
+    {% set members = reg | members %}
+    {% if members %}
+    {% for name, value in members %}
+    {{ name }} = {{ value }}
     {% endfor %}
     {% else %}
     pass
