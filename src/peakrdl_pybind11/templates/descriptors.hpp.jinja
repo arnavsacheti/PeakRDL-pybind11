@@ -322,8 +322,8 @@ class {{ mem.inst_name | safe_id }}_t;
 // Register: {{ reg.inst_name | safe_id }}
 class {{ reg.inst_name | safe_id }}_t : public RegisterBase {
 public:
-    {{ reg.inst_name | safe_id }}_t(uint64_t base_offset) 
-        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(reg.absolute_address) }}, {{ reg.size }}) {}
+    {{ reg.inst_name | safe_id }}_t(uint64_t base_offset)
+        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(reg.address_offset) }}, {{ reg.size }}) {}
     
     {% for field in reg.fields() %}
     // Field: {{ field.inst_name | safe_id }}
@@ -366,8 +366,8 @@ public:
 // Regfile: {{ regfile.inst_name | safe_id }}
 class {{ regfile.inst_name | safe_id }}_t : public NodeBase {
 public:
-    {{ regfile.inst_name | safe_id }}_t(uint64_t base_offset) 
-        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset) {
+    {{ regfile.inst_name | safe_id }}_t(uint64_t base_offset)
+        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(regfile.address_offset) }}) {
         {% for child in regfile.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);
@@ -403,8 +403,8 @@ public:
 
 class {{ mem.inst_name | safe_id }}_t : public MemoryBase<{{ entry_reg.inst_name | safe_id }}_t> {
 public:
-    {{ mem.inst_name | safe_id }}_t(uint64_t base_offset) 
-        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>("{{ mem.inst_name | safe_id }}", base_offset, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
+    {{ mem.inst_name | safe_id }}_t(uint64_t base_offset)
+        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>("{{ mem.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(mem.address_offset) }}, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
     
     void set_offset(uint64_t base_offset) {
         offset_ = base_offset;
@@ -427,8 +427,8 @@ public:
 // Addrmap: {{ addrmap.inst_name | safe_id }}
 class {{ addrmap.inst_name | safe_id }}_t : public NodeBase {
 public:
-    {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset) 
-        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset) {
+    {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset)
+        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(addrmap.address_offset) }}) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);
@@ -462,28 +462,13 @@ public:
 // Top-level SoC class
 class {{ soc_name }}_t : public NodeBase {
 public:
-    {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {
-        {% for child in top_node.children() %}
-        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name | safe_id }}.set_offset(offset_);
-        {% endif %}
-        {% endfor %}
-    }
-    
+    {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {}
+
     void attach_master(Master* master) {
         set_master(master);
         propagate_master(master);
     }
-    
-    void set_offset(uint64_t offset) {
-        offset_ = offset;
-        {% for child in top_node.children() %}
-        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name | safe_id }}.set_offset(offset_);
-        {% endif %}
-        {% endfor %}
-    }
-    
+
     void propagate_master(Master* master) {
         {% for child in top_node.children() %}
         {% if child.inst_name %}
@@ -491,10 +476,14 @@ public:
         {% endif %}
         {% endfor %}
     }
-    
+
+    // Each child contributes its own address_offset on top of the base passed
+    // here, so the SoC always passes its own offset (0). Containers'
+    // set_offset() does not propagate to children -- treat the address layout
+    // as fixed at construction time.
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{0x{{ "%x" | format(child.absolute_address if child.absolute_address else 0) }}};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };
