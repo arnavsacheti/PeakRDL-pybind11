@@ -18,7 +18,9 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from systemrdl import RDLCompiler
@@ -26,10 +28,9 @@ from systemrdl import RDLCompiler
 from peakrdl_pybind11 import Pybind11Exporter
 
 
-def _build_module(workdir: Path, num_regs: int, soc_name: str = "tx_bench_soc"):
+def _build_module(workdir: Path, num_regs: int, soc_name: str = "tx_bench_soc") -> Any:  # noqa: ANN401
     body = "\n".join(
-        f"reg {{ field {{ sw=rw; hw=r; }} data[31:0] = 0; }} r{i} @ 0x{i*4:x};"
-        for i in range(num_regs)
+        f"reg {{ field {{ sw=rw; hw=r; }} data[31:0] = 0; }} r{i} @ 0x{i * 4:x};" for i in range(num_regs)
     )
     rdl_src = f"addrmap {soc_name} {{\n{body}\n}};\n"
 
@@ -48,15 +49,19 @@ def _build_module(workdir: Path, num_regs: int, soc_name: str = "tx_bench_soc"):
     cmake_args = ["cmake", ".."]
     try:
         import pybind11
+
         cmake_args.append(f"-Dpybind11_DIR={pybind11.get_cmake_dir()}")
         cmake_args.append(f"-DPython_EXECUTABLE={sys.executable}")
     except ImportError:
         pass
-    if subprocess.run(cmake_args, cwd=build_dir,
-                      capture_output=True, text=True).returncode != 0:
+    if subprocess.run(cmake_args, cwd=build_dir, capture_output=True, text=True).returncode != 0:
         return None
-    if subprocess.run(["cmake", "--build", ".", "--config", "Release"],
-                      cwd=build_dir, capture_output=True, text=True).returncode != 0:
+    if (
+        subprocess.run(
+            ["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, capture_output=True, text=True
+        ).returncode
+        != 0
+    ):
         return None
 
     so_files = list(build_dir.glob("**/*.so")) + list(build_dir.glob("**/*.pyd"))
@@ -79,41 +84,42 @@ def _build_module(workdir: Path, num_regs: int, soc_name: str = "tx_bench_soc"):
     return module
 
 
-def _time_loops(fn, loops):
+def _time_loops(fn: Callable[[], None], loops: int) -> float:
     start = time.perf_counter()
     for _ in range(loops):
         fn()
     return (time.perf_counter() - start) / loops
 
 
-def _run_bench(soc, master_label, loops):
+def _run_bench(soc: Any, master_label: str, loops: int) -> tuple[float, float]:  # noqa: ANN401
     regs = [getattr(soc, f"r{i}") for i in range(50)]
     targets = [regs[i % 50] for i in range(100)]
     values = [0xA5A5A500 | i for i in range(100)]
 
-    def baseline():
-        for r, v in zip(targets, values):
+    def baseline() -> None:
+        for r, v in zip(targets, values, strict=True):
             r.write(v)
 
-    def transactional():
+    def transactional() -> None:
         with soc.transaction():
-            for r, v in zip(targets, values):
+            for r, v in zip(targets, values, strict=True):
                 r.write(v)
 
-    baseline(); transactional()
+    baseline()
+    transactional()
     baseline_s = _time_loops(baseline, loops)
     tx_s = _time_loops(transactional, loops)
     speedup = baseline_s / tx_s if tx_s > 0 else float("inf")
     print(
         f"\n[transaction bench / {master_label}] 100 writes / 50 regs over {loops} loops:\n"
-        f"  individual writes   : {baseline_s*1e6:8.2f} us/iter\n"
-        f"  inside transaction  : {tx_s*1e6:8.2f} us/iter\n"
+        f"  individual writes   : {baseline_s * 1e6:8.2f} us/iter\n"
+        f"  inside transaction  : {tx_s * 1e6:8.2f} us/iter\n"
         f"  speedup             : {speedup:.2f}x\n"
     )
     return baseline_s, tx_s
 
 
-def test_transaction_vs_individual_writes(tmp_path):
+def test_transaction_vs_individual_writes(tmp_path: Path) -> None:
     soc_module = _build_module(tmp_path, num_regs=50)
     if soc_module is None:
         pytest.skip("Could not build benchmark module (cmake/pybind11 unavailable)")
@@ -144,13 +150,13 @@ def test_transaction_vs_individual_writes(tmp_path):
     py_store = {}
 
     class BatchPyMaster(soc_module.Master):
-        def read(self, addr, width):
+        def read(self, addr: int, width: int) -> int:
             return py_store.get(addr, 0)
 
-        def write(self, addr, val, width):
+        def write(self, addr: int, val: int, width: int) -> None:
             py_store[addr] = val
 
-        def write_many(self, ops):
+        def write_many(self, ops: Any) -> None:  # noqa: ANN401
             for op in ops:
                 py_store[op.address] = op.value
 
