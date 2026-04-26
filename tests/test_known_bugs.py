@@ -258,10 +258,6 @@ addrmap kw_soc {
 """
 
 
-@pytest.mark.xfail(
-    reason="Issue #34: identifier sanitizer does not protect Python/C++ keywords",
-    strict=True,
-)
 def test_issue_34_reserved_word_identifiers_produce_valid_python() -> None:
     out = _export(RESERVED_WORD_RDL, "kw_soc", split_bindings=0)
     try:

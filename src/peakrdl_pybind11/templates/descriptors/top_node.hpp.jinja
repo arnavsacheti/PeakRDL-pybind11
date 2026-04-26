@@ -4,7 +4,7 @@ public:
     {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {
         {% for child in top_node.children() %}
         {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name }}.set_offset(offset_);
+        {{ child.inst_name | safe_id }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
     }
@@ -18,7 +18,7 @@ public:
         offset_ = offset;
         {% for child in top_node.children() %}
         {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name }}.set_offset(offset_);
+        {{ child.inst_name | safe_id }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
     }
@@ -26,14 +26,14 @@ public:
     void propagate_master(Master* master) {
         {% for child in top_node.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master);
+        {{ child.inst_name | safe_id }}.set_master(master);
         {% endif %}
         {% endfor %}
     }
 
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}_t {{ child.inst_name }}{0x{{ "%x" | format(child.absolute_address if child.absolute_address else 0) }}};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{0x{{ "%x" | format(child.absolute_address if child.absolute_address else 0) }}};
     {% endif %}
     {% endfor %}
 };

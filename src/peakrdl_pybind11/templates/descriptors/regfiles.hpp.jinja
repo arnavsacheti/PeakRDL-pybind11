@@ -1,12 +1,12 @@
 {% for regfile in nodes.regfiles %}
-// Regfile: {{ regfile.inst_name }}
-class {{ regfile.inst_name }}_t : public NodeBase {
+// Regfile: {{ regfile.inst_name | safe_id }}
+class {{ regfile.inst_name | safe_id }}_t : public NodeBase {
 public:
-    {{ regfile.inst_name }}_t(uint64_t base_offset)
-        : NodeBase("{{ regfile.inst_name }}", base_offset) {
+    {{ regfile.inst_name | safe_id }}_t(uint64_t base_offset)
+        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset) {
         {% for child in regfile.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master_);
+        {{ child.inst_name | safe_id }}.set_master(master_);
         {% endif %}
         {% endfor %}
     }
@@ -15,7 +15,7 @@ public:
         NodeBase::set_master(master);
         {% for child in regfile.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master);
+        {{ child.inst_name | safe_id }}.set_master(master);
         {% endif %}
         {% endfor %}
     }
@@ -26,7 +26,7 @@ public:
 
     {% for child in regfile.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };
