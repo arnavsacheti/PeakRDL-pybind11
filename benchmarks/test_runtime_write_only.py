@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
@@ -33,21 +34,21 @@ addrmap wo_bench_soc {
 
 
 class _CountingMaster:
-    def __init__(self):
+    def __init__(self) -> None:
         self.store = {}
         self.reads = 0
         self.writes = 0
 
-    def read(self, addr, width):
+    def read(self, addr: int, width: int) -> int:
         self.reads += 1
         return self.store.get(addr, 0)
 
-    def write(self, addr, value, width):
+    def write(self, addr: int, value: int, width: int) -> None:
         self.writes += 1
         self.store[addr] = value
 
 
-def _build_module():
+def _build_module() -> Any:  # noqa: ANN401
     workdir = Path(tempfile.mkdtemp(prefix="wo_bench_"))
     rdl_path = workdir / "wo.rdl"
     rdl_path.write_text(WO_BENCH_RDL)
@@ -63,11 +64,14 @@ def _build_module():
     build_dir = output_dir / "build"
     build_dir.mkdir()
 
-    if subprocess.run(["cmake", ".."], cwd=build_dir,
-                      capture_output=True, text=True).returncode != 0:
+    if subprocess.run(["cmake", ".."], cwd=build_dir, capture_output=True, text=True).returncode != 0:
         return None
-    if subprocess.run(["cmake", "--build", ".", "--config", "Release"],
-                      cwd=build_dir, capture_output=True, text=True).returncode != 0:
+    if (
+        subprocess.run(
+            ["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, capture_output=True, text=True
+        ).returncode
+        != 0
+    ):
         return None
 
     so_files = list(build_dir.glob("**/*.so")) + list(build_dir.glob("**/*.pyd"))
@@ -78,9 +82,7 @@ def _build_module():
     shutil.copy(so_files[0], pkg_dir)
 
     sys.path.insert(0, str(output_dir))
-    spec = importlib.util.spec_from_file_location(
-        "wo_bench_soc", str(pkg_dir / "__init__.py")
-    )
+    spec = importlib.util.spec_from_file_location("wo_bench_soc", str(pkg_dir / "__init__.py"))
     if spec is None or spec.loader is None:
         return None
     module = importlib.util.module_from_spec(spec)
@@ -90,7 +92,7 @@ def _build_module():
 
 
 @pytest.fixture(scope="module")
-def soc_module():
+def soc_module() -> Any:  # noqa: ANN401
     mod = _build_module()
     if mod is None:
         pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
@@ -100,12 +102,12 @@ def soc_module():
 class TestRuntimeWriteOnly:
     """Compare master-op counts for regular context vs write_only."""
 
-    def test_regular_context_100_enables(self, benchmark: BenchmarkFixture, soc_module):
+    def test_regular_context_100_enables(self, benchmark: BenchmarkFixture, soc_module: Any) -> None:  # noqa: ANN401
         soc = soc_module.create()
         cm = _CountingMaster()
         soc.attach_master(soc_module.wrap_master(cm))
 
-        def run():
+        def run() -> None:
             for _ in range(100):
                 with soc.cmd as reg:
                     reg.enable.write(1)
@@ -123,12 +125,12 @@ class TestRuntimeWriteOnly:
         # Stash for the comparison test; cheap and avoids cross-test deps.
         TestRuntimeWriteOnly.regular_ops = (regular_reads, regular_writes)
 
-    def test_write_only_context_100_enables(self, benchmark: BenchmarkFixture, soc_module):
+    def test_write_only_context_100_enables(self, benchmark: BenchmarkFixture, soc_module: Any) -> None:  # noqa: ANN401
         soc = soc_module.create()
         cm = _CountingMaster()
         soc.attach_master(soc_module.wrap_master(cm))
 
-        def run():
+        def run() -> None:
             for _ in range(100):
                 with soc.cmd.write_only() as reg:
                     reg.enable.write(1)
@@ -148,8 +150,10 @@ class TestRuntimeWriteOnly:
             regular_reads, regular_writes = regular
             total_regular = regular_reads + regular_writes
             total_wo = wo_reads + wo_writes
-            print(f"[summary   ] total master ops: regular={total_regular} "
-                  f"write_only={total_wo} (ratio={total_regular / max(total_wo, 1):.2f}x)")
+            print(
+                f"[summary   ] total master ops: regular={total_regular} "
+                f"write_only={total_wo} (ratio={total_regular / max(total_wo, 1):.2f}x)"
+            )
             assert wo_reads == 0
             assert wo_writes == 100
             assert regular_reads == 100
