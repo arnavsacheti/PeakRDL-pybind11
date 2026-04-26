@@ -1,9 +1,9 @@
 {% for addrmap in nodes.addrmaps %}
 {% if addrmap != top_node %}
-// Addrmap: {{ addrmap.inst_name | safe_id }}
-class {{ addrmap.inst_name | safe_id }}_t : public NodeBase {
+// Addrmap: {{ addrmap.get_path() }}
+class {{ addrmap | pybind_name }}_t : public NodeBase {
 public:
-    {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset)
+    {{ addrmap | pybind_name }}_t(uint64_t base_offset)
         : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(addrmap.address_offset) }}) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
@@ -34,7 +34,7 @@ public:
 
     {% for child in addrmap.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
+    {{ child | pybind_name }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };

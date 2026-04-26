@@ -66,20 +66,24 @@ class TestExporter:
             exporter = Pybind11Exporter()
             exporter.export(root.top, tmpdir, soc_name="simple_soc")
             
-            # Verify expected files were created
+            # Verify expected files were created. The Python wrapper is also
+            # written into a {soc_name}/ subdir so the wheel installs as a
+            # proper package; root-level copies are kept for back-compat.
             expected_files = [
                 'simple_soc_descriptors.hpp',
                 'simple_soc_bindings.cpp',
                 '__init__.py',
+                'simple_soc/__init__.py',
                 'CMakeLists.txt',
                 'pyproject.toml',
                 '__init__.pyi',
+                'simple_soc/__init__.pyi',
             ]
-            
+
             for filename in expected_files:
                 filepath = os.path.join(tmpdir, filename)
                 assert os.path.exists(filepath), f"Expected file not found: {filename}"
-                
+
                 # Verify files are not empty
                 assert os.path.getsize(filepath) > 0, f"File is empty: {filename}"
     
@@ -141,6 +145,7 @@ class TestExporter:
             
             # Verify .pyi file was not created
             assert not os.path.exists(os.path.join(tmpdir, '__init__.pyi'))
+            assert not os.path.exists(os.path.join(tmpdir, 'test_soc', '__init__.pyi'))
     
     def test_generated_header_content(self):
         """Test that generated header contains expected content"""

@@ -1,8 +1,8 @@
 {% for regfile in nodes.regfiles %}
-// Regfile: {{ regfile.inst_name | safe_id }}
-class {{ regfile.inst_name | safe_id }}_t : public NodeBase {
+// Regfile: {{ regfile.get_path() }}
+class {{ regfile | pybind_name }}_t : public NodeBase {
 public:
-    {{ regfile.inst_name | safe_id }}_t(uint64_t base_offset)
+    {{ regfile | pybind_name }}_t(uint64_t base_offset)
         : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(regfile.address_offset) }}) {
         {% for child in regfile.children() %}
         {% if child.inst_name %}
@@ -33,7 +33,7 @@ public:
 
     {% for child in regfile.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
+    {{ child | pybind_name }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };

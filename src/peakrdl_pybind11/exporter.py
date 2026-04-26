@@ -489,9 +489,11 @@ class Pybind11Exporter:
         )
 
         assert self.output_dir is not None
-        filepath = self.output_dir / "__init__.py"
-        with filepath.open("w") as f:
-            f.write(output)
+        pkg_dir = self.output_dir / self.soc_name
+        pkg_dir.mkdir(exist_ok=True)
+        for filepath in (pkg_dir / "__init__.py", self.output_dir / "__init__.py"):
+            with filepath.open("w") as f:
+                f.write(output)
 
     def _generate_setup_py(self, nodes: Nodes) -> None:
         """Generate CMakeLists.txt and pyproject.toml for building the C++ extension"""
@@ -551,9 +553,11 @@ class Pybind11Exporter:
         )
 
         assert self.output_dir is not None
-        filepath = self.output_dir / "__init__.pyi"
-        with filepath.open("w") as f:
-            f.write(output)
+        pkg_dir = self.output_dir / self.soc_name
+        pkg_dir.mkdir(exist_ok=True)
+        for filepath in (pkg_dir / "__init__.pyi", self.output_dir / "__init__.pyi"):
+            with filepath.open("w") as f:
+                f.write(output)
 
     def _collect_nodes(self, node: Node, nodes: Nodes | None = None) -> Nodes:
         """Recursively collect all nodes in the hierarchy"""

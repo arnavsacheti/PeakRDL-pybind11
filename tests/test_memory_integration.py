@@ -89,13 +89,13 @@ class TestMemoryIntegration:
                 descriptor_content = f.read()
             
             assert 'class MemoryBase' in descriptor_content
-            assert 'class ctrl_mem_t' in descriptor_content
-            assert 'MemoryBase<entry_t>' in descriptor_content
+            assert 'class integration_test__ctrl_mem_t' in descriptor_content
+            assert 'MemoryBase<integration_test__ctrl_mem__entry_t>' in descriptor_content
             
             # Verify entry register constructor passes (base, relative, width)
             # to RegisterBase. The entry's relative address is 0 -- the
             # memory contributes the +0x1000 via MemoryBase's relative_offset.
-            assert 'entry_t(uint64_t base_offset)' in descriptor_content
+            assert 'integration_test__ctrl_mem__entry_t(uint64_t base_offset)' in descriptor_content
             assert 'RegisterBase("entry", base_offset, 0x0, 4)' in descriptor_content
             assert '"ctrl_mem", base_offset' in descriptor_content
             assert '0x1000,' in descriptor_content
@@ -117,11 +117,11 @@ class TestMemoryIntegration:
             with open(os.path.join(tmpdir, '__init__.pyi')) as f:
                 stub_content = f.read()
             
-            assert 'class ctrl_mem_t' in stub_content
+            assert 'class integration_test__ctrl_mem_t' in stub_content
             assert 'def __len__(self) -> int:' in stub_content
-            assert 'def __getitem__(self, index: int) -> entry_t:' in stub_content
-            assert 'def __getitem__(self, index: slice) -> list[entry_t]:' in stub_content
-            assert 'def __iter__(self) -> Iterator[entry_t]:' in stub_content
+            assert 'def __getitem__(self, index: int) -> integration_test__ctrl_mem__entry_t:' in stub_content
+            assert 'def __getitem__(self, index: slice) -> list[integration_test__ctrl_mem__entry_t]:' in stub_content
+            assert 'def __iter__(self) -> Iterator[integration_test__ctrl_mem__entry_t]:' in stub_content
     
     def test_memory_bindings_syntax_valid(self):
         """Verify generated C++ code has valid syntax (at least compiles headers)"""

@@ -77,3 +77,6 @@ benchmarks/output/
 # Sphinx documentation
 docs/_build/
 docs/_autosummary/
+test_ot/output/
+test_ot/opentitan/
+test_ot/top_earlgrey.rdl

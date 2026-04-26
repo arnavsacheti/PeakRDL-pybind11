@@ -60,8 +60,8 @@ def wrap_master(master_impl):
 
 # Generated flag/enum types from SystemRDL fields
 {% for reg in nodes.flag_regs %}
-class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
-    """Bit flags for {{ reg.inst_name | safe_id }}."""
+class {{ reg | pybind_name }}_f(RegisterIntFlag):
+    """Bit flags for {{ reg.get_path() }}."""
     {% set members = reg | members %}
     {% if members %}
     {% for name, value in members %}
@@ -71,12 +71,12 @@ class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
     pass
     {% endif %}
 
-__all__.append('{{ reg.inst_name | safe_id }}_f')
+__all__.append('{{ reg | pybind_name }}_f')
 {% endfor %}
 
 {% for reg in nodes.enum_regs %}
-class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
-    """Enum for {{ reg.inst_name | safe_id }}."""
+class {{ reg | pybind_name }}_e(RegisterIntEnum):
+    """Enum for {{ reg.get_path() }}."""
     {% set members = reg | members %}
     {% if members %}
     {% for name, value in members %}
@@ -86,7 +86,7 @@ class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
     pass
     {% endif %}
 
-__all__.append('{{ reg.inst_name | safe_id }}_e')
+__all__.append('{{ reg | pybind_name }}_e')
 {% endfor %}
 
 
@@ -96,18 +96,11 @@ __all__.append('{{ reg.inst_name | safe_id }}_e')
 # Each generated register/field class is rewrapped at module-load time so
 # that .read() returns RegisterInt/FieldInt (instead of bare ints) and
 # .write() accepts FieldInt for read-modify-write.
-#
-# The class set, the flag/enum type mapping, and the per-register field
-# layout (name -> (lsb, width)) are all baked in at codegen time. This
-# replaces an earlier heuristic that walked globals() for "_t" classes
-# and called dir(self) on every read to rebuild the field layout. The
-# enhancement is also idempotent: re-importing this module is a no-op,
-# guarded by a marker on the wrapped methods.
 # ---------------------------------------------------------------------------
 
 _REGISTER_FIELDS: dict[type, dict[str, tuple[int, int]]] = {
 {% for reg in nodes.regs %}
-    {{ reg.inst_name | safe_id }}_t: {
+    {{ reg | pybind_name }}_t: {
         {% for field in reg.fields() %}
         "{{ field.inst_name | safe_id }}": ({{ field.low }}, {{ field.width }}),
         {% endfor %}
@@ -117,20 +110,20 @@ _REGISTER_FIELDS: dict[type, dict[str, tuple[int, int]]] = {
 
 _FLAG_REG_TYPES: dict[type, type] = {
 {% for reg in nodes.flag_regs %}
-    {{ reg.inst_name | safe_id }}_t: {{ reg.inst_name | safe_id }}_f,
+    {{ reg | pybind_name }}_t: {{ reg | pybind_name }}_f,
 {% endfor %}
 }
 
 _ENUM_REG_TYPES: dict[type, type] = {
 {% for reg in nodes.enum_regs %}
-    {{ reg.inst_name | safe_id }}_t: {{ reg.inst_name | safe_id }}_e,
+    {{ reg | pybind_name }}_t: {{ reg | pybind_name }}_e,
 {% endfor %}
 }
 
 _FIELD_CLASSES: tuple = (
 {% for reg in nodes.regs %}
 {% for field in reg.fields() %}
-    {{ reg.inst_name | safe_id }}_{{ field.inst_name | safe_id }}_field,
+    {{ reg | pybind_name }}_{{ field.inst_name | safe_id }}_field,
 {% endfor %}
 {% endfor %}
 )

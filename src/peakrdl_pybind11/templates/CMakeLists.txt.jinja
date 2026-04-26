@@ -34,5 +34,6 @@ else()
     target_compile_options(_{{ soc_name }}_native PRIVATE -Wno-unused-variable)
 endif()
 
-# Install the module
-install(TARGETS _{{ soc_name }}_native LIBRARY DESTINATION .)
+# Install the module into the {{ soc_name }}/ package directory so the
+# resulting wheel ships as a real Python package (with __init__.py).
+install(TARGETS _{{ soc_name }}_native LIBRARY DESTINATION {{ soc_name }})
