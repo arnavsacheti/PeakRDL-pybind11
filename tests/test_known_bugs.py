@@ -271,68 +271,205 @@ def test_issue_34_reserved_word_identifiers_produce_valid_python() -> None:
 # ---------------------------------------------------------------------------
 # Issue #35: enum/flag value semantics
 # ---------------------------------------------------------------------------
-FLAG_RDL = """
-addrmap flag_soc {
-    reg {
-        is_flag = true;
-        field { sw = rw; hw = r; } bit_a[0:0];
-        field { sw = rw; hw = r; } bit_b[1:1];
-        field { sw = rw; hw = r; } bit_c[2:2];
-    } flags @ 0x0;
-};
-"""
+def _export_with_udps(rdl_text: str, soc_name: str, **kwargs) -> str:
+    """Compile RDL with the exporter's UDPs pre-registered, then export."""
+    from peakrdl_pybind11 import Pybind11Exporter
 
-
-def _is_flag_user_property_supported() -> bool:
-    """is_flag/is_enum require the user-property registration done elsewhere.
-
-    The compiler will refuse the RDL otherwise. We try a cheap compile to find
-    out, and skip the test if the property isn't registered in this build.
-    """
     rdl = RDLCompiler()
+    Pybind11Exporter.register_udps(rdl)
+    rdl.compile_file(_write_rdl(rdl_text))
+    root = rdl.elaborate()
+
+    tmpdir = tempfile.mkdtemp()
+    Pybind11Exporter().export(root.top, tmpdir, soc_name=soc_name, **kwargs)
+    return tmpdir
+
+
+def _flag_class_members(runtime_src: str, class_name: str) -> dict[str, int]:
+    """Parse runtime.py and return {member_name: int_value} for ``class_name``."""
+    tree = ast.parse(runtime_src)
+    cls = next(
+        (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == class_name),
+        None,
+    )
+    assert cls is not None, f"class {class_name} not found in generated runtime"
+    out: dict[str, int] = {}
+    for stmt in cls.body:
+        if (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, int)
+        ):
+            out[stmt.targets[0].id] = stmt.value.value
+    return out
+
+
+def test_issue_35_single_bit_flag_field_keeps_bare_name() -> None:
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field { sw = rw; hw = r; } bit_a[0:0];
+            field { sw = rw; hw = r; } bit_b[1:1];
+            field { sw = rw; hw = r; } bit_c[2:2];
+        } flags @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        rdl.compile_file(_write_rdl(FLAG_RDL))
-        rdl.elaborate()
-    except Exception:
-        return False
-    return True
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        assert members == {"bit_a": 1, "bit_b": 2, "bit_c": 4}
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
 
 
-@pytest.mark.xfail(
-    reason="Issue #35: IntFlag values for multi-bit fields are masks, not flag bits",
-    strict=True,
-)
-def test_issue_35_flag_register_emits_single_bit_values() -> None:
-    if not _is_flag_user_property_supported():
-        pytest.skip("is_flag user property not registered for this build")
-
-    out = _export(FLAG_RDL, "flag_soc", split_bindings=0)
+def test_issue_35_multibit_flag_field_uses_indexed_suffix() -> None:
+    """Width-N field expands to N power-of-two members named field_0..field_{N-1}."""
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field { sw = rw; hw = r; } solo[0:0];
+            field { sw = rw; hw = r; } trio[3:1];
+        } flags @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        runtime = _read(os.path.join(out, "__init__.py"))
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        # solo at bit 0; trio spans bits [3:1] -> trio_0=2, trio_1=4, trio_2=8.
+        assert members == {"solo": 1, "trio_0": 2, "trio_1": 4, "trio_2": 8}
+        # Every member must still be a single power of two.
+        for name, value in members.items():
+            assert value & (value - 1) == 0, f"{name} = {value:#x} is not a single bit"
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
 
-        # Each single-bit flag field must end up as exactly the corresponding bit:
-        #   bit_a -> 1 << 0, bit_b -> 1 << 1, bit_c -> 1 << 2
-        # Currently the template emits `2 ** field.low`, which is correct here,
-        # but it also emits a multi-bit MASK when width > 1 (not exercised in
-        # this minimal RDL). We assert IntFlag inheritance and that each member
-        # is a power of two -- the invariant that multi-bit-field handling
-        # currently violates.
-        assert "class flags_f(RegisterIntFlag):" in runtime
 
-        tree = ast.parse(runtime)
-        flag_cls = next(
-            (n for n in ast.walk(tree)
-             if isinstance(n, ast.ClassDef) and n.name == "flags_f"),
-            None,
-        )
-        assert flag_cls is not None
+def test_issue_35_flag_disable_drops_bits_before_naming() -> None:
+    """flag_disable removes positions; the rest keep their original bit-position index."""
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field { sw = rw; hw = r; flag_disable = "1,3"; } quad[3:0];
+        } flags @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
+    try:
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        # Bits 1 and 3 are disabled; bits 0 and 2 remain. Names preserve the
+        # original bit-position index so the user can still reason about
+        # which bit a member touches.
+        assert members == {"quad_0": 1, "quad_2": 4}
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
 
-        for stmt in flag_cls.body:
-            if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant):
-                value = stmt.value.value
-                assert isinstance(value, int) and value > 0 and (value & (value - 1)) == 0, (
-                    f"flag member {ast.unparse(stmt.targets[0])} has non-power-of-two value {value}"
-                )
+
+def test_issue_35_flag_names_overrides_default_suffixes_one_to_one() -> None:
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field {
+                sw = rw; hw = r;
+                flag_names = "alpha,beta,gamma";
+            } trio[2:0];
+        } flags @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
+    try:
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        # Names mapped 1:1 to bits 0,1,2 in ascending order.
+        assert members == {"alpha": 1, "beta": 2, "gamma": 4}
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_issue_35_flag_disable_then_flag_names() -> None:
+    """flag_disable is applied first, flag_names then aligns 1:1 with what remains."""
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field {
+                sw = rw; hw = r;
+                flag_disable = "1,3";
+                flag_names    = "low,high";
+            } quad[3:0];
+        } flags @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
+    try:
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        # Bits 1,3 disabled -> bits 0,2 enabled -> names ("low","high")
+        # mapped 1:1 to bit positions 0 and 2.
+        assert members == {"low": 1, "high": 4}
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_issue_35_flag_names_with_fewer_entries_falls_back_to_indexed_suffix() -> None:
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field {
+                sw = rw; hw = r;
+                flag_names = "first";
+            } trio[2:0];
+        } flags @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
+    try:
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        # First name picks up bit 0; bits 1 and 2 fall back to indexed names.
+        assert members == {"first": 1, "trio_1": 2, "trio_2": 4}
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_issue_35_flag_names_too_many_entries_raises() -> None:
+    rdl = """
+    addrmap flag_soc {
+        reg {
+            is_flag = true;
+            field {
+                sw = rw; hw = r;
+                flag_names = "a,b,c,d";
+            } pair[1:0];
+        } flags @ 0x0;
+    };
+    """
+    with pytest.raises(ValueError, match="flag_names"):
+        _export_with_udps(rdl, "flag_soc", split_bindings=0)
+
+
+def test_issue_35_enum_register_uses_same_naming_rules() -> None:
+    """is_enum follows the same disable/names rules as is_flag."""
+    rdl = """
+    addrmap enum_soc {
+        reg {
+            is_enum = true;
+            field {
+                sw = rw; hw = r;
+                flag_disable = "0";
+                flag_names    = "running,error";
+            } state[2:0];
+        } mode @ 0x0;
+    };
+    """
+    out = _export_with_udps(rdl, "enum_soc", split_bindings=0)
+    try:
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "mode_e")
+        # Bit 0 disabled; bits 1,2 enabled -> "running"=2, "error"=4.
+        assert members == {"running": 2, "error": 4}
     finally:
         shutil.rmtree(out, ignore_errors=True)
 

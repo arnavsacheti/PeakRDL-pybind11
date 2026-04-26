@@ -16,7 +16,29 @@ else:
         # peakrdl is an optional dependency
         ExporterSubcommandPlugin = object  # type: ignore[misc]
 
-from .exporter import Pybind11Exporter
+from .exporter import _KNOWN_UDPS, Pybind11Exporter
+
+
+def _build_udp_definitions() -> list[type]:
+    """Build UDP definition classes for peakrdl-cli auto-registration."""
+    from systemrdl import component as _comp
+    from systemrdl.udp import UDPDefinition
+
+    component_cls_map = {"reg": _comp.Reg, "field": _comp.Field}
+    udps: list[type] = []
+    for prop_name, component, prop_type in _KNOWN_UDPS:
+        udps.append(
+            type(
+                f"_UDPDef_{prop_name}",
+                (UDPDefinition,),
+                {
+                    "name": prop_name,
+                    "valid_components": {component_cls_map[component]},
+                    "valid_type": prop_type,
+                },
+            )
+        )
+    return udps
 
 
 class Exporter(ExporterSubcommandPlugin):
@@ -29,6 +51,11 @@ class Exporter(ExporterSubcommandPlugin):
         "This exporter creates a complete Python API for hardware register access with pluggable "
         "master backends (Mock, OpenOCD, SSH, or custom)."
     )
+
+    # peakrdl-cli inspects this and pre-registers each UDP definition with
+    # the compiler before parsing the user's RDL, so users do not need to
+    # declare `property is_flag {...};` etc. themselves.
+    udp_definitions = _build_udp_definitions()
 
     def add_exporter_arguments(self, arg_group: "argparse._ActionsContainer") -> None:
         """Add exporter-specific arguments to the command line"""
