@@ -8,6 +8,20 @@ public:
         propagate_master(master);
     }
 
+    /**
+     * Open a cross-register transaction. While the returned object is alive
+     * and entered (``with soc.transaction(): ...``), every register write
+     * issued through this SoC is queued and then flushed in a single
+     * ``master_->write_many(ops)`` call on exit -- one Python <-> C++
+     * boundary cross instead of one per write.
+     */
+    Transaction transaction() {
+        if (!master_) {
+            throw std::runtime_error("transaction(): no master attached");
+        }
+        return Transaction(master_);
+    }
+
     void propagate_master(Master* master) {
         {% for child in top_node.children() %}
         {% if child.inst_name %}

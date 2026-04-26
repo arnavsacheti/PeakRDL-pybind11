@@ -11,6 +11,8 @@ struct AccessOp {
     size_t   width;
 };
 
+class Transaction;  // forward decl
+
 /**
  * Abstract Master interface for register access
  */
@@ -52,11 +54,22 @@ public:
     }
 
     /**
+     * Active cross-register transaction, if any. RegisterBase::write checks
+     * this so writes inside ``with soc.transaction():`` are queued instead of
+     * issued one-by-one.
+     */
+    Transaction* active_transaction() const { return active_transaction_; }
+    void set_active_transaction(Transaction* tx) { active_transaction_ = tx; }
+
+    /**
      * String representation
      */
     virtual std::string __repr__() const {
         return "<Master>";
     }
+
+private:
+    Transaction* active_transaction_ = nullptr;
 };
 
 /**
@@ -178,6 +191,76 @@ private:
 };
 
 /**
+ * Cross-register transaction context.
+ *
+ * While a Transaction is active on a Master, RegisterBase::write queues the
+ * (offset, value, width) tuple here instead of issuing the write through the
+ * Master immediately. On flush() (called from __exit__), the entire batch is
+ * dispatched in one ``master_->write_many(ops)`` call -- a single Python <->
+ * C++ boundary cross regardless of how many writes were performed.
+ *
+ * Reads inside a transaction are NOT queued; they pass through to the master
+ * synchronously so control flow that depends on read values still works.
+ *
+ * On exception inside ``with soc.transaction():``, the queue is discarded
+ * (no partial flush). This matches the spirit of the per-register context
+ * manager when used carefully and avoids issuing writes computed from a
+ * half-finished sequence.
+ */
+class Transaction {
+public:
+    explicit Transaction(Master* master) : master_(master) {}
+
+    ~Transaction() {
+        // If a Python exception bubbled out without exit() running, detach
+        // ourselves from the master so a subsequent transaction can run.
+        if (master_ && master_->active_transaction() == this) {
+            master_->set_active_transaction(nullptr);
+        }
+    }
+
+    Transaction(const Transaction&) = delete;
+    Transaction& operator=(const Transaction&) = delete;
+    Transaction(Transaction&& other) noexcept
+        : master_(other.master_), ops_(std::move(other.ops_)) {
+        other.master_ = nullptr;
+    }
+    Transaction& operator=(Transaction&&) = delete;
+
+    void queue_write(uint64_t address, uint64_t value, size_t width) {
+        ops_.push_back({address, value, width});
+    }
+
+    size_t pending() const { return ops_.size(); }
+
+    Transaction* enter() {
+        if (!master_) {
+            throw std::runtime_error("Transaction: no master attached");
+        }
+        if (master_->active_transaction() != nullptr) {
+            throw std::runtime_error("Transaction: nested transactions are not supported");
+        }
+        master_->set_active_transaction(this);
+        return this;
+    }
+
+    void exit(bool discard) {
+        if (!master_ || master_->active_transaction() != this) return;
+        // Detach first so a flush failure still leaves the master in a clean
+        // state for subsequent writes.
+        master_->set_active_transaction(nullptr);
+        if (!discard && !ops_.empty()) {
+            master_->write_many(ops_);
+        }
+        ops_.clear();
+    }
+
+private:
+    Master* master_;
+    std::vector<AccessOp> ops_;
+};
+
+/**
  * Base class for registers
  *
  * The constructor takes ``base_offset`` (the parent's absolute offset) and
@@ -236,6 +319,8 @@ public:
         // If in context, update cached value
         if (in_context_) {
             cached_value_ = value;
+        } else if (Transaction* tx = master_->active_transaction()) {
+            tx->queue_write(offset_, value, width_);
         } else {
             master_->write(offset_, value, width_);
         }
@@ -273,9 +358,14 @@ public:
         if (!in_context_) {
             throw std::runtime_error("Register " + name_ + " is not in a context");
         }
-        // Write cached value back to register
+        // Write cached value back to register, routing through the active
+        // cross-register transaction if one is in flight.
         if (master_) {
-            master_->write(offset_, cached_value_, width_);
+            if (Transaction* tx = master_->active_transaction()) {
+                tx->queue_write(offset_, cached_value_, width_);
+            } else {
+                master_->write(offset_, cached_value_, width_);
+            }
         }
         in_context_ = false;
     }
