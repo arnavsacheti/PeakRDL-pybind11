@@ -36,6 +36,7 @@ class Pybind11Exporter:
         )
         self.env.filters["pybind_name"] = self._pybind_name_from_node
         self.env.filters["enum_member"] = self._enum_member_name
+        self.env.filters["cpp_string"] = self._cpp_string_escape
         self.soc_name: str | None = None
         self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
@@ -120,6 +121,28 @@ class Pybind11Exporter:
             sanitized_path = path.replace(".", "__").replace("[", "_").replace("]", "_")
             self._name_cache[path] = self._sanitize_identifier(sanitized_path)
         return self._name_cache[path]
+
+    @staticmethod
+    def _cpp_string_escape(value: object) -> str:
+        """Escape ``value`` so it is safe to embed inside a C++ "..." literal."""
+        text = "" if value is None else str(value)
+        out: list[str] = []
+        for ch in text:
+            if ch == "\\":
+                out.append("\\\\")
+            elif ch == '"':
+                out.append('\\"')
+            elif ch == "\n":
+                out.append("\\n")
+            elif ch == "\r":
+                out.append("\\r")
+            elif ch == "\t":
+                out.append("\\t")
+            elif ord(ch) < 0x20:
+                out.append(f"\\x{ord(ch):02x}")
+            else:
+                out.append(ch)
+        return "".join(out)
 
     def _enum_member_name(self, name: str) -> str:
         """Convert a field name into a suitable enum member name."""
