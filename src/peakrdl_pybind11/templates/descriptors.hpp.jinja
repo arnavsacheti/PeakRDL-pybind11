@@ -303,34 +303,34 @@ protected:
 
 {% for addrmap in nodes.addrmaps %}
 {% if addrmap != top_node %}
-// Forward declaration for {{ addrmap.inst_name }}
-class {{ addrmap.inst_name }}_t;
+// Forward declaration for {{ addrmap.inst_name | safe_id }}
+class {{ addrmap.inst_name | safe_id }}_t;
 {% endif %}
 {% endfor %}
 
 {% for regfile in nodes.regfiles %}
-// Forward declaration for {{ regfile.inst_name }}
-class {{ regfile.inst_name }}_t;
+// Forward declaration for {{ regfile.inst_name | safe_id }}
+class {{ regfile.inst_name | safe_id }}_t;
 {% endfor %}
 
 {% for mem in nodes.mems %}
-// Forward declaration for memory {{ mem.inst_name }}
-class {{ mem.inst_name }}_t;
+// Forward declaration for memory {{ mem.inst_name | safe_id }}
+class {{ mem.inst_name | safe_id }}_t;
 {% endfor %}
 
 {% for reg in nodes.regs %}
-// Register: {{ reg.inst_name }}
-class {{ reg.inst_name }}_t : public RegisterBase {
+// Register: {{ reg.inst_name | safe_id }}
+class {{ reg.inst_name | safe_id }}_t : public RegisterBase {
 public:
-    {{ reg.inst_name }}_t(uint64_t base_offset) 
-        : RegisterBase("{{ reg.inst_name }}", base_offset + 0x{{ "%x" | format(reg.absolute_address) }}, {{ reg.size }}) {}
+    {{ reg.inst_name | safe_id }}_t(uint64_t base_offset) 
+        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(reg.absolute_address) }}, {{ reg.size }}) {}
     
     {% for field in reg.fields() %}
-    // Field: {{ field.inst_name }}
-    class {{ field.inst_name }}_field : public FieldBase {
+    // Field: {{ field.inst_name | safe_id }}
+    class {{ field.inst_name | safe_id }}_field : public FieldBase {
     public:
-        {{ field.inst_name }}_field({{ reg.inst_name }}_t* parent)
-            : FieldBase("{{ field.inst_name }}", parent->offset(), 
+        {{ field.inst_name | safe_id }}_field({{ reg.inst_name | safe_id }}_t* parent)
+            : FieldBase("{{ field.inst_name | safe_id }}", parent->offset(), 
                        {{ field.low }}, {{ field.width }},
                        {{ 'true' if field.is_hw_readable or field.is_sw_readable else 'false' }},
                        {{ 'true' if field.is_hw_writable or field.is_sw_writable else 'false' }}),
@@ -338,7 +338,7 @@ public:
         
         uint64_t read() {
             if (!is_readable()) {
-                throw std::runtime_error("Field {{ field.inst_name }} is not readable");
+                throw std::runtime_error("Field {{ field.inst_name | safe_id }} is not readable");
             }
             uint64_t reg_val = parent_->read();
             return (reg_val & mask()) >> lsb_;
@@ -346,31 +346,31 @@ public:
         
         void write(uint64_t value) {
             if (!is_writable()) {
-                throw std::runtime_error("Field {{ field.inst_name }} is not writable");
+                throw std::runtime_error("Field {{ field.inst_name | safe_id }} is not writable");
             }
             uint64_t field_val = (value << lsb_) & mask();
             parent_->modify(field_val, mask());
         }
         
     private:
-        {{ reg.inst_name }}_t* parent_;
+        {{ reg.inst_name | safe_id }}_t* parent_;
     };
     
-    {{ field.inst_name }}_field {{ field.inst_name }}{this};
+    {{ field.inst_name | safe_id }}_field {{ field.inst_name | safe_id }}{this};
     {% endfor %}
 };
 
 {% endfor %}
 
 {% for regfile in nodes.regfiles %}
-// Regfile: {{ regfile.inst_name }}
-class {{ regfile.inst_name }}_t : public NodeBase {
+// Regfile: {{ regfile.inst_name | safe_id }}
+class {{ regfile.inst_name | safe_id }}_t : public NodeBase {
 public:
-    {{ regfile.inst_name }}_t(uint64_t base_offset) 
-        : NodeBase("{{ regfile.inst_name }}", base_offset) {
+    {{ regfile.inst_name | safe_id }}_t(uint64_t base_offset) 
+        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset) {
         {% for child in regfile.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master_);
+        {{ child.inst_name | safe_id }}.set_master(master_);
         {% endif %}
         {% endfor %}
     }
@@ -379,7 +379,7 @@ public:
         NodeBase::set_master(master);
         {% for child in regfile.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master);
+        {{ child.inst_name | safe_id }}.set_master(master);
         {% endif %}
         {% endfor %}
     }
@@ -390,7 +390,7 @@ public:
     
     {% for child in regfile.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };
@@ -398,20 +398,20 @@ public:
 {% endfor %}
 
 {% for mem in nodes.mems %}
-// Memory: {{ mem.inst_name }}
+// Memory: {{ mem.inst_name | safe_id }}
 {%- set entry_reg = mem.children()|list|first %}
 
-class {{ mem.inst_name }}_t : public MemoryBase<{{ entry_reg.inst_name }}_t> {
+class {{ mem.inst_name | safe_id }}_t : public MemoryBase<{{ entry_reg.inst_name | safe_id }}_t> {
 public:
-    {{ mem.inst_name }}_t(uint64_t base_offset) 
-        : MemoryBase<{{ entry_reg.inst_name }}_t>("{{ mem.inst_name }}", base_offset, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
+    {{ mem.inst_name | safe_id }}_t(uint64_t base_offset) 
+        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>("{{ mem.inst_name | safe_id }}", base_offset, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
     
     void set_offset(uint64_t base_offset) {
         offset_ = base_offset;
         // Update all entry offsets
         size_t entry_size = {{ entry_reg.size }};
         for (size_t i = 0; i < entries_.size(); ++i) {
-            entries_[i] = {{ entry_reg.inst_name }}_t(base_offset + i * entry_size);
+            entries_[i] = {{ entry_reg.inst_name | safe_id }}_t(base_offset + i * entry_size);
         }
         // Re-apply master if set
         if (master_) {
@@ -424,14 +424,14 @@ public:
 
 {% for addrmap in nodes.addrmaps %}
 {% if addrmap != top_node %}
-// Addrmap: {{ addrmap.inst_name }}
-class {{ addrmap.inst_name }}_t : public NodeBase {
+// Addrmap: {{ addrmap.inst_name | safe_id }}
+class {{ addrmap.inst_name | safe_id }}_t : public NodeBase {
 public:
-    {{ addrmap.inst_name }}_t(uint64_t base_offset) 
-        : NodeBase("{{ addrmap.inst_name }}", base_offset) {
+    {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset) 
+        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master_);
+        {{ child.inst_name | safe_id }}.set_master(master_);
         {% endif %}
         {% endfor %}
     }
@@ -440,7 +440,7 @@ public:
         NodeBase::set_master(master);
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master);
+        {{ child.inst_name | safe_id }}.set_master(master);
         {% endif %}
         {% endfor %}
     }
@@ -451,7 +451,7 @@ public:
     
     {% for child in addrmap.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };
@@ -465,7 +465,7 @@ public:
     {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {
         {% for child in top_node.children() %}
         {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name }}.set_offset(offset_);
+        {{ child.inst_name | safe_id }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
     }
@@ -479,7 +479,7 @@ public:
         offset_ = offset;
         {% for child in top_node.children() %}
         {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name }}.set_offset(offset_);
+        {{ child.inst_name | safe_id }}.set_offset(offset_);
         {% endif %}
         {% endfor %}
     }
@@ -487,14 +487,14 @@ public:
     void propagate_master(Master* master) {
         {% for child in top_node.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master);
+        {{ child.inst_name | safe_id }}.set_master(master);
         {% endif %}
         {% endfor %}
     }
     
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}_t {{ child.inst_name }}{0x{{ "%x" | format(child.absolute_address if child.absolute_address else 0) }}};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{0x{{ "%x" | format(child.absolute_address if child.absolute_address else 0) }}};
     {% endif %}
     {% endfor %}
 };

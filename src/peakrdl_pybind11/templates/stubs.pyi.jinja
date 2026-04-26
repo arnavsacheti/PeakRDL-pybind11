@@ -80,12 +80,12 @@ class NodeBase:
 
 {% if nodes.flag_regs %}
 {% for reg in nodes.flag_regs %}
-class {{ reg.inst_name }}_f(RegisterIntFlag):
-    """Flags for {{ reg.inst_name }}."""
+class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
+    """Flags for {{ reg.inst_name | safe_id }}."""
     {% set fields = reg.fields()|list %}
     {% if fields %}
     {% for field in fields %}
-    {{ field.inst_name }} = ...
+    {{ field.inst_name | safe_id }} = ...
     {% set alias = field.inst_name | enum_member %}
     {% if alias != field.inst_name %}
     {{ alias }} = ...
@@ -100,12 +100,12 @@ class {{ reg.inst_name }}_f(RegisterIntFlag):
 
 {% if nodes.enum_regs %}
 {% for reg in nodes.enum_regs %}
-class {{ reg.inst_name }}_e(RegisterIntEnum):
-    """Enum for {{ reg.inst_name }}."""
+class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
+    """Enum for {{ reg.inst_name | safe_id }}."""
     {% set fields = reg.fields()|list %}
     {% if fields %}
     {% for field in fields %}
-    {{ field.inst_name }} = ...
+    {{ field.inst_name | safe_id }} = ...
     {% set alias = field.inst_name | enum_member %}
     {% if alias != field.inst_name %}
     {{ alias }} = ...
@@ -119,8 +119,8 @@ class {{ reg.inst_name }}_e(RegisterIntEnum):
 {% endif %}
 
 {% for reg in nodes.regs %}
-class {{ reg.inst_name }}_t(RegisterBase):
-    """Register: {{ reg.inst_name }}
+class {{ reg.inst_name | safe_id }}_t(RegisterBase):
+    """Register: {{ reg.inst_name | safe_id }}
     {% if reg.get_property('desc') %}
     {{ reg.get_property('desc') }}
     {% endif %}"""
@@ -128,11 +128,11 @@ class {{ reg.inst_name }}_t(RegisterBase):
     def __init__(self, base_offset: int) -> None: ...
 
     {% if reg in nodes.flag_regs %}
-    def read(self) -> {{ reg.inst_name }}_f:
+    def read(self) -> {{ reg.inst_name | safe_id }}_f:
         """Read the full register value"""
         ...
     {% elif reg in nodes.enum_regs %}
-    def read(self) -> {{ reg.inst_name }}_e:
+    def read(self) -> {{ reg.inst_name | safe_id }}_e:
         """Read the full register value"""
         ...
     {% else %}
@@ -142,8 +142,8 @@ class {{ reg.inst_name }}_t(RegisterBase):
     {% endif %}
     
     {% for field in reg.fields() %}
-    class {{ field.inst_name }}_field(FieldBase):
-        """Field: {{ field.inst_name }}
+    class {{ field.inst_name | safe_id }}_field(FieldBase):
+        """Field: {{ field.inst_name | safe_id }}
         {% if field.get_property('desc') %}
         {{ field.get_property('desc') }}
         {% endif %}"""
@@ -156,15 +156,15 @@ class {{ reg.inst_name }}_t(RegisterBase):
             """Write field value"""
             ...
     
-    {{ field.inst_name }}: {{ field.inst_name }}_field
+    {{ field.inst_name | safe_id }}: {{ field.inst_name | safe_id }}_field
     {% endfor %}
 
 {% endfor %}
 
 {% for mem in nodes.mems %}
 {%- set entry_reg = mem.children()|list|first %}
-class {{ mem.inst_name }}_t(NodeBase):
-    """Memory: {{ mem.inst_name }}
+class {{ mem.inst_name | safe_id }}_t(NodeBase):
+    """Memory: {{ mem.inst_name | safe_id }}
     {% if mem.get_property('desc') %}
     {{ mem.get_property('desc') }}
     {% endif %}
@@ -179,16 +179,16 @@ class {{ mem.inst_name }}_t(NodeBase):
         ...
     
     @overload
-    def __getitem__(self, index: int) -> {{ entry_reg.inst_name }}_t:
+    def __getitem__(self, index: int) -> {{ entry_reg.inst_name | safe_id }}_t:
         """Access memory entry by index"""
         ...
     
     @overload
-    def __getitem__(self, index: slice) -> list[{{ entry_reg.inst_name }}_t]:
+    def __getitem__(self, index: slice) -> list[{{ entry_reg.inst_name | safe_id }}_t]:
         """Access memory entries by slice"""
         ...
     
-    def __iter__(self) -> Iterator[{{ entry_reg.inst_name }}_t]:
+    def __iter__(self) -> Iterator[{{ entry_reg.inst_name | safe_id }}_t]:
         """Iterate over memory entries"""
         ...
 
@@ -205,7 +205,7 @@ class {{ soc_name }}_t(NodeBase):
     
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}: {{ child.inst_name }}_t
+    {{ child.inst_name | safe_id }}: {{ child.inst_name | safe_id }}_t
     {% endif %}
     {% endfor %}
 

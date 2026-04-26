@@ -83,43 +83,43 @@ __all__.append('wrap_master')
 # Generated flag/enum types from SystemRDL fields
 {% if nodes.flag_regs %}
 {% for reg in nodes.flag_regs %}
-class {{ reg.inst_name }}_f(RegisterIntFlag):
-    """Bit flags for {{ reg.inst_name }}."""
+class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
+    """Bit flags for {{ reg.inst_name | safe_id }}."""
     {% set fields = reg.fields()|list %}
     {% if fields %}
     {% for field in fields %}
-    {{ field.inst_name }} = {{ ((2 ** field.width) - 1) * (2 ** field.low) if field.width > 1 else (2 ** field.low) }}
+    {{ field.inst_name | safe_id }} = {{ ((2 ** field.width) - 1) * (2 ** field.low) if field.width > 1 else (2 ** field.low) }}
     {% set alias = field.inst_name | enum_member %}
     {% if alias != field.inst_name %}
-    {{ alias }} = {{ field.inst_name }}
+    {{ alias }} = {{ field.inst_name | safe_id }}
     {% endif %}
     {% endfor %}
     {% else %}
     pass
     {% endif %}
 
-__all__.append('{{ reg.inst_name }}_f')
+__all__.append('{{ reg.inst_name | safe_id }}_f')
 {% endfor %}
 {% endif %}
 
 {% if nodes.enum_regs %}
 {% for reg in nodes.enum_regs %}
-class {{ reg.inst_name }}_e(RegisterIntEnum):
-    """Enum for {{ reg.inst_name }}."""
+class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
+    """Enum for {{ reg.inst_name | safe_id }}."""
     {% set fields = reg.fields()|list %}
     {% if fields %}
     {% for field in fields %}
-    {{ field.inst_name }} = {{ 2 ** field.low }}
+    {{ field.inst_name | safe_id }} = {{ 2 ** field.low }}
     {% set alias = field.inst_name | enum_member %}
     {% if alias != field.inst_name %}
-    {{ alias }} = {{ field.inst_name }}
+    {{ alias }} = {{ field.inst_name | safe_id }}
     {% endif %}
     {% endfor %}
     {% else %}
     pass
     {% endif %}
 
-__all__.append('{{ reg.inst_name }}_e')
+__all__.append('{{ reg.inst_name | safe_id }}_e')
 {% endfor %}
 {% endif %}
 
@@ -203,13 +203,13 @@ def _make_enhanced_field_write(field_class):
 # Map register classes to generated flag/enum types
 _FLAG_REG_TYPES = {
 {% for reg in nodes.flag_regs %}
-    {{ reg.inst_name }}_t: {{ reg.inst_name }}_f,
+    {{ reg.inst_name | safe_id }}_t: {{ reg.inst_name | safe_id }}_f,
 {% endfor %}
 }
 
 _ENUM_REG_TYPES = {
 {% for reg in nodes.enum_regs %}
-    {{ reg.inst_name }}_t: {{ reg.inst_name }}_e,
+    {{ reg.inst_name | safe_id }}_t: {{ reg.inst_name | safe_id }}_e,
 {% endfor %}
 }
 

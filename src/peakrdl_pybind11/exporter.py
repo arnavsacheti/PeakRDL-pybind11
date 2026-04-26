@@ -2,11 +2,43 @@
 Main exporter implementation for PeakRDL-pybind11
 """
 
+import keyword
 import os
 import re
 from collections import OrderedDict
 from pathlib import Path
 from typing import TypedDict
+
+# Words that cannot be used as identifiers in either Python or C++.
+# Python comes from `keyword`/`__builtins__` plus values pylance typically
+# protects; C++ keyword set is hand-maintained -- only the ones a SystemRDL
+# author is realistically likely to clash with are listed.
+_RESERVED_WORDS: frozenset[str] = frozenset(
+    set(keyword.kwlist)
+    | set(keyword.softkwlist)
+    | {
+        # C++ keywords / reserved identifiers that could collide with an RDL
+        # inst_name. Not exhaustive -- focused on commonly-used names.
+        "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
+        "bitor", "bool", "break", "case", "catch", "char", "char8_t",
+        "char16_t", "char32_t", "class", "compl", "concept", "const",
+        "consteval", "constexpr", "constinit", "const_cast", "continue",
+        "co_await", "co_return", "co_yield", "decltype", "default", "delete",
+        "do", "double", "dynamic_cast", "else", "enum", "explicit", "export",
+        "extern", "false", "float", "for", "friend", "goto", "if", "inline",
+        "int", "long", "mutable", "namespace", "new", "noexcept", "not",
+        "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected",
+        "public", "register", "reinterpret_cast", "requires", "return",
+        "short", "signed", "sizeof", "static", "static_assert", "static_cast",
+        "struct", "switch", "template", "this", "thread_local", "throw",
+        "true", "try", "typedef", "typeid", "typename", "union", "unsigned",
+        "using", "virtual", "void", "volatile", "wchar_t", "while", "xor",
+        "xor_eq",
+        # Identifiers used by the generator itself; collisions would shadow
+        # generated members.
+        "Master", "RegisterBase", "FieldBase", "NodeBase", "MemoryBase",
+    }
+)
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 from systemrdl.node import AddrmapNode, FieldNode, MemNode, Node, RegfileNode, RegNode, RootNode
@@ -37,6 +69,7 @@ class Pybind11Exporter:
         self.env.filters["pybind_name"] = self._pybind_name_from_node
         self.env.filters["enum_member"] = self._enum_member_name
         self.env.filters["cpp_string"] = self._cpp_string_escape
+        self.env.filters["safe_id"] = self._sanitize_identifier
         self.soc_name: str | None = None
         self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
@@ -102,12 +135,18 @@ class Pybind11Exporter:
             self._generate_pyi_stubs(nodes)
 
     def _sanitize_identifier(self, name: str) -> str:
-        """Sanitize a name to be a valid Python/C++ identifier"""
-        # Replace invalid characters with underscores
+        """Sanitize a name to be a valid Python/C++ identifier.
+
+        Replaces non-identifier characters with underscores, prefixes a
+        leading digit, and appends a trailing underscore to any reserved
+        Python or C++ keyword so the result is always usable in both
+        generated languages.
+        """
         name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
-        # Ensure it doesn't start with a digit
         if name and name[0].isdigit():
             name = "_" + name
+        if name in _RESERVED_WORDS:
+            name = name + "_"
         return name or "soc"
 
     def _pybind_name_from_node(self, value: Node | str) -> str:
