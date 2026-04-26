@@ -36,7 +36,7 @@ public:
     // passed here, so the SoC always passes its own offset (initially 0).
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
+    {{ child | pybind_name }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };

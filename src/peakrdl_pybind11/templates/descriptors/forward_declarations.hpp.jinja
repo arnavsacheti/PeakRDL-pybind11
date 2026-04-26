@@ -1,16 +1,16 @@
 {% for addrmap in nodes.addrmaps %}
 {% if addrmap != top_node %}
-// Forward declaration for {{ addrmap.inst_name | safe_id }}
-class {{ addrmap.inst_name | safe_id }}_t;
+// Forward declaration for {{ addrmap.get_path() }}
+class {{ addrmap | pybind_name }}_t;
 {% endif %}
 {% endfor %}
 
 {% for regfile in nodes.regfiles %}
-// Forward declaration for {{ regfile.inst_name | safe_id }}
-class {{ regfile.inst_name | safe_id }}_t;
+// Forward declaration for {{ regfile.get_path() }}
+class {{ regfile | pybind_name }}_t;
 {% endfor %}
 
 {% for mem in nodes.mems %}
-// Forward declaration for memory {{ mem.inst_name | safe_id }}
-class {{ mem.inst_name | safe_id }}_t;
+// Forward declaration for memory {{ mem.get_path() }}
+class {{ mem | pybind_name }}_t;
 {% endfor %}

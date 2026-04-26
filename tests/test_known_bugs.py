@@ -87,8 +87,10 @@ def test_issue_30_no_duplicate_class_registrations() -> None:
     bindings = _read(os.path.join(out, "hier_soc_bindings.cpp"))
 
     # Each regfile's pybind11 class should be registered exactly once.
+    # Class names are now path-derived (e.g. hier_soc__block1_t) to keep them
+    # globally unique across IPs that reuse names like INTR_STATE.
     for regfile in ("block1", "block2"):
-        pattern = re.compile(rf'py::class_<\s*{regfile}_t\b')
+        pattern = re.compile(rf'py::class_<\s*hier_soc__{regfile}_t\b')
         count = len(pattern.findall(bindings))
         assert count == 1, f"{regfile}_t registered {count} times in single-file bindings"
 
@@ -108,7 +110,7 @@ def test_issue_31_split_bindings_register_regfiles() -> None:
             combined += _read(os.path.join(out, name))
 
     for regfile in ("block1", "block2"):
-        assert re.search(rf'py::class_<\s*{regfile}_t\b', combined), (
+        assert re.search(rf'py::class_<\s*hier_soc__{regfile}_t\b', combined), (
             f"{regfile}_t never registered with pybind11 in split-bindings output"
         )
 
@@ -231,7 +233,7 @@ def test_issue_33_descriptions_are_cpp_escaped() -> None:
         # Strip the C++ identifier "chatty_t" string literal and the trailing ")"
         # then count non-escaped quotes -- should be exactly two (the opening
         # and closing of the description literal itself).
-        desc_payload = line.split('"chatty_t",', 1)[1]
+        desc_payload = line.split('"quote_soc__chatty_t",', 1)[1]
         non_escaped_quotes = re.findall(r'(?<!\\)"', desc_payload)
         assert len(non_escaped_quotes) == 2, (
             f"unbalanced/unescaped quotes in description literal:\n  {line}"
@@ -321,7 +323,7 @@ def test_issue_35_single_bit_flag_field_keeps_bare_name() -> None:
     """
     out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flag_soc__flags_f")
         assert members == {"bit_a": 1, "bit_b": 2, "bit_c": 4}
     finally:
         shutil.rmtree(out, ignore_errors=True)
@@ -340,7 +342,7 @@ def test_issue_35_multibit_flag_field_uses_indexed_suffix() -> None:
     """
     out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flag_soc__flags_f")
         # solo at bit 0; trio spans bits [3:1] -> trio_0=2, trio_1=4, trio_2=8.
         assert members == {"solo": 1, "trio_0": 2, "trio_1": 4, "trio_2": 8}
         # Every member must still be a single power of two.
@@ -362,7 +364,7 @@ def test_issue_35_flag_disable_drops_bits_before_naming() -> None:
     """
     out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flag_soc__flags_f")
         # Bits 1 and 3 are disabled; bits 0 and 2 remain. Names preserve the
         # original bit-position index so the user can still reason about
         # which bit a member touches.
@@ -385,7 +387,7 @@ def test_issue_35_flag_names_overrides_default_suffixes_one_to_one() -> None:
     """
     out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flag_soc__flags_f")
         # Names mapped 1:1 to bits 0,1,2 in ascending order.
         assert members == {"alpha": 1, "beta": 2, "gamma": 4}
     finally:
@@ -408,7 +410,7 @@ def test_issue_35_flag_disable_then_flag_names() -> None:
     """
     out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flag_soc__flags_f")
         # Bits 1,3 disabled -> bits 0,2 enabled -> names ("low","high")
         # mapped 1:1 to bit positions 0 and 2.
         assert members == {"low": 1, "high": 4}
@@ -430,7 +432,7 @@ def test_issue_35_flag_names_with_fewer_entries_falls_back_to_indexed_suffix() -
     """
     out = _export_with_udps(rdl, "flag_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flags_f")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "flag_soc__flags_f")
         # First name picks up bit 0; bits 1 and 2 fall back to indexed names.
         assert members == {"first": 1, "trio_1": 2, "trio_2": 4}
     finally:
@@ -469,7 +471,7 @@ def test_issue_35_enum_register_uses_same_naming_rules() -> None:
     """
     out = _export_with_udps(rdl, "enum_soc", split_bindings=0)
     try:
-        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "mode_e")
+        members = _flag_class_members(_read(os.path.join(out, "__init__.py")), "enum_soc__mode_e")
         # Bit 0 disabled; bits 1,2 enabled -> "running"=2, "error"=4.
         assert members == {"running": 2, "error": 4}
     finally:

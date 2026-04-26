@@ -99,11 +99,12 @@ class TestMemoryExport:
             assert 'template<typename EntryType>' in content
             
             # Verify memory classes are generated
-            assert 'class data_mem_t' in content
-            assert 'class small_mem_t' in content
+            assert 'class mem_test__data_mem_t' in content
+            assert 'class mem_test__small_mem_t' in content
             
-            # Verify MemoryBase inheritance
-            assert 'MemoryBase<entry_t>' in content
+            # Verify MemoryBase inheritance (entry classes now use path-derived names)
+            assert 'MemoryBase<mem_test__data_mem__entry_t>' in content
+            assert 'MemoryBase<mem_test__small_mem__entry_t>' in content
             
             # Verify vector header included
             assert '#include <vector>' in content
@@ -134,8 +135,8 @@ class TestMemoryExport:
             assert '#include <pybind11/stl.h>' in content
             
             # Verify memory class bindings
-            assert 'data_mem_t' in content
-            assert 'small_mem_t' in content
+            assert 'mem_test__data_mem_t' in content
+            assert 'mem_test__small_mem_t' in content
     
     def test_memory_stubs_generation(self):
         """Test that memory type stubs are generated with proper type hints"""
@@ -152,8 +153,8 @@ class TestMemoryExport:
                 content = f.read()
             
             # Verify memory class stubs
-            assert 'class data_mem_t' in content
-            assert 'class small_mem_t' in content
+            assert 'class mem_test__data_mem_t' in content
+            assert 'class mem_test__small_mem_t' in content
             
             # Verify type hints for list-like interface
             assert '__len__' in content
@@ -185,8 +186,8 @@ class TestMemoryExport:
                 content = f.read()
             
             # Verify memory members in top-level class
-            assert 'data_mem_t data_mem' in content
-            assert 'small_mem_t small_mem' in content
+            assert 'mem_test__data_mem_t data_mem' in content
+            assert 'mem_test__small_mem_t small_mem' in content
     
     def test_memory_with_split_bindings(self):
         """Test that memory works with split bindings"""

@@ -5,8 +5,15 @@ project({{ soc_name }})
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
-# Create the Python extension module
-pybind11_add_module(_{{ soc_name }}_native {% for src in source_files %}{{ src }}{% if not loop.last %} {% endif %}{% endfor %})
+# Create the Python extension module.
+#
+# We pass NO_EXTRAS to suppress pybind11's default `-O3 -flto=full`
+# behaviour: the LTO link of thousands of register classes is the single
+# biggest contributor to install time and gives almost no measurable
+# runtime win for I/O-bound register access. We re-add the bits of
+# NO_EXTRAS that we *do* want (-fvisibility=hidden + size strip) below.
+pybind11_add_module(_{{ soc_name }}_native NO_EXTRAS
+    {% for src in source_files %}{{ src }}{% if not loop.last %} {% endif %}{% endfor %})
 
 # Set C++ standard
 target_compile_features(_{{ soc_name }}_native PRIVATE cxx_std_11)
@@ -14,25 +21,53 @@ target_compile_features(_{{ soc_name }}_native PRIVATE cxx_std_11)
 # Include directories
 target_include_directories(_{{ soc_name }}_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# Compiler optimizations to speed up compilation
-# Use -O1 even for debug builds to reduce compilation time
-# This provides basic optimizations that help with template instantiation
-if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(MSVC)
-        # For MSVC, use /O1 for size optimization which is faster to compile
-        target_compile_options(_{{ soc_name }}_native PRIVATE /O1)
-    else()
-        # For GCC/Clang, use -O1 for basic optimizations
-        target_compile_options(_{{ soc_name }}_native PRIVATE -O1)
-    endif()
-endif()
-
-# Disable some warnings that can slow down compilation
+# Compiler optimizations. Default to -O1 across build types: pybind11
+# bindings are template-heavy, so higher -O levels balloon compile time
+# without meaningfully improving run-time of the I/O-bound register
+# operations. Override with `-DCMAKE_BUILD_TYPE=Release -DPEAKRDL_PYBIND_O3=ON`
+# if you really want -O3.
+option(PEAKRDL_PYBIND_O3 "Force -O3 instead of -O1 for the pybind11 module" OFF)
 if(MSVC)
-    target_compile_options(_{{ soc_name }}_native PRIVATE /wd4661)
+    target_compile_options(_{{ soc_name }}_native PRIVATE
+        $<IF:$<BOOL:${PEAKRDL_PYBIND_O3}>,/O2,/O1> /wd4661)
 else()
-    target_compile_options(_{{ soc_name }}_native PRIVATE -Wno-unused-variable)
+    target_compile_options(_{{ soc_name }}_native PRIVATE
+        $<IF:$<BOOL:${PEAKRDL_PYBIND_O3}>,-O3,-O1>
+        -fvisibility=hidden
+        -Wno-unused-variable)
 endif()
 
-# Install the module
-install(TARGETS _{{ soc_name }}_native LIBRARY DESTINATION .)
+# Strip symbols in non-Debug configurations for a smaller .so without paying
+# the LTO cost. Use a generator expression so this works correctly under
+# multi-config generators (Xcode / Visual Studio / Ninja Multi-Config),
+# where CMAKE_BUILD_TYPE is empty.
+if(APPLE)
+    target_link_options(_{{ soc_name }}_native PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:-Wl,-x>)
+elseif(NOT MSVC)
+    target_link_options(_{{ soc_name }}_native PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:-Wl,--strip-all>)
+endif()
+
+# Precompile {{ soc_name }}_descriptors.hpp once and reuse it across every
+# binding chunk. The header is the dominant parse cost (often >100k LOC of
+# template-heavy register classes) and is included unchanged from every
+# .cpp file, so PCH typically cuts compile time in half on multi-chunk
+# builds. Disable with `-DPEAKRDL_PYBIND_PCH=OFF` if a host toolchain
+# can't handle it.
+option(PEAKRDL_PYBIND_PCH
+       "Use a precompiled header for {{ soc_name }}_descriptors.hpp" ON)
+if(PEAKRDL_PYBIND_PCH)
+    target_precompile_headers(_{{ soc_name }}_native
+        PRIVATE "{{ soc_name }}_descriptors.hpp")
+endif()
+
+# Install the module into the {{ soc_name }}/ package directory so the
+# resulting wheel ships as a real Python package (with __init__.py).
+# RUNTIME covers Windows (.pyd lands in RUNTIME), ARCHIVE covers any
+# import library that toolchains may emit alongside it; without the
+# extra destinations the wheel would be empty on MSVC.
+install(TARGETS _{{ soc_name }}_native
+    LIBRARY DESTINATION {{ soc_name }}
+    RUNTIME DESTINATION {{ soc_name }}
+    ARCHIVE DESTINATION {{ soc_name }})

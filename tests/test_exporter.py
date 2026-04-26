@@ -66,20 +66,24 @@ class TestExporter:
             exporter = Pybind11Exporter()
             exporter.export(root.top, tmpdir, soc_name="simple_soc")
             
-            # Verify expected files were created
+            # Verify expected files were created. The Python wrapper is also
+            # written into a {soc_name}/ subdir so the wheel installs as a
+            # proper package; root-level copies are kept for back-compat.
             expected_files = [
                 'simple_soc_descriptors.hpp',
                 'simple_soc_bindings.cpp',
                 '__init__.py',
+                'simple_soc/__init__.py',
                 'CMakeLists.txt',
                 'pyproject.toml',
                 '__init__.pyi',
+                'simple_soc/__init__.pyi',
             ]
-            
+
             for filename in expected_files:
                 filepath = os.path.join(tmpdir, filename)
                 assert os.path.exists(filepath), f"Expected file not found: {filename}"
-                
+
                 # Verify files are not empty
                 assert os.path.getsize(filepath) > 0, f"File is empty: {filename}"
     
@@ -141,6 +145,7 @@ class TestExporter:
             
             # Verify .pyi file was not created
             assert not os.path.exists(os.path.join(tmpdir, '__init__.pyi'))
+            assert not os.path.exists(os.path.join(tmpdir, 'test_soc', '__init__.pyi'))
     
     def test_generated_header_content(self):
         """Test that generated header contains expected content"""
@@ -352,6 +357,42 @@ addrmap hierarchical_soc {
             # Verify no chunk files exist
             assert not os.path.exists(os.path.join(tmpdir, 'large_soc_bindings_0.cpp'))
     
+    def test_native_masters_emitted(self):
+        """Generated header + bindings expose the C++ MockMaster / CallbackMaster.
+
+        These ship inside every generated module so callers can do
+        ``soc.attach_master(my_soc.MockMaster())`` and stay entirely in
+        C++ on the read/write hot path. Regression test for the
+        descriptor classes + pybind11 bindings + .pyi stub all moving
+        together.
+        """
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SIMPLE_RDL))
+        root = rdl.elaborate()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Pybind11Exporter().export(root.top, tmpdir, soc_name="test_soc")
+
+            with open(os.path.join(tmpdir, 'test_soc_descriptors.hpp')) as f:
+                hdr = f.read()
+            assert 'class MockMaster : public Master' in hdr
+            assert 'class CallbackMaster : public Master' in hdr
+            assert '<utility>' in hdr  # required for std::move in CallbackMaster
+
+            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp')) as f:
+                bindings = f.read()
+            assert 'py::class_<MockMaster, Master>(m, "MockMaster")' in bindings
+            assert 'py::class_<CallbackMaster, Master>(m, "CallbackMaster")' in bindings
+            assert 'set_read' in bindings
+            assert 'set_write' in bindings
+
+            with open(os.path.join(tmpdir, '__init__.pyi')) as f:
+                stubs = f.read()
+            assert 'class MockMaster(Master):' in stubs
+            assert 'class CallbackMaster(Master):' in stubs
+            assert 'Callable[[int, int], int]' in stubs
+            assert 'Callable[[int, int, int], None]' in stubs
+
     @staticmethod
     def _write_rdl(content):
         """Write RDL content to a temporary file"""
