@@ -83,15 +83,15 @@ def test_repr_integration_build_and_use():
 
 int main() {
     // Just verify the code compiles
-    repr_test::FieldBase field("test", 0x1000, 0, 8, true, true);
-    std::string repr = field.__repr__();
-    
-    repr_test::RegisterBase reg("control", 0x0, 32);
-    repr = reg.__repr__();
-    
+    repr_test::RegisterBase reg("control", 0x0, 0x0, 32);
+    std::string repr = reg.__repr__();
+
+    repr_test::FieldBase field("test", &reg, 0, 8, true, true);
+    repr = field.__repr__();
+
     repr_test::NodeBase node("node", 0x1000);
     repr = node.__repr__();
-    
+
     return 0;
 }
 """)

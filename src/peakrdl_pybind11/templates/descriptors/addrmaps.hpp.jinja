@@ -4,7 +4,7 @@
 class {{ addrmap.inst_name | safe_id }}_t : public NodeBase {
 public:
     {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset)
-        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(addrmap.address_offset) }}) {
+        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(addrmap.address_offset) }}) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);
@@ -21,8 +21,15 @@ public:
         {% endfor %}
     }
 
-    void set_offset(uint64_t base_offset) {
-        offset_ = base_offset;
+    void set_offset(uint64_t base_offset) override {
+        NodeBase::set_offset(base_offset);
+        // Each child receives this addrmap's new absolute offset; the child
+        // then re-applies its own relative offset internally.
+        {% for child in addrmap.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name | safe_id }}.set_offset(offset_);
+        {% endif %}
+        {% endfor %}
     }
 
     {% for child in addrmap.children() %}
