@@ -118,6 +118,18 @@ class FieldBase:
         """Write field value from a plain int (skips wrapping)."""
         ...
 
+class RegisterWriteOnlyContext:
+    """Context-manager handle returned by :meth:`RegisterBase.write_only`.
+
+    On entry the register's cache is seeded to 0 (no master read); field
+    writes accumulate; on exit a single master write flushes the value.
+    Bits not explicitly written inside the context become 0 -- use only on
+    true write-only registers (DMA enable/start, IRQ ack, command FIFOs).
+    """
+
+    def __enter__(self) -> RegisterBase: ...
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
+
 class RegisterBase:
     """Base class for registers"""
 
@@ -148,6 +160,19 @@ class RegisterBase:
 
     def write_raw(self, value: int) -> None:
         """Write full register value from a plain int (skips wrapping)."""
+        ...
+
+    def __enter__(self) -> RegisterBase:
+        """Enter context manager (reads current value, accumulates writes, flushes on exit)"""
+        ...
+
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
+
+    def write_only(self) -> RegisterWriteOnlyContext:
+        """Return a write-only context-manager handle that skips the initial master read.
+
+        Bits not explicitly written inside the context are flushed as 0.
+        """
         ...
 
 class NodeBase:

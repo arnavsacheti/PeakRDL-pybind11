@@ -267,6 +267,32 @@ public:
     }
 
     /**
+     * Enter write-only context manager - skip the initial master read.
+     *
+     * Sets in_context_ = true and seeds cached_value_ = 0 *without*
+     * issuing a read on the master. Field writes inside the context
+     * accumulate into cached_value_ exactly like __enter__. On exit, a
+     * single master write flushes the accumulated value.
+     *
+     * NOTE: Any bit not explicitly written inside the context will be 0
+     * in the resulting master write. Use this only on registers where
+     * unspecified bits should be cleared on each operation (true
+     * write-only registers: DMA enable/start, IRQ ack, command FIFOs,
+     * etc.).
+     */
+    RegisterBase* enter_write_only() {
+        if (in_context_) {
+            throw std::runtime_error("Register " + name_ + " is already in a context");
+        }
+        if (!master_) {
+            throw std::runtime_error("No master attached to register: " + name_);
+        }
+        cached_value_ = 0;
+        in_context_ = true;
+        return this;
+    }
+
+    /**
      * Exit context manager - write cached value back to register
      */
     void exit_context() {
@@ -279,6 +305,12 @@ public:
         }
         in_context_ = false;
     }
+
+    /**
+     * Return a write-only context-manager handle for this register.
+     * See ``enter_write_only()`` for semantics.
+     */
+    class RegisterWriteOnlyContext write_only();
 
     /**
      * String representation
@@ -299,6 +331,28 @@ protected:
     bool in_context_;
     uint64_t cached_value_;
 };
+
+/**
+ * Lightweight context-manager handle returned by ``RegisterBase::write_only()``.
+ *
+ * Holding a separate handle type lets us bind ``__enter__`` to the
+ * skip-readback path without colliding with the regular
+ * ``RegisterBase::__enter__`` (which always reads the master first).
+ */
+class RegisterWriteOnlyContext {
+public:
+    explicit RegisterWriteOnlyContext(RegisterBase* reg) : reg_(reg) {}
+
+    RegisterBase* __enter__() { return reg_->enter_write_only(); }
+    void exit_context() { reg_->exit_context(); }
+
+private:
+    RegisterBase* reg_;
+};
+
+inline RegisterWriteOnlyContext RegisterBase::write_only() {
+    return RegisterWriteOnlyContext(this);
+}
 
 /**
  * Base class for register fields
