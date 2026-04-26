@@ -3,7 +3,7 @@
 class {{ reg.inst_name | safe_id }}_t : public RegisterBase {
 public:
     {{ reg.inst_name | safe_id }}_t(uint64_t base_offset)
-        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(reg.absolute_address) }}, {{ reg.size }}) {}
+        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(reg.address_offset) }}, {{ reg.size }}) {}
 
     {% for field in reg.fields() %}
     // Field: {{ field.inst_name | safe_id }}

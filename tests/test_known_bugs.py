@@ -186,10 +186,6 @@ int main() {{
     return run_result.returncode
 
 
-@pytest.mark.xfail(
-    reason="Issue #32: top-level register absolute_address is double-counted",
-    strict=True,
-)
 def test_issue_32_top_level_register_address() -> None:
     out = _export(ADDR_RDL, "addr_soc", split_bindings=0)
     try:

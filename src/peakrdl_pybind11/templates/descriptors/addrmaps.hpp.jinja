@@ -4,7 +4,7 @@
 class {{ addrmap.inst_name | safe_id }}_t : public NodeBase {
 public:
     {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset)
-        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset) {
+        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(addrmap.address_offset) }}) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);

@@ -3,7 +3,7 @@
 class {{ regfile.inst_name | safe_id }}_t : public NodeBase {
 public:
     {{ regfile.inst_name | safe_id }}_t(uint64_t base_offset)
-        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset) {
+        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(regfile.address_offset) }}) {
         {% for child in regfile.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);
