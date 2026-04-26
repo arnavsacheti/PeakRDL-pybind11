@@ -67,7 +67,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("__repr__", &MockMaster::__repr__);
 
     // Native C++ CallbackMaster: stores Python callables as std::function so
-    // dispatch goes through one C++→Python jump per access (vs two for a
+    // dispatch goes through one C++ -> Python jump per access (vs two for a
     // Python subclass of Master via the trampoline).
     py::class_<CallbackMaster, Master>(m, "CallbackMaster")
         .def(py::init<>())

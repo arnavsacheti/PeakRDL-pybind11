@@ -26,7 +26,7 @@ public:
 /**
  * MockMaster: in-memory backing for tests, fully native.
  *
- * Lives entirely in C++ -- no Python ↔ C++ boundary on read/write -- so
+ * Lives entirely in C++ -- no Python <-> C++ boundary on read/write -- so
  * register-access loops avoid the pybind11 trampoline that a Python
  * subclass of Master would incur.
  */

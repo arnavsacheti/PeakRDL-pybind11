@@ -37,14 +37,16 @@ else()
         -Wno-unused-variable)
 endif()
 
-# Strip symbols in Release-style builds for a smaller .so without paying
-# the LTO cost. Skip on Debug to keep stack traces useful.
-if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if(APPLE)
-        target_link_options(_{{ soc_name }}_native PRIVATE -Wl,-x)
-    elseif(NOT MSVC)
-        target_link_options(_{{ soc_name }}_native PRIVATE -Wl,--strip-all)
-    endif()
+# Strip symbols in non-Debug configurations for a smaller .so without paying
+# the LTO cost. Use a generator expression so this works correctly under
+# multi-config generators (Xcode / Visual Studio / Ninja Multi-Config),
+# where CMAKE_BUILD_TYPE is empty.
+if(APPLE)
+    target_link_options(_{{ soc_name }}_native PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:-Wl,-x>)
+elseif(NOT MSVC)
+    target_link_options(_{{ soc_name }}_native PRIVATE
+        $<$<NOT:$<CONFIG:Debug>>:-Wl,--strip-all>)
 endif()
 
 # Precompile {{ soc_name }}_descriptors.hpp once and reuse it across every
@@ -62,4 +64,10 @@ endif()
 
 # Install the module into the {{ soc_name }}/ package directory so the
 # resulting wheel ships as a real Python package (with __init__.py).
-install(TARGETS _{{ soc_name }}_native LIBRARY DESTINATION {{ soc_name }})
+# RUNTIME covers Windows (.pyd lands in RUNTIME), ARCHIVE covers any
+# import library that toolchains may emit alongside it; without the
+# extra destinations the wheel would be empty on MSVC.
+install(TARGETS _{{ soc_name }}_native
+    LIBRARY DESTINATION {{ soc_name }}
+    RUNTIME DESTINATION {{ soc_name }}
+    ARCHIVE DESTINATION {{ soc_name }})

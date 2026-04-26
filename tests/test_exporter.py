@@ -357,6 +357,42 @@ addrmap hierarchical_soc {
             # Verify no chunk files exist
             assert not os.path.exists(os.path.join(tmpdir, 'large_soc_bindings_0.cpp'))
     
+    def test_native_masters_emitted(self):
+        """Generated header + bindings expose the C++ MockMaster / CallbackMaster.
+
+        These ship inside every generated module so callers can do
+        ``soc.attach_master(my_soc.MockMaster())`` and stay entirely in
+        C++ on the read/write hot path. Regression test for the
+        descriptor classes + pybind11 bindings + .pyi stub all moving
+        together.
+        """
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SIMPLE_RDL))
+        root = rdl.elaborate()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Pybind11Exporter().export(root.top, tmpdir, soc_name="test_soc")
+
+            with open(os.path.join(tmpdir, 'test_soc_descriptors.hpp')) as f:
+                hdr = f.read()
+            assert 'class MockMaster : public Master' in hdr
+            assert 'class CallbackMaster : public Master' in hdr
+            assert '<utility>' in hdr  # required for std::move in CallbackMaster
+
+            with open(os.path.join(tmpdir, 'test_soc_bindings.cpp')) as f:
+                bindings = f.read()
+            assert 'py::class_<MockMaster, Master>(m, "MockMaster")' in bindings
+            assert 'py::class_<CallbackMaster, Master>(m, "CallbackMaster")' in bindings
+            assert 'set_read' in bindings
+            assert 'set_write' in bindings
+
+            with open(os.path.join(tmpdir, '__init__.pyi')) as f:
+                stubs = f.read()
+            assert 'class MockMaster(Master):' in stubs
+            assert 'class CallbackMaster(Master):' in stubs
+            assert 'Callable[[int, int], int]' in stubs
+            assert 'Callable[[int, int, int], None]' in stubs
+
     @staticmethod
     def _write_rdl(content):
         """Write RDL content to a temporary file"""

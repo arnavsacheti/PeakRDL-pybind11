@@ -317,7 +317,7 @@ class Pybind11Exporter:
 
         assert self.output_dir is not None
         filepath = self.output_dir / f"{self.soc_name}_descriptors.hpp"
-        with filepath.open("w") as f:
+        with filepath.open("w", encoding="utf-8") as f:
             f.write(output)
 
     def _generate_bindings(self, nodes: Nodes) -> None:
@@ -348,7 +348,7 @@ class Pybind11Exporter:
 
         assert self.output_dir is not None
         filepath = self.output_dir / f"{self.soc_name}_bindings.cpp"
-        with filepath.open("w") as f:
+        with filepath.open("w", encoding="utf-8") as f:
             f.write(output)
 
     def _generate_split_bindings(self, nodes: Nodes) -> None:
@@ -368,7 +368,7 @@ class Pybind11Exporter:
 
         assert self.output_dir is not None
         filepath = self.output_dir / f"{self.soc_name}_bindings.cpp"
-        with filepath.open("w") as f:
+        with filepath.open("w", encoding="utf-8") as f:
             f.write(main_output)
 
         # Generate split binding files
@@ -386,7 +386,7 @@ class Pybind11Exporter:
             )
 
             filepath = self.output_dir / f"{self.soc_name}_bindings_{chunk_idx}.cpp"
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(chunk_output)
 
     def _generate_hierarchical_split_bindings(self, nodes: Nodes) -> None:
@@ -412,7 +412,7 @@ class Pybind11Exporter:
 
         assert self.output_dir is not None
         filepath = self.output_dir / f"{self.soc_name}_bindings.cpp"
-        with filepath.open("w") as f:
+        with filepath.open("w", encoding="utf-8") as f:
             f.write(main_output)
 
         # Generate split binding files for each hierarchy group
@@ -427,7 +427,7 @@ class Pybind11Exporter:
             )
 
             filepath = self.output_dir / f"{self.soc_name}_bindings_{chunk_idx}.cpp"
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(chunk_output)
 
     def _group_registers_by_hierarchy(self, nodes: Nodes) -> OrderedDict[str, list[RegNode]]:
@@ -489,10 +489,11 @@ class Pybind11Exporter:
         )
 
         assert self.output_dir is not None
+        assert self.soc_name is not None
         pkg_dir = self.output_dir / self.soc_name
         pkg_dir.mkdir(exist_ok=True)
         for filepath in (pkg_dir / "__init__.py", self.output_dir / "__init__.py"):
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(output)
 
     def _generate_setup_py(self, nodes: Nodes) -> None:
@@ -529,7 +530,7 @@ class Pybind11Exporter:
             source_files=source_files,
         )
         cmake_filepath = self.output_dir / "CMakeLists.txt"
-        with cmake_filepath.open("w") as f:
+        with cmake_filepath.open("w", encoding="utf-8") as f:
             f.write(cmake_output)
 
         # Generate pyproject.toml for the module
@@ -539,7 +540,7 @@ class Pybind11Exporter:
             soc_version=self.soc_version,
         )
         pyproject_filepath = self.output_dir / "pyproject.toml"
-        with pyproject_filepath.open("w") as f:
+        with pyproject_filepath.open("w", encoding="utf-8") as f:
             f.write(pyproject_output)
 
     def _generate_pyi_stubs(self, nodes: Nodes) -> None:
@@ -553,10 +554,11 @@ class Pybind11Exporter:
         )
 
         assert self.output_dir is not None
+        assert self.soc_name is not None
         pkg_dir = self.output_dir / self.soc_name
         pkg_dir.mkdir(exist_ok=True)
         for filepath in (pkg_dir / "__init__.pyi", self.output_dir / "__init__.pyi"):
-            with filepath.open("w") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(output)
 
     def _collect_nodes(self, node: Node, nodes: Nodes | None = None) -> Nodes:

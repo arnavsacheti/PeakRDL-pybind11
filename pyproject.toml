@@ -58,7 +58,7 @@ peakrdl_pybind11 = ["templates/*.jinja", "templates/**/*.jinja"]
 [tool.ruff]
 line-length = 110
 target-version = "py310"
-extend-exclude = ["CVS", "parser", "docs", "tests"]
+extend-exclude = ["CVS", "parser", "docs", "tests", "test_ot"]
 
 [tool.ruff.lint]
 select = [
