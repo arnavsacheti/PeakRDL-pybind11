@@ -25,10 +25,37 @@ uv pip install hjson semantic_version mistletoe pydantic mako
 python3 hjson_to_rdl.py        # writes top_earlgrey.rdl
 python3 run_export.py          # writes output/
 cd output
-CMAKE_BUILD_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) pip install .   # ~25 min: full LTO + ~50k lines of templates
+CMAKE_BUILD_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) pip install .   # ~21 min on M1: full LTO + ~50k lines of templates
 cd ..
 python3 smoke_test.py     # round-trip writes/reads on uart, aes, gpio, i2c, hmac, rv_timer
 ```
+
+## Timings
+
+Measured on an Apple M1 (8 cores) with Apple clang 21 / Python 3.13.2 /
+scikit-build-core. Single end-to-end run from a clean output dir:
+
+| stage | time |
+|---|---|
+| `hjson_to_rdl.py` (parse 44 IPs → 27k-line RDL) | ~3 s |
+| `run_export.py` (RDL → 222k-line C++ + 40 split bindings) | ~5 s |
+| `pip install .` of the generated module | **21 m 11 s** |
+| `import top_earlgrey` (cold) | 0.14 s |
+| `top_earlgrey.create()` | <1 ms |
+| `smoke_test.py` (6 IPs round-tripped) | <1 s |
+
+Generated artifacts:
+
+| artifact | size |
+|---|---|
+| `top_earlgrey.rdl` | ~27 k lines |
+| `top_earlgrey_descriptors.hpp` | ~222 k lines, 2 611 register classes, 56 node classes |
+| `top_earlgrey_bindings_*.cpp` (40 split files) | ~47 k lines total |
+| compiled `_top_earlgrey_native.*.so` | 69 MB |
+
+Build time is dominated by the LTO link of ~2 600 register classes; per
+the README in the parent project, splitting by hierarchy (`split_by_hierarchy=True`)
+is what makes the parallel compile feasible at all.
 
 ## Conversion notes / known simplifications
 
