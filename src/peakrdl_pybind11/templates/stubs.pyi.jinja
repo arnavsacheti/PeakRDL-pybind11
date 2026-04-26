@@ -110,6 +110,14 @@ class FieldBase:
     @property
     def mask(self) -> int: ...
 
+    def read_raw(self) -> int:
+        """Read field value as a plain int (skips FieldInt wrapping)."""
+        ...
+
+    def write_raw(self, value: int) -> None:
+        """Write field value from a plain int (skips wrapping)."""
+        ...
+
 class RegisterBase:
     """Base class for registers"""
 
@@ -132,6 +140,14 @@ class RegisterBase:
 
     def modify(self, value: int, mask: int) -> None:
         """Read-modify-write operation with mask"""
+        ...
+
+    def read_raw(self) -> int:
+        """Read full register value as a plain int (skips RegisterInt wrapping)."""
+        ...
+
+    def write_raw(self, value: int) -> None:
+        """Write full register value from a plain int (skips wrapping)."""
         ...
 
 class NodeBase:
