@@ -127,5 +127,89 @@ class TestNativeMasters:
         assert set(store.keys()) == {soc.reg_a.offset, soc.reg_b.offset}
 
 
+class TestNativeMasterBatch:
+    """Exercises the batched ``read_many`` / ``write_many`` interface added
+    in the master-batch unit. The whole point of this path is amortizing
+    the C++ <-> Python boundary, so we also assert the Python callback is
+    invoked exactly once for N ops."""
+
+    def test_mock_master_batch_round_trip(self, tmpdir):
+        soc_module = _build_test_module(tmpdir)
+        if soc_module is None:
+            pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+
+        master = soc_module.MockMaster()
+        ops = [
+            soc_module.AccessOp(0x0, 0xAAAA, 4),
+            soc_module.AccessOp(0x4, 0xBBBB, 4),
+            soc_module.AccessOp(0x8, 0xCCCC, 4),
+        ]
+        master.write_many(ops)
+        assert master.size == 3
+
+        read_ops = [
+            soc_module.AccessOp(0x0, 4),
+            soc_module.AccessOp(0x4, 4),
+            soc_module.AccessOp(0x8, 4),
+            soc_module.AccessOp(0x100, 4),  # default-zero
+        ]
+        values = master.read_many(read_ops)
+        assert list(values) == [0xAAAA, 0xBBBB, 0xCCCC, 0]
+
+    def test_callback_master_batch_invoked_once(self, tmpdir):
+        soc_module = _build_test_module(tmpdir)
+        if soc_module is None:
+            pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+
+        store: dict[int, int] = {}
+        write_calls = 0
+        read_calls = 0
+
+        def write_many(ops):
+            nonlocal write_calls
+            write_calls += 1
+            for op in ops:
+                store[op.address] = op.value
+
+        def read_many(ops):
+            nonlocal read_calls
+            read_calls += 1
+            return [store.get(op.address, 0) for op in ops]
+
+        cb = soc_module.CallbackMaster()
+        cb.set_read_many(read_many)
+        cb.set_write_many(write_many)
+
+        write_ops = [soc_module.AccessOp(i * 4, i + 1, 4) for i in range(8)]
+        cb.write_many(write_ops)
+        assert write_calls == 1
+        assert store == {i * 4: i + 1 for i in range(8)}
+
+        read_ops = [soc_module.AccessOp(i * 4, 4) for i in range(8)]
+        values = cb.read_many(read_ops)
+        assert read_calls == 1
+        assert list(values) == [i + 1 for i in range(8)]
+
+    def test_callback_master_batch_falls_back_to_single_op(self, tmpdir):
+        """If batch callbacks aren't set, read_many/write_many still work by
+        looping the per-op callbacks."""
+        soc_module = _build_test_module(tmpdir)
+        if soc_module is None:
+            pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+
+        store: dict[int, int] = {}
+        cb = soc_module.CallbackMaster(
+            lambda addr, width: store.get(addr, 0),
+            lambda addr, value, width: store.__setitem__(addr, value),
+        )
+
+        cb.write_many([soc_module.AccessOp(0, 0xDEAD, 4),
+                       soc_module.AccessOp(4, 0xBEEF, 4)])
+        assert store == {0: 0xDEAD, 4: 0xBEEF}
+        values = cb.read_many([soc_module.AccessOp(0, 4),
+                               soc_module.AccessOp(4, 4)])
+        assert list(values) == [0xDEAD, 0xBEEF]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
