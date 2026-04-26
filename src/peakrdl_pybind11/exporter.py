@@ -9,6 +9,9 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import TypedDict
 
+from jinja2 import Environment, PackageLoader, select_autoescape
+from systemrdl.node import AddrmapNode, FieldNode, MemNode, Node, RegfileNode, RegNode, RootNode
+
 # Words that cannot be used as identifiers in either Python or C++.
 #
 # We deliberately use only ``keyword.kwlist`` (hard Python keywords) and skip
@@ -22,29 +25,107 @@ _RESERVED_WORDS: frozenset[str] = frozenset(
     | {
         # C++ keywords / reserved identifiers that could collide with an RDL
         # inst_name. Not exhaustive -- focused on commonly-used names.
-        "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand",
-        "bitor", "bool", "break", "case", "catch", "char", "char8_t",
-        "char16_t", "char32_t", "class", "compl", "concept", "const",
-        "consteval", "constexpr", "constinit", "const_cast", "continue",
-        "co_await", "co_return", "co_yield", "decltype", "default", "delete",
-        "do", "double", "dynamic_cast", "else", "enum", "explicit", "export",
-        "extern", "false", "float", "for", "friend", "goto", "if", "inline",
-        "int", "long", "mutable", "namespace", "new", "noexcept", "not",
-        "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected",
-        "public", "register", "reinterpret_cast", "requires", "return",
-        "short", "signed", "sizeof", "static", "static_assert", "static_cast",
-        "struct", "switch", "template", "this", "thread_local", "throw",
-        "true", "try", "typedef", "typeid", "typename", "union", "unsigned",
-        "using", "virtual", "void", "volatile", "wchar_t", "while", "xor",
+        "alignas",
+        "alignof",
+        "and",
+        "and_eq",
+        "asm",
+        "auto",
+        "bitand",
+        "bitor",
+        "bool",
+        "break",
+        "case",
+        "catch",
+        "char",
+        "char8_t",
+        "char16_t",
+        "char32_t",
+        "class",
+        "compl",
+        "concept",
+        "const",
+        "consteval",
+        "constexpr",
+        "constinit",
+        "const_cast",
+        "continue",
+        "co_await",
+        "co_return",
+        "co_yield",
+        "decltype",
+        "default",
+        "delete",
+        "do",
+        "double",
+        "dynamic_cast",
+        "else",
+        "enum",
+        "explicit",
+        "export",
+        "extern",
+        "false",
+        "float",
+        "for",
+        "friend",
+        "goto",
+        "if",
+        "inline",
+        "int",
+        "long",
+        "mutable",
+        "namespace",
+        "new",
+        "noexcept",
+        "not",
+        "not_eq",
+        "nullptr",
+        "operator",
+        "or",
+        "or_eq",
+        "private",
+        "protected",
+        "public",
+        "register",
+        "reinterpret_cast",
+        "requires",
+        "return",
+        "short",
+        "signed",
+        "sizeof",
+        "static",
+        "static_assert",
+        "static_cast",
+        "struct",
+        "switch",
+        "template",
+        "this",
+        "thread_local",
+        "throw",
+        "true",
+        "try",
+        "typedef",
+        "typeid",
+        "typename",
+        "union",
+        "unsigned",
+        "using",
+        "virtual",
+        "void",
+        "volatile",
+        "wchar_t",
+        "while",
+        "xor",
         "xor_eq",
         # Identifiers used by the generator itself; collisions would shadow
         # generated members.
-        "Master", "RegisterBase", "FieldBase", "NodeBase", "MemoryBase",
+        "Master",
+        "RegisterBase",
+        "FieldBase",
+        "NodeBase",
+        "MemoryBase",
     }
 )
-
-from jinja2 import Environment, PackageLoader, select_autoescape
-from systemrdl.node import AddrmapNode, FieldNode, MemNode, Node, RegfileNode, RegNode, RootNode
 
 
 class Nodes(TypedDict):
@@ -554,9 +635,7 @@ class Pybind11Exporter:
             except ValueError as e:
                 raise ValueError(f"{where}: cannot parse {token!r} as an integer") from e
             if idx < 0 or idx >= width:
-                raise ValueError(
-                    f"{where}: bit index {idx} is out of range for a width-{width} field"
-                )
+                raise ValueError(f"{where}: bit index {idx} is out of range for a width-{width} field")
             result.add(idx)
         return result
 
@@ -655,8 +734,7 @@ class Pybind11Exporter:
         register = getattr(rdl_compiler, "register_udp", None)
         if register is None:
             raise TypeError(
-                "rdl_compiler does not look like a systemrdl RDLCompiler "
-                "(no register_udp method)"
+                "rdl_compiler does not look like a systemrdl RDLCompiler (no register_udp method)"
             )
         # soft=False so the UDP is recognized immediately without the user
         # also having to declare `property is_flag { ... };` in their RDL.
