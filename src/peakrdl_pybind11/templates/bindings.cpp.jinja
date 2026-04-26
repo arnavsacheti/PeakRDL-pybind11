@@ -88,7 +88,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     
     {% for reg in nodes.regs %}
     // Register class: {{ reg.inst_name }}
-    py::class_<{{ reg.inst_name }}_t, RegisterBase>(m, "{{ reg.inst_name }}_t"{% if reg.get_property('desc') %}, "{{ reg.get_html_desc() }}"{% endif %})
+    py::class_<{{ reg.inst_name }}_t, RegisterBase>(m, "{{ reg.inst_name }}_t"{% if reg.get_property('desc') %}, "{{ reg.get_html_desc() | cpp_string }}"{% endif %})
         .def(py::init<uint64_t>())
         {% for field in reg.fields() %}
         .def_readonly("{{ field.inst_name }}", &{{ reg.inst_name }}_t::{{ field.inst_name }})
@@ -97,7 +97,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     
     {% for field in reg.fields() %}
     // Field class: {{ reg.inst_name }}.{{ field.inst_name }}
-    py::class_<{{ reg.inst_name }}_t::{{ field.inst_name }}_field, FieldBase>(m, "{{ reg.inst_name }}_{{ field.inst_name }}_field"{% if field.get_property('desc') %}, "{{ field.get_html_desc() }}"{% endif %})
+    py::class_<{{ reg.inst_name }}_t::{{ field.inst_name }}_field, FieldBase>(m, "{{ reg.inst_name }}_{{ field.inst_name }}_field"{% if field.get_property('desc') %}, "{{ field.get_html_desc() | cpp_string }}"{% endif %})
         .def("read", &{{ reg.inst_name }}_t::{{ field.inst_name }}_field::read, "Read field value")
         .def("write", &{{ reg.inst_name }}_t::{{ field.inst_name }}_field::write, "Write field value");
     {% endfor %}
@@ -105,7 +105,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     
     {% for regfile in nodes.regfiles %}
     // Regfile class: {{ regfile.inst_name }}
-    py::class_<{{ regfile.inst_name }}_t, NodeBase>(m, "{{ regfile.inst_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() }}"{% endif %})
+    py::class_<{{ regfile.inst_name }}_t, NodeBase>(m, "{{ regfile.inst_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() | cpp_string }}"{% endif %})
         .def(py::init<uint64_t>())
         {% for child in regfile.children() %}
         {% if child.inst_name %}
@@ -118,7 +118,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     {% for addrmap in nodes.addrmaps %}
     {% if addrmap != top_node %}
     // Addrmap class: {{ addrmap.inst_name }}
-    py::class_<{{ addrmap.inst_name }}_t, NodeBase>(m, "{{ addrmap.inst_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() }}"{% endif %})
+    py::class_<{{ addrmap.inst_name }}_t, NodeBase>(m, "{{ addrmap.inst_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() | cpp_string }}"{% endif %})
         .def(py::init<uint64_t>())
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
@@ -132,7 +132,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     {% for mem in nodes.mems %}
     {%- set entry_reg = mem.children()|list|first %}
     // Memory class: {{ mem.inst_name }}
-    py::class_<{{ mem.inst_name }}_t, NodeBase>(m, "{{ mem.inst_name }}_t"{% if mem.get_property('desc') %}, "{{ mem.get_html_desc() }}"{% endif %})
+    py::class_<{{ mem.inst_name }}_t, NodeBase>(m, "{{ mem.inst_name }}_t"{% if mem.get_property('desc') %}, "{{ mem.get_html_desc() | cpp_string }}"{% endif %})
         .def(py::init<uint64_t>())
         .def("__len__", &{{ mem.inst_name }}_t::size, "Get number of entries")
         .def("__getitem__", 
