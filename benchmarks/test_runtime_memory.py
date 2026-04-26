@@ -17,13 +17,13 @@ pytest test it asserts the batched form is at least as fast.
 from __future__ import annotations
 
 import importlib.util
-import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from systemrdl import RDLCompiler
@@ -46,7 +46,7 @@ addrmap bench_soc {
 N = 1000
 
 
-def _build_module(workdir: Path, soc_name: str = "bench_soc"):
+def _build_module(workdir: Path, soc_name: str = "bench_soc") -> Any:  # noqa: ANN401
     rdl_path = workdir / "bench.rdl"
     rdl_path.write_text(BENCH_RDL)
 
@@ -61,11 +61,14 @@ def _build_module(workdir: Path, soc_name: str = "bench_soc"):
     build_dir = output_dir / "build"
     build_dir.mkdir()
 
-    if subprocess.run(["cmake", ".."], cwd=build_dir,
-                      capture_output=True, text=True).returncode != 0:
+    if subprocess.run(["cmake", ".."], cwd=build_dir, capture_output=True, text=True).returncode != 0:
         return None
-    if subprocess.run(["cmake", "--build", ".", "--config", "Release"],
-                      cwd=build_dir, capture_output=True, text=True).returncode != 0:
+    if (
+        subprocess.run(
+            ["cmake", "--build", ".", "--config", "Release"], cwd=build_dir, capture_output=True, text=True
+        ).returncode
+        != 0
+    ):
         return None
 
     so_files = list(build_dir.glob("**/*.so")) + list(build_dir.glob("**/*.pyd"))
@@ -76,9 +79,7 @@ def _build_module(workdir: Path, soc_name: str = "bench_soc"):
     shutil.copy(so_files[0], pkg_dir)
 
     sys.path.insert(0, str(output_dir))
-    spec = importlib.util.spec_from_file_location(
-        soc_name, str(pkg_dir / "__init__.py")
-    )
+    spec = importlib.util.spec_from_file_location(soc_name, str(pkg_dir / "__init__.py"))
     if spec is None or spec.loader is None:
         return None
     module = importlib.util.module_from_spec(spec)
@@ -90,7 +91,7 @@ def _build_module(workdir: Path, soc_name: str = "bench_soc"):
     return module
 
 
-def _time_loop(fn, repeats: int) -> float:
+def _time_loop(fn: Any, repeats: int) -> float:  # noqa: ANN401
     best = float("inf")
     for _ in range(repeats):
         t0 = time.perf_counter()
@@ -101,17 +102,17 @@ def _time_loop(fn, repeats: int) -> float:
     return best
 
 
-def _run_bench(module):
+def _run_bench(module: Any) -> dict[str, Any]:  # noqa: ANN401
     soc = module.create()
 
     counters = {"r": 0, "w": 0}
     store: dict[int, int] = {}
 
-    def cb_read(addr, width):
+    def cb_read(addr: int, width: int) -> int:
         counters["r"] += 1
         return store.get(addr, 0)
 
-    def cb_write(addr, value, width):
+    def cb_write(addr: int, value: int, width: int) -> None:
         counters["w"] += 1
         store[addr] = value
 
@@ -124,10 +125,10 @@ def _run_bench(module):
     # Bind locally for both loops to avoid attribute-lookup noise.
     big_mem = soc.big_mem
 
-    def per_entry_read():
+    def per_entry_read() -> list[int]:
         return [big_mem[i].read() for i in range(N)]
 
-    def block_read():
+    def block_read() -> list[int]:
         return big_mem.read_block(0, N)
 
     # Warmup.
@@ -151,7 +152,7 @@ def _run_bench(module):
     }
 
 
-def test_read_block_microbench(tmpdir):
+def test_read_block_microbench(tmpdir: Any) -> None:  # noqa: ANN401
     module = _build_module(Path(str(tmpdir)))
     if module is None:
         pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
