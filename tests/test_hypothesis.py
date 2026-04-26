@@ -8,6 +8,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from peakrdl_pybind11 import FieldInt, RegisterInt
+from peakrdl_pybind11.exporter import _RESERVED_WORDS
 from peakrdl_pybind11.masters import MockMaster
 
 # ---------------------------------------------------------------------------
@@ -269,8 +270,17 @@ class TestSanitizeIdentifier:
         twice = self._sanitize(once)
         assert once == twice
 
-    @given(name=st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]*", fullmatch=True).filter(lambda s: 1 <= len(s) <= 100))
+    @given(
+        name=st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]*", fullmatch=True)
+        .filter(lambda s: 1 <= len(s) <= 100)
+        # The sanitizer deliberately appends `_` to Python/C++ reserved words
+        # (e.g. `class`, `do`, `template`) so the generated code parses in
+        # both languages. Filter those out -- this test covers the
+        # non-reserved case; the reserved case is covered by
+        # test_known_bugs.test_issue_34_*.
+        .filter(lambda s: s not in _RESERVED_WORDS)
+    )
     def test_valid_identifiers_are_unchanged(self, name: str) -> None:
-        """Strings that are already valid identifiers should pass through unchanged."""
+        """Non-reserved valid identifiers should pass through unchanged."""
         result = self._sanitize(name)
         assert result == name
