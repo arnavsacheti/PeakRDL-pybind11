@@ -92,10 +92,13 @@ class TestMemoryIntegration:
             assert 'class ctrl_mem_t' in descriptor_content
             assert 'MemoryBase<entry_t>' in descriptor_content
             
-            # Verify all entry registers have correct offsets
-            # The memory starts at 0x1000 with 64 entries of 4 bytes each
+            # Verify entry register constructor adds its own (relative)
+            # address_offset on top of the base offset passed by the parent.
+            # The mem entry's address_offset is 0 -- the memory itself
+            # contributes the +0x1000 in its own constructor.
             assert 'entry_t(uint64_t base_offset)' in descriptor_content
-            assert 'RegisterBase("entry", base_offset + 0x1000, 4)' in descriptor_content
+            assert 'RegisterBase("entry", base_offset + 0x0, 4)' in descriptor_content
+            assert 'MemoryBase<entry_t>("ctrl_mem", base_offset + 0x1000, 64, 4)' in descriptor_content
             
             # Verify bindings content has memory interface
             with open(os.path.join(tmpdir, 'integration_test_bindings.cpp')) as f:

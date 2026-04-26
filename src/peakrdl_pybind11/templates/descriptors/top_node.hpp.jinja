@@ -1,26 +1,11 @@
 // Top-level SoC class
 class {{ soc_name }}_t : public NodeBase {
 public:
-    {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {
-        {% for child in top_node.children() %}
-        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name | safe_id }}.set_offset(offset_);
-        {% endif %}
-        {% endfor %}
-    }
+    {{ soc_name }}_t() : NodeBase("{{ soc_name }}", 0) {}
 
     void attach_master(Master* master) {
         set_master(master);
         propagate_master(master);
-    }
-
-    void set_offset(uint64_t offset) {
-        offset_ = offset;
-        {% for child in top_node.children() %}
-        {% if child.inst_name and not child.__class__.__name__ == 'RegNode' %}
-        {{ child.inst_name | safe_id }}.set_offset(offset_);
-        {% endif %}
-        {% endfor %}
     }
 
     void propagate_master(Master* master) {
@@ -31,9 +16,13 @@ public:
         {% endfor %}
     }
 
+    // Each child contributes its own address_offset on top of the base passed
+    // here, so the SoC always passes its own offset (0). Containers'
+    // set_offset() does not propagate to children -- treat the address layout
+    // as fixed at construction time.
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{0x{{ "%x" | format(child.absolute_address if child.absolute_address else 0) }}};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };

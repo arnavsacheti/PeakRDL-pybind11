@@ -5,7 +5,7 @@
 class {{ mem.inst_name | safe_id }}_t : public MemoryBase<{{ entry_reg.inst_name | safe_id }}_t> {
 public:
     {{ mem.inst_name | safe_id }}_t(uint64_t base_offset)
-        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>("{{ mem.inst_name | safe_id }}", base_offset, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
+        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>("{{ mem.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(mem.address_offset) }}, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
 
     void set_offset(uint64_t base_offset) {
         offset_ = base_offset;
