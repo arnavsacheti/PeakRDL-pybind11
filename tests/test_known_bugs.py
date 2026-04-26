@@ -358,11 +358,3 @@ def test_issue_36_mock_master_read_honours_width() -> None:
     assert master.read(0x100, 1) == 0xEF
     assert master.read(0x100, 2) == 0xBEEF
     assert master.read(0x100, 4) == 0xDEADBEEF
-
-
-# Wrap the width-narrowing assertions in xfail so the rest of the suite stays
-# green. The first read above currently returns 0xDEADBEEF, not 0xEF.
-test_issue_36_mock_master_read_honours_width = pytest.mark.xfail(
-    reason="Issue #36: MockMaster.read does not mask by width",
-    strict=True,
-)(test_issue_36_mock_master_read_honours_width)

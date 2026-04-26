@@ -18,7 +18,6 @@ class SSHMaster(MasterBase):
         self,
         host: str,
         username: str | None = None,
-        password: str | None = None,
         key_file: str | None = None,
         tool: str = "devmem",
     ) -> None:
@@ -28,13 +27,15 @@ class SSHMaster(MasterBase):
         Args:
             host: SSH host to connect to
             username: SSH username (optional, uses current user if not specified)
-            password: SSH password (optional, uses key-based auth if not specified)
             key_file: Path to SSH private key file (optional)
             tool: Memory access tool on remote system (default: "devmem")
+
+        Note:
+            Password authentication is not supported. Use SSH keys via
+            ``key_file`` (or your ssh-agent / ``~/.ssh/config``).
         """
         self.host = host
         self.username = username
-        self.password = password
         self.key_file = key_file
         self.tool = tool
 
@@ -56,22 +57,22 @@ class SSHMaster(MasterBase):
             result = subprocess.run(
                 [*self.ssh_cmd, "echo", "test"], capture_output=True, text=True, timeout=10
             )
-            if result.returncode != 0:
-                raise RuntimeError(f"SSH connection test failed: {result.stderr}")
-        except Exception as e:
+        except (OSError, subprocess.TimeoutExpired) as e:
             raise RuntimeError(f"Failed to connect via SSH to {self.host}: {e}") from e
+        if result.returncode != 0:
+            raise RuntimeError(f"SSH connection test to {self.host} failed: {result.stderr.strip()}")
 
     def _run_remote_command(self, command: str) -> str:
         """Execute a command on the remote system"""
         try:
             result = subprocess.run([*self.ssh_cmd, command], capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                raise RuntimeError(f"Remote command failed: {result.stderr}")
-            return result.stdout.strip()
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"Remote command timed out: {command}") from None
-        except Exception as e:
+        except OSError as e:
             raise RuntimeError(f"Failed to execute remote command: {e}") from e
+        if result.returncode != 0:
+            raise RuntimeError(f"Remote command failed: {result.stderr.strip()}")
+        return result.stdout.strip()
 
     def read(self, address: int, width: int) -> int:
         """
