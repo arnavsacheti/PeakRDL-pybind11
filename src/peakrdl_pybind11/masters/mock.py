@@ -12,8 +12,9 @@ class MockMaster(MasterBase):
         self.memory: dict[int, int] = {}
 
     def read(self, address: int, width: int) -> int:
-        """Read from simulated memory"""
-        return self.memory.get(address, 0)
+        """Read from simulated memory, masked to ``width`` bytes."""
+        mask = (1 << (width * 8)) - 1
+        return self.memory.get(address, 0) & mask
 
     def write(self, address: int, value: int, width: int) -> None:
         """Write to simulated memory"""
