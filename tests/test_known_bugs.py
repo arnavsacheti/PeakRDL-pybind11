@@ -338,6 +338,55 @@ def test_issue_35_flag_register_emits_single_bit_values() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Issue #37: runtime enhancement layer should be explicit, not heuristic
+# ---------------------------------------------------------------------------
+RUNTIME_ENHANCEMENT_RDL = """
+addrmap rt_soc {
+    reg {
+        field { sw = rw; hw = r; } enable[0:0];
+        field { sw = rw; hw = r; } mode[3:1];
+    } control @ 0x0;
+    reg {
+        field { sw = r; hw = w; } ready[0:0];
+    } status @ 0x4;
+};
+"""
+
+
+def test_issue_37_runtime_enhancement_is_explicit_and_idempotent() -> None:
+    out = _export(RUNTIME_ENHANCEMENT_RDL, "rt_soc", split_bindings=0)
+    try:
+        runtime = _read(os.path.join(out, "__init__.py"))
+        ast.parse(runtime)
+
+        # Per-register field layout must be baked in at codegen time, not
+        # rebuilt by walking dir(self) on every .read().
+        assert "_REGISTER_FIELDS" in runtime, "missing precomputed field table"
+        assert "control_t: {" in runtime
+        assert '"enable": (0, 1)' in runtime
+        assert '"mode": (1, 3)' in runtime
+        assert "status_t: {" in runtime
+        assert '"ready": (0, 1)' in runtime
+
+        # Field class set must be enumerated explicitly (no globals() walk
+        # / no name-suffix heuristic).
+        assert "_FIELD_CLASSES" in runtime
+        assert "control_enable_field" in runtime
+        assert "control_mode_field" in runtime
+        assert "status_ready_field" in runtime
+
+        # Forbid the old dir() / globals() heuristics.
+        assert "for attr_name in dir(self)" not in runtime
+        assert "for _name in list(globals().keys())" not in runtime
+
+        # Wrapping must be idempotent: the wrappers carry a marker the
+        # enhance helpers check before re-wrapping.
+        assert "__peakrdl_enhanced__" in runtime
+    finally:
+        shutil.rmtree(out, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
 # Issue #36: MockMaster ignores width on read
 # ---------------------------------------------------------------------------
 def test_issue_36_mock_master_read_honours_width() -> None:
