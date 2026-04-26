@@ -1,13 +1,13 @@
 {% for addrmap in nodes.addrmaps %}
 {% if addrmap != top_node %}
-// Addrmap: {{ addrmap.inst_name }}
-class {{ addrmap.inst_name }}_t : public NodeBase {
+// Addrmap: {{ addrmap.inst_name | safe_id }}
+class {{ addrmap.inst_name | safe_id }}_t : public NodeBase {
 public:
-    {{ addrmap.inst_name }}_t(uint64_t base_offset)
-        : NodeBase("{{ addrmap.inst_name }}", base_offset) {
+    {{ addrmap.inst_name | safe_id }}_t(uint64_t base_offset)
+        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master_);
+        {{ child.inst_name | safe_id }}.set_master(master_);
         {% endif %}
         {% endfor %}
     }
@@ -16,7 +16,7 @@ public:
         NodeBase::set_master(master);
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
-        {{ child.inst_name }}.set_master(master);
+        {{ child.inst_name | safe_id }}.set_master(master);
         {% endif %}
         {% endfor %}
     }
@@ -27,7 +27,7 @@ public:
 
     {% for child in addrmap.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name }}_t {{ child.inst_name }}{offset_};
+    {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };
