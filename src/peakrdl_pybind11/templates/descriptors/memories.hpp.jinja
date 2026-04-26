@@ -5,20 +5,10 @@
 class {{ mem.inst_name | safe_id }}_t : public MemoryBase<{{ entry_reg.inst_name | safe_id }}_t> {
 public:
     {{ mem.inst_name | safe_id }}_t(uint64_t base_offset)
-        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>("{{ mem.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(mem.address_offset) }}, {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
-
-    void set_offset(uint64_t base_offset) {
-        offset_ = base_offset;
-        // Update all entry offsets
-        size_t entry_size = {{ entry_reg.size }};
-        for (size_t i = 0; i < entries_.size(); ++i) {
-            entries_[i] = {{ entry_reg.inst_name | safe_id }}_t(base_offset + i * entry_size);
-        }
-        // Re-apply master if set
-        if (master_) {
-            set_master(master_);
-        }
-    }
+        : MemoryBase<{{ entry_reg.inst_name | safe_id }}_t>(
+              "{{ mem.inst_name | safe_id }}", base_offset,
+              0x{{ "%x" | format(mem.address_offset) }},
+              {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
 };
 
 {% endfor %}

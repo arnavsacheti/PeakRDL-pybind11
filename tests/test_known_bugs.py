@@ -14,6 +14,8 @@ Tracked issues (https://github.com/arnavsacheti/PeakRDL-pybind11/issues):
   #34 Identifier sanitization does not handle reserved words / collisions
   #35 Generated IntFlag/IntEnum values use bit positions, not encodings
   #36 MockMaster.read ignores width
+  #37 Runtime enhancement layer was heuristic
+  #38 Memory set_offset reassigned entries, breaking pybind11 references
 """
 
 from __future__ import annotations
@@ -537,3 +539,93 @@ def test_issue_36_mock_master_read_honours_width() -> None:
     assert master.read(0x100, 1) == 0xEF
     assert master.read(0x100, 2) == 0xBEEF
     assert master.read(0x100, 4) == 0xDEADBEEF
+
+
+# ---------------------------------------------------------------------------
+# Issue #38: memory set_offset must update entries in place, not reassign
+# ---------------------------------------------------------------------------
+MEMORY_RELOCATE_RDL = """
+addrmap relocate_soc {
+    external mem {
+        mementries = 4;
+        memwidth   = 32;
+        reg {
+            field { sw = rw; hw = r; } data[7:0];
+        } entry;
+    } ctrl_mem @ 0x1000;
+};
+"""
+
+
+def test_issue_38_memory_set_offset_preserves_entry_identity() -> None:
+    """Compile a g++ probe that:
+
+      1. holds a pointer to a memory entry,
+      2. calls ``mem.set_offset(...)`` to relocate the array,
+      3. confirms the *same* entry pointer reflects the new absolute
+         address (i.e. the entry was updated in place, not reassigned).
+    """
+    cxx = shutil.which("g++") or shutil.which("clang++")
+    if cxx is None:
+        pytest.skip("No C++ compiler available")
+
+    out = _export(MEMORY_RELOCATE_RDL, "relocate_soc", split_bindings=0)
+    try:
+        driver = os.path.join(out, "_probe.cpp")
+        with open(driver, "w") as f:
+            f.write(r"""
+#include <cstdio>
+#include "relocate_soc_descriptors.hpp"
+
+int main() {
+    relocate_soc::relocate_soc_t soc;
+
+    // Initial layout: ctrl_mem at 0x1000 with 32-bit (4-byte) entries.
+    auto* entry2_before = &soc.ctrl_mem[2];
+    auto offset_before  = entry2_before->offset();
+    if (offset_before != 0x1000ull + 2 * 4) {
+        std::fprintf(stderr, "entry[2] initial offset = 0x%llx, expected 0x1008\n",
+                     (unsigned long long)offset_before);
+        return 1;
+    }
+
+    // Relocate the whole SoC.
+    soc.set_offset(0x80000000ull);
+
+    // Pointer must still be valid AND must reflect the new layout.
+    auto* entry2_after = &soc.ctrl_mem[2];
+    if (entry2_after != entry2_before) {
+        std::fprintf(stderr, "entry[2] address changed across set_offset\n");
+        return 2;
+    }
+    auto offset_after = entry2_before->offset();
+    if (offset_after != 0x80001000ull + 2 * 4) {
+        std::fprintf(stderr, "entry[2] post-relocate offset = 0x%llx, expected 0x80001008\n",
+                     (unsigned long long)offset_after);
+        return 3;
+    }
+    return 0;
+}
+""")
+
+        binary = os.path.join(out, "_probe")
+        compile_result = subprocess.run(
+            [cxx, "-std=c++17", "-I", out, driver, "-o", binary],
+            capture_output=True,
+            timeout=30,
+        )
+        if compile_result.returncode != 0:
+            pytest.fail(
+                "Memory-relocation probe failed to compile:\n"
+                + compile_result.stdout.decode(errors="ignore")
+                + compile_result.stderr.decode(errors="ignore")
+            )
+
+        run_result = subprocess.run([binary], capture_output=True, timeout=10)
+        if run_result.returncode != 0:
+            print(run_result.stderr.decode(errors="ignore"))
+        assert run_result.returncode == 0, (
+            f"memory-relocation probe exited with {run_result.returncode}"
+        )
+    finally:
+        shutil.rmtree(out, ignore_errors=True)

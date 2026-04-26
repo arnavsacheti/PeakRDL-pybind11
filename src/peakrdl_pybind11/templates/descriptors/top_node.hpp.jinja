@@ -16,10 +16,24 @@ public:
         {% endfor %}
     }
 
-    // Each child contributes its own address_offset on top of the base passed
-    // here, so the SoC always passes its own offset (0). Containers'
-    // set_offset() does not propagate to children -- treat the address layout
-    // as fixed at construction time.
+    /**
+     * Move the entire register map to a new base address. Each top-level
+     * child receives this new base; their set_offset overrides recurse
+     * through any nested regfiles, addrmaps, memories, and registers.
+     * Existing pybind11 references into the SoC remain valid -- nothing
+     * is destroyed or reassigned.
+     */
+    void set_offset(uint64_t base_offset) override {
+        NodeBase::set_offset(base_offset);
+        {% for child in top_node.children() %}
+        {% if child.inst_name %}
+        {{ child.inst_name | safe_id }}.set_offset(offset_);
+        {% endif %}
+        {% endfor %}
+    }
+
+    // Each child contributes its own address_offset on top of the base
+    // passed here, so the SoC always passes its own offset (initially 0).
     {% for child in top_node.children() %}
     {% if child.inst_name %}
     {{ child.inst_name | safe_id }}_t {{ child.inst_name | safe_id }}{offset_};

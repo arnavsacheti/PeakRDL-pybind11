@@ -3,14 +3,14 @@
 class {{ reg.inst_name | safe_id }}_t : public RegisterBase {
 public:
     {{ reg.inst_name | safe_id }}_t(uint64_t base_offset)
-        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset + 0x{{ "%x" | format(reg.address_offset) }}, {{ reg.size }}) {}
+        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(reg.address_offset) }}, {{ reg.size }}) {}
 
     {% for field in reg.fields() %}
     // Field: {{ field.inst_name | safe_id }}
     class {{ field.inst_name | safe_id }}_field : public FieldBase {
     public:
         {{ field.inst_name | safe_id }}_field({{ reg.inst_name | safe_id }}_t* parent)
-            : FieldBase("{{ field.inst_name | safe_id }}", parent->offset(),
+            : FieldBase("{{ field.inst_name | safe_id }}", parent,
                        {{ field.low }}, {{ field.width }},
                        {{ 'true' if field.is_hw_readable or field.is_sw_readable else 'false' }},
                        {{ 'true' if field.is_hw_writable or field.is_sw_writable else 'false' }}),

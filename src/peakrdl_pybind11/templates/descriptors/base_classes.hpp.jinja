@@ -24,56 +24,20 @@ public:
 };
 
 /**
- * Base class for register fields
- */
-class FieldBase {
-public:
-    FieldBase(const std::string& name, uint64_t offset,
-              uint8_t lsb, uint8_t width, bool readable, bool writable)
-        : name_(name), offset_(offset), lsb_(lsb),
-          width_(width), readable_(readable), writable_(writable) {}
-
-    virtual ~FieldBase() = default;
-
-    const std::string& name() const { return name_; }
-    uint64_t offset() const { return offset_; }
-    uint8_t lsb() const { return lsb_; }
-    uint8_t msb() const { return lsb_ + width_ - 1; }
-    uint8_t width() const { return width_; }
-    bool is_readable() const { return readable_; }
-    bool is_writable() const { return writable_; }
-
-    uint64_t mask() const {
-        return ((1ULL << width_) - 1) << lsb_;
-    }
-
-    /**
-     * String representation
-     */
-    std::string __repr__() const {
-        std::ostringstream oss;
-        oss << "<Field '" << name_ << "' @ 0x" << std::hex << offset_
-            << " [" << std::dec << static_cast<int>(msb()) << ":" << static_cast<int>(lsb()) << "]"
-            << (readable_ ? " R" : "") << (writable_ ? "W" : "") << ">";
-        return oss.str();
-    }
-
-protected:
-    std::string name_;
-    uint64_t offset_;
-    uint8_t lsb_;
-    uint8_t width_;
-    bool readable_;
-    bool writable_;
-};
-
-/**
  * Base class for registers
+ *
+ * The constructor takes ``base_offset`` (the parent's absolute offset) and
+ * ``relative_offset`` (this register's offset relative to the parent). The
+ * absolute offset is recomputed every time ``set_offset()`` is called, so
+ * a parent can relocate the whole subtree by walking its children. Using
+ * ``set_offset()`` preserves object identity -- pybind11 references handed
+ * out via ``reference_internal`` remain valid.
  */
 class RegisterBase {
 public:
-    RegisterBase(const std::string& name, uint64_t offset, size_t width)
-        : name_(name), offset_(offset), width_(width), master_(nullptr),
+    RegisterBase(const std::string& name, uint64_t base_offset, uint64_t relative_offset, size_t width)
+        : name_(name), offset_(base_offset + relative_offset),
+          relative_offset_(relative_offset), width_(width), master_(nullptr),
           in_context_(false), cached_value_(0) {}
 
     virtual ~RegisterBase() = default;
@@ -83,6 +47,16 @@ public:
     size_t width() const { return width_; }
 
     void set_master(Master* master) { master_ = master; }
+
+    /**
+     * Update the absolute offset given a new parent base. This rewrites
+     * ``offset_`` in place and is safe to call while pybind11 holds
+     * references into the register; cached state (master, in_context,
+     * cached_value) is preserved.
+     */
+    virtual void set_offset(uint64_t base_offset) {
+        offset_ = base_offset + relative_offset_;
+    }
 
     /**
      * Read the full register value
@@ -165,6 +139,7 @@ public:
 protected:
     std::string name_;
     uint64_t offset_;
+    uint64_t relative_offset_;
     size_t width_;
     Master* master_;
     bool in_context_;
@@ -172,12 +147,65 @@ protected:
 };
 
 /**
+ * Base class for register fields
+ *
+ * Fields read their offset dynamically from their parent register, so a
+ * parent's ``set_offset()`` propagates to every field without explicit
+ * fan-out. Per-field metadata (lsb/width/access) is constant.
+ */
+class FieldBase {
+public:
+    FieldBase(const std::string& name, RegisterBase* parent_register,
+              uint8_t lsb, uint8_t width, bool readable, bool writable)
+        : name_(name), parent_register_(parent_register), lsb_(lsb),
+          width_(width), readable_(readable), writable_(writable) {}
+
+    virtual ~FieldBase() = default;
+
+    const std::string& name() const { return name_; }
+    uint64_t offset() const { return parent_register_->offset(); }
+    uint8_t lsb() const { return lsb_; }
+    uint8_t msb() const { return lsb_ + width_ - 1; }
+    uint8_t width() const { return width_; }
+    bool is_readable() const { return readable_; }
+    bool is_writable() const { return writable_; }
+
+    uint64_t mask() const {
+        return ((1ULL << width_) - 1) << lsb_;
+    }
+
+    /**
+     * String representation
+     */
+    std::string __repr__() const {
+        std::ostringstream oss;
+        oss << "<Field '" << name_ << "' @ 0x" << std::hex << offset()
+            << " [" << std::dec << static_cast<int>(msb()) << ":" << static_cast<int>(lsb()) << "]"
+            << (readable_ ? " R" : "") << (writable_ ? "W" : "") << ">";
+        return oss.str();
+    }
+
+protected:
+    std::string name_;
+    RegisterBase* parent_register_;
+    uint8_t lsb_;
+    uint8_t width_;
+    bool readable_;
+    bool writable_;
+};
+
+/**
  * Base class for address maps and register files
+ *
+ * Same construction model as RegisterBase: parent passes ``base_offset``,
+ * the node stores its own ``relative_offset`` and recomputes ``offset_``
+ * on every ``set_offset()``.
  */
 class NodeBase {
 public:
-    NodeBase(const std::string& name, uint64_t offset)
-        : name_(name), offset_(offset), master_(nullptr) {}
+    NodeBase(const std::string& name, uint64_t base_offset, uint64_t relative_offset = 0)
+        : name_(name), offset_(base_offset + relative_offset),
+          relative_offset_(relative_offset), master_(nullptr) {}
 
     virtual ~NodeBase() = default;
 
@@ -186,6 +214,14 @@ public:
 
     virtual void set_master(Master* master) {
         master_ = master;
+    }
+
+    /**
+     * Update the absolute offset given a new parent base. Subclasses
+     * override this to also propagate the new base to their children.
+     */
+    virtual void set_offset(uint64_t base_offset) {
+        offset_ = base_offset + relative_offset_;
     }
 
     /**
@@ -201,22 +237,30 @@ public:
 protected:
     std::string name_;
     uint64_t offset_;
+    uint64_t relative_offset_;
     Master* master_;
 };
 
 /**
  * Base class for memory arrays
  * Provides list-like interface for accessing memory entries
+ *
+ * ``set_offset()`` updates each entry **in place** via the entry's own
+ * ``set_offset()``. Entries are not destroyed/reassigned, so any pybind11
+ * reference handed out via ``reference_internal`` (and any cached state
+ * on the entry: master, in_context, cached_value) remains valid.
  */
 template<typename EntryType>
 class MemoryBase : public NodeBase {
 public:
-    MemoryBase(const std::string& name, uint64_t base_offset, size_t num_entries, size_t entry_size)
-        : NodeBase(name, base_offset), num_entries_(num_entries), entry_size_(entry_size) {
-        // Pre-allocate all entries
+    MemoryBase(const std::string& name, uint64_t base_offset, uint64_t relative_offset,
+               size_t num_entries, size_t entry_size)
+        : NodeBase(name, base_offset, relative_offset),
+          num_entries_(num_entries), entry_size_(entry_size) {
+        // Pre-allocate all entries with the correct per-slot base offset.
         entries_.reserve(num_entries);
         for (size_t i = 0; i < num_entries; ++i) {
-            entries_.emplace_back(base_offset + i * entry_size);
+            entries_.emplace_back(offset_ + i * entry_size);
         }
     }
 
@@ -226,6 +270,13 @@ public:
         NodeBase::set_master(master);
         for (auto& entry : entries_) {
             entry.set_master(master);
+        }
+    }
+
+    void set_offset(uint64_t base_offset) override {
+        NodeBase::set_offset(base_offset);
+        for (size_t i = 0; i < entries_.size(); ++i) {
+            entries_[i].set_offset(offset_ + i * entry_size_);
         }
     }
 
