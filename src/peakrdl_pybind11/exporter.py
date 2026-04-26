@@ -10,9 +10,15 @@ from pathlib import Path
 from typing import TypedDict
 
 # Words that cannot be used as identifiers in either Python or C++.
+#
+# We deliberately use only ``keyword.kwlist`` (hard Python keywords) and skip
+# ``keyword.softkwlist`` -- soft keywords like ``_``, ``match``, ``case``,
+# ``type`` are only reserved in specific syntactic contexts (e.g. match-case
+# patterns) and remain valid identifiers everywhere else. Mangling them
+# would, for example, turn the bare ``_`` field into ``__``, which is more
+# disruptive than helpful.
 _RESERVED_WORDS: frozenset[str] = frozenset(
     set(keyword.kwlist)
-    | set(keyword.softkwlist)
     | {
         # C++ keywords / reserved identifiers that could collide with an RDL
         # inst_name. Not exhaustive -- focused on commonly-used names.
