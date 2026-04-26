@@ -171,10 +171,14 @@ int main() {{
 """)
 
     binary = os.path.join(out, "_probe")
+    # 120 s instead of 30 s: Windows mingw runners spend a lot of the wall
+    # time on antivirus scanning the freshly written binary, so the old
+    # 30 s budget intermittently hit TimeoutExpired even on a healthy
+    # toolchain. The actual compile is sub-second.
     compile_result = subprocess.run(
         [cxx, "-std=c++17", "-I", out, driver, "-o", binary],
         capture_output=True,
-        timeout=30,
+        timeout=120,
     )
     if compile_result.returncode != 0:
         pytest.fail(
@@ -183,7 +187,9 @@ int main() {{
             + compile_result.stderr.decode(errors="ignore")
         )
 
-    run_result = subprocess.run([binary], capture_output=True, timeout=10)
+    # 60 s instead of 10 s: same antivirus-on-first-run effect as the
+    # compile call above — actual probe execution is sub-second.
+    run_result = subprocess.run([binary], capture_output=True, timeout=60)
     if run_result.returncode != 0:
         # Surface the failure text so the regression is readable when triaging.
         print(run_result.stderr.decode(errors="ignore"))
@@ -611,10 +617,12 @@ int main() {
 """)
 
         binary = os.path.join(out, "_probe")
+        # 120 s instead of 30 s: see _build_address_probe for the same
+        # Windows-AV rationale.
         compile_result = subprocess.run(
             [cxx, "-std=c++17", "-I", out, driver, "-o", binary],
             capture_output=True,
-            timeout=30,
+            timeout=120,
         )
         if compile_result.returncode != 0:
             pytest.fail(
@@ -623,7 +631,8 @@ int main() {
                 + compile_result.stderr.decode(errors="ignore")
             )
 
-        run_result = subprocess.run([binary], capture_output=True, timeout=10)
+        # 60 s instead of 10 s: same antivirus-on-first-run effect.
+        run_result = subprocess.run([binary], capture_output=True, timeout=60)
         if run_result.returncode != 0:
             print(run_result.stderr.decode(errors="ignore"))
         assert run_result.returncode == 0, (
