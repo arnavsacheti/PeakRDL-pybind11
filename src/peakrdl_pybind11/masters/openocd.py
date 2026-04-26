@@ -59,15 +59,12 @@ class OpenOCDMaster(MasterBase):
 
         data = b""
         while True:
-            try:
-                chunk = self.socket.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
-                # OpenOCD ends responses with a specific marker
-                if data.endswith(b"\x1a"):
-                    break
-            except TimeoutError:
+            chunk = self.socket.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+            # OpenOCD ends responses with a specific marker
+            if data.endswith(b"\x1a"):
                 break
 
         return data.decode("utf-8", errors="ignore").rstrip("\x1a")
@@ -100,13 +97,12 @@ class OpenOCDMaster(MasterBase):
         # Parse response (format: "0xADDRESS: VALUE")
         try:
             parts = response.split(":")
-            if len(parts) >= 2:
-                value_str = parts[1].strip().split()[0]
-                return int(value_str, 16)
-        except Exception as e:
-            raise RuntimeError(f"Failed to parse OpenOCD response: {response}: {e}") from e
-
-        return 0
+            if len(parts) < 2:
+                raise ValueError("missing ':' separator")
+            value_str = parts[1].strip().split()[0]
+            return int(value_str, 16)
+        except (ValueError, IndexError) as e:
+            raise RuntimeError(f"Failed to parse OpenOCD response: {response!r}: {e}") from e
 
     def write(self, address: int, value: int, width: int) -> None:
         """
@@ -157,5 +153,11 @@ class OpenOCDMaster(MasterBase):
             self.socket = None
 
     def __del__(self) -> None:
-        """Cleanup on deletion"""
-        self.close()
+        """Cleanup on deletion. Avoid issuing protocol commands during GC."""
+        sock = getattr(self, "socket", None)
+        if sock is not None:
+            try:
+                sock.close()
+            except Exception:
+                pass
+            self.socket = None
