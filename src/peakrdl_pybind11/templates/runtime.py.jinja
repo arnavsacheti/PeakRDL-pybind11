@@ -20,68 +20,45 @@ __all__ = [
     '{{ soc_name }}_t',
     'Master',
     'create',
+    'wrap_master',
     'RegisterInt',
     'FieldInt',
     'RegisterIntFlag',
     'RegisterIntEnum',
 ]
 
+
 def create():
-    """
-    Create a new instance of the {{ soc_name }} register map
-    
-    Returns:
-        {{ soc_name }}_t: A new SoC instance
-    
-    Example:
-        >>> soc = create()
-        >>> from peakrdl_pybind11.masters import MockMaster
-        >>> # Wrap the MockMaster to work with this SoC
-        >>> mock = MockMaster()
-        >>> 
-        >>> class WrappedMaster(Master):
-        >>>     def read(self, addr, width):
-        >>>         return mock.read(addr, width)
-        >>>     def write(self, addr, val, width):
-        >>>         mock.write(addr, val, width)
-        >>> 
-        >>> soc.attach_master(WrappedMaster())
-    """
+    """Create a new instance of the {{ soc_name }} register map."""
     return {{ soc_name }}_t()
+
 
 def wrap_master(master_impl):
     """
-    Wrap a Python master implementation to work with this SoC
-    
+    Wrap a Python master implementation to work with this SoC.
+
     Args:
-        master_impl: A master object with read(addr, width) and write(addr, val, width) methods
-    
+        master_impl: A master object with read(addr, width) and
+            write(addr, val, width) methods.
+
     Returns:
-        Master: A wrapped master that can be attached to the SoC
-    
-    Example:
-        >>> from peakrdl_pybind11.masters import MockMaster
-        >>> soc = create()
-        >>> master = wrap_master(MockMaster())
-        >>> soc.attach_master(master)
+        Master: A wrapped master that can be attached to the SoC.
     """
     class WrappedMaster(Master):
         def __init__(self):
             Master.__init__(self)
             self.impl = master_impl
-            
+
         def read(self, addr, width):
             return self.impl.read(addr, width)
-            
+
         def write(self, addr, val, width):
             self.impl.write(addr, val, width)
-    
+
     return WrappedMaster()
 
-__all__.append('wrap_master')
 
 # Generated flag/enum types from SystemRDL fields
-{% if nodes.flag_regs %}
 {% for reg in nodes.flag_regs %}
 class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
     """Bit flags for {{ reg.inst_name | safe_id }}."""
@@ -90,7 +67,7 @@ class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
     {% for field in fields %}
     {{ field.inst_name | safe_id }} = {{ ((2 ** field.width) - 1) * (2 ** field.low) if field.width > 1 else (2 ** field.low) }}
     {% set alias = field.inst_name | enum_member %}
-    {% if alias != field.inst_name %}
+    {% if alias != (field.inst_name | safe_id) %}
     {{ alias }} = {{ field.inst_name | safe_id }}
     {% endif %}
     {% endfor %}
@@ -100,9 +77,7 @@ class {{ reg.inst_name | safe_id }}_f(RegisterIntFlag):
 
 __all__.append('{{ reg.inst_name | safe_id }}_f')
 {% endfor %}
-{% endif %}
 
-{% if nodes.enum_regs %}
 {% for reg in nodes.enum_regs %}
 class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
     """Enum for {{ reg.inst_name | safe_id }}."""
@@ -111,7 +86,7 @@ class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
     {% for field in fields %}
     {{ field.inst_name | safe_id }} = {{ 2 ** field.low }}
     {% set alias = field.inst_name | enum_member %}
-    {% if alias != field.inst_name %}
+    {% if alias != (field.inst_name | safe_id) %}
     {{ alias }} = {{ field.inst_name | safe_id }}
     {% endif %}
     {% endfor %}
@@ -121,130 +96,111 @@ class {{ reg.inst_name | safe_id }}_e(RegisterIntEnum):
 
 __all__.append('{{ reg.inst_name | safe_id }}_e')
 {% endfor %}
-{% endif %}
-
-# Add enhanced read/write methods that use RegisterInt/FieldInt (or flag/enum types)
-# These will be mixed in after the module is loaded
-
-def _make_enhanced_register_read(reg_class, flag_type=None, enum_type=None):
-    """Create enhanced read method for a register class."""
-    original_read = reg_class.read
-    
-    def enhanced_read(self):
-        value = original_read(self)
-
-        if flag_type is not None:
-            return flag_type(value)
-        if enum_type is not None:
-            return enum_type(value)
-        
-        # Build fields dictionary from field attributes
-        fields = {}
-        for attr_name in dir(self):
-            if not attr_name.startswith('_') and attr_name not in [
-                'name', 'offset', 'width', 'read', 'write', 'modify', 
-                'set_master', 'is_readable', 'is_writable'
-            ]:
-                try:
-                    attr = getattr(self, attr_name)
-                    if hasattr(attr, 'lsb') and hasattr(attr, 'width'):
-                        fields[attr_name] = (attr.lsb, attr.width)
-                except:
-                    pass
-        
-        return RegisterInt(value, self.offset, self.width, fields)
-    
-    return enhanced_read
 
 
-def _make_enhanced_register_write(reg_class):
-    """Create enhanced write method for a register class."""
-    original_write = reg_class.write
-    original_modify = reg_class.modify
-    
-    def enhanced_write(self, value):
-        if isinstance(value, FieldInt):
-            # Read-modify-write for FieldInt
-            # Extract the field value and position from FieldInt
-            field_value = int(value)
-            mask = value.mask
-            # Shift the field value to the correct position
-            shifted_value = (field_value << value.lsb) & mask
-            original_modify(self, shifted_value, mask)
-        else:
-            # Direct write for int or RegisterInt
-            original_write(self, int(value))
-    
-    return enhanced_write
+# ---------------------------------------------------------------------------
+# Read/write enhancement
+#
+# Each generated register/field class is rewrapped at module-load time so
+# that .read() returns RegisterInt/FieldInt (instead of bare ints) and
+# .write() accepts FieldInt for read-modify-write.
+#
+# The class set, the flag/enum type mapping, and the per-register field
+# layout (name -> (lsb, width)) are all baked in at codegen time. This
+# replaces an earlier heuristic that walked globals() for "_t" classes
+# and called dir(self) on every read to rebuild the field layout. The
+# enhancement is also idempotent: re-importing this module is a no-op,
+# guarded by a marker on the wrapped methods.
+# ---------------------------------------------------------------------------
 
+_REGISTER_FIELDS: dict[type, dict[str, tuple[int, int]]] = {
+{% for reg in nodes.regs %}
+    {{ reg.inst_name | safe_id }}_t: {
+        {% for field in reg.fields() %}
+        "{{ field.inst_name | safe_id }}": ({{ field.low }}, {{ field.width }}),
+        {% endfor %}
+    },
+{% endfor %}
+}
 
-def _make_enhanced_field_read(field_class):
-    """Create enhanced read method for a field class."""
-    original_read = field_class.read
-    
-    def enhanced_read(self):
-        value = original_read(self)
-        return FieldInt(value, self.lsb, self.width, self.offset)
-    
-    return enhanced_read
-
-
-def _make_enhanced_field_write(field_class):
-    """Create enhanced write method for a field class."""
-    original_write = field_class.write
-    
-    def enhanced_write(self, value):
-        # Accept both int and FieldInt
-        original_write(self, int(value))
-    
-    return enhanced_write
-
-
-# Map register classes to generated flag/enum types
-_FLAG_REG_TYPES = {
+_FLAG_REG_TYPES: dict[type, type] = {
 {% for reg in nodes.flag_regs %}
     {{ reg.inst_name | safe_id }}_t: {{ reg.inst_name | safe_id }}_f,
 {% endfor %}
 }
 
-_ENUM_REG_TYPES = {
+_ENUM_REG_TYPES: dict[type, type] = {
 {% for reg in nodes.enum_regs %}
     {{ reg.inst_name | safe_id }}_t: {{ reg.inst_name | safe_id }}_e,
 {% endfor %}
 }
 
-# Enhance all generated register and field classes
-# We need to do this after all classes are defined
-_register_types = []
-_field_types = []
+_FIELD_CLASSES: tuple = (
+{% for reg in nodes.regs %}
+{% for field in reg.fields() %}
+    {{ reg.inst_name | safe_id }}_{{ field.inst_name | safe_id }}_field,
+{% endfor %}
+{% endfor %}
+)
 
-# Collect register types (classes ending in _t with read/write/offset/width)
-for _name in list(globals().keys()):
-    _obj = globals()[_name]
-    if isinstance(_obj, type):
-        if _name.endswith('_t') and hasattr(_obj, 'read') and hasattr(_obj, 'write'):
-            if hasattr(_obj, 'offset') and hasattr(_obj, 'width') and hasattr(_obj, 'modify'):
-                _register_types.append(_obj)
-        elif '_field' in _name and hasattr(_obj, 'read') and hasattr(_obj, 'write'):
-            if hasattr(_obj, 'lsb') and hasattr(_obj, 'width'):
-                _field_types.append(_obj)
 
-# Apply enhancements
-for _reg_type in _register_types:
-    _reg_type.read = _make_enhanced_register_read(
-        _reg_type,
-        _FLAG_REG_TYPES.get(_reg_type),
-        _ENUM_REG_TYPES.get(_reg_type),
+def _enhanced_register_read(original_read, flag_type, enum_type, fields_spec):
+    def read(self):
+        value = original_read(self)
+        if flag_type is not None:
+            return flag_type(value)
+        if enum_type is not None:
+            return enum_type(value)
+        return RegisterInt(value, self.offset, self.width, fields_spec)
+    read.__peakrdl_enhanced__ = True
+    return read
+
+
+def _enhanced_register_write(original_write, original_modify):
+    def write(self, value):
+        if isinstance(value, FieldInt):
+            shifted = (int(value) << value.lsb) & value.mask
+            original_modify(self, shifted, value.mask)
+        else:
+            original_write(self, int(value))
+    write.__peakrdl_enhanced__ = True
+    return write
+
+
+def _enhanced_field_read(original_read):
+    def read(self):
+        return FieldInt(original_read(self), self.lsb, self.width, self.offset)
+    read.__peakrdl_enhanced__ = True
+    return read
+
+
+def _enhanced_field_write(original_write):
+    def write(self, value):
+        original_write(self, int(value))
+    write.__peakrdl_enhanced__ = True
+    return write
+
+
+def _enhance_register_class(cls, fields_spec):
+    if getattr(cls.read, "__peakrdl_enhanced__", False):
+        return
+    cls.read = _enhanced_register_read(
+        cls.read,
+        _FLAG_REG_TYPES.get(cls),
+        _ENUM_REG_TYPES.get(cls),
+        fields_spec,
     )
-    _reg_type.write = _make_enhanced_register_write(_reg_type)
+    cls.write = _enhanced_register_write(cls.write, cls.modify)
 
-for _field_type in _field_types:
-    _field_type.read = _make_enhanced_field_read(_field_type)
-    _field_type.write = _make_enhanced_field_write(_field_type)
 
-# Clean up temporary variables
-del _register_types, _field_types, _name, _obj
-if '_reg_type' in dir():
-    del _reg_type
-if '_field_type' in dir():
-    del _field_type
+def _enhance_field_class(cls):
+    if getattr(cls.read, "__peakrdl_enhanced__", False):
+        return
+    cls.read = _enhanced_field_read(cls.read)
+    cls.write = _enhanced_field_write(cls.write)
+
+
+for _reg_cls, _spec in _REGISTER_FIELDS.items():
+    _enhance_register_class(_reg_cls, _spec)
+for _field_cls in _FIELD_CLASSES:
+    _enhance_field_class(_field_cls)
