@@ -25,7 +25,7 @@ uv pip install hjson semantic_version mistletoe pydantic mako
 python3 hjson_to_rdl.py        # writes top_earlgrey.rdl
 python3 run_export.py          # writes output/
 cd output
-CMAKE_BUILD_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) pip install .   # ~21 min on M1: full LTO + ~50k lines of templates
+CMAKE_BUILD_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) pip install .   # 2 m 45 s on M1
 cd ..
 python3 smoke_test.py     # round-trip writes/reads on uart, aes, gpio, i2c, hmac, rv_timer
 ```
@@ -39,10 +39,11 @@ scikit-build-core. Single end-to-end run from a clean output dir:
 |---|---|
 | `hjson_to_rdl.py` (parse 44 IPs → 27k-line RDL) | ~3 s |
 | `run_export.py` (RDL → 222k-line C++ + 40 split bindings) | ~5 s |
-| `pip install .` of the generated module | **21 m 11 s** |
+| `pip install .` of the generated module | **2 m 45 s** (was 21 m 11 s before NO_EXTRAS + PCH) |
 | `import top_earlgrey` (cold) | 0.14 s |
 | `top_earlgrey.create()` | <1 ms |
 | `smoke_test.py` (6 IPs round-tripped) | <1 s |
+| `bench_masters.py` (100 k cached `reg.write`+`reg.read`) | 3.22 µs/access native, 3.42 µs CallbackMaster, 4.31 µs `wrap_master(MockMaster())` |
 
 Generated artifacts:
 
@@ -51,11 +52,50 @@ Generated artifacts:
 | `top_earlgrey.rdl` | ~27 k lines |
 | `top_earlgrey_descriptors.hpp` | ~222 k lines, 2 611 register classes, 56 node classes |
 | `top_earlgrey_bindings_*.cpp` (40 split files) | ~47 k lines total |
-| compiled `_top_earlgrey_native.*.so` | 69 MB |
+| compiled `_top_earlgrey_native.*.so` | 91 MB (was 69 MB with LTO; LTO de-dupes templates harder, at the cost of 18× more build time) |
 
-Build time is dominated by the LTO link of ~2 600 register classes; per
-the README in the parent project, splitting by hierarchy (`split_by_hierarchy=True`)
-is what makes the parallel compile feasible at all.
+## Build-time scaling
+
+`bench_scaling.py` synthesises an RDL with N register classes (each with
+8 fields, grouped 32 per regfile so `--split-by-hierarchy` produces real
+parallelism) and times `pip install`. Measured on the same Apple M1
+(8 cores), with the current generated CMakeLists (NO_EXTRAS to disable
+pybind11's default `-flto=full -O3`, plus a precompiled header on
+`<soc>_descriptors.hpp`):
+
+| N regs | install time | per-reg cost above floor |
+|------:|------:|------:|
+| 50    | 22.0 s | (overhead-dominated) |
+| 200   | 24.4 s | (overhead-dominated) |
+| 500   | 58.2 s | ~110 ms |
+| 1000  | 99.0 s | ~80 ms |
+| 2611 (top_earlgrey) | 2 m 45 s | ~62 ms |
+
+Below ~200 registers, install is dominated by a ~20 s fixed floor
+(CMake configure + scikit-build-core + pybind11 PCH compile + link).
+Past that, build time is roughly **linear** in register count at ~80 ms
+per register.
+
+### What changed vs the first version
+
+The first run of this directory took **21 m 11 s** to install
+top_earlgrey because `pybind11_add_module()` enables `-O3 -flto=full` by
+default, and full-LTO link of 2 611 register classes is the bulk of
+that. The CMake template now passes `NO_EXTRAS` to suppress that
+default, re-adds `-fvisibility=hidden`, strips symbols at link time,
+and uses a precompiled header for the giant descriptors header. Net:
+**21 m 11 s → 2 m 45 s** (~8× faster). The resulting `.so` is larger
+(91 MB vs 69 MB) because LTO is no longer de-duping template
+instantiations, but for a development-iteration toolchain that's a fine
+trade — recover the 22 MB with LTO when you actually ship.
+
+If a future user actually needs LTO/`-O3` (e.g. embedding the bindings
+in a hot path that doesn't cross the Python boundary), there's an opt-in:
+
+```bash
+pip install . -C cmake.define.PEAKRDL_PYBIND_O3=ON
+# (and re-enable LTO via CMAKE_INTERPROCEDURAL_OPTIMIZATION if desired)
+```
 
 ## Comparison with PeakRDL-PyRAL
 
@@ -68,11 +108,11 @@ registers) exported through both, measured on the same M1:
 | metric                                    | PeakRDL-PyRAL              | PeakRDL-pybind11 (this) |
 |-------------------------------------------|----------------------------|--------------------------|
 | Export time                               | **0.05 s**                 | 5 s                      |
-| Build/install                             | **none** (pure Python)     | 21 m 11 s LTO compile    |
-| Output footprint                          | 1.7 MB (`.py` + 492 KB SQLite db + `.pyi`) | 69 MB `.so`        |
+| Build/install                             | **none** (pure Python)     | 2 m 45 s (was 21 m before NO_EXTRAS + PCH) |
+| Output footprint                          | 1.7 MB (`.py` + 492 KB SQLite db + `.pyi`) | 91 MB `.so`        |
 | Cold import                               | **0.02 s**                 | 0.14 s                   |
 | `get_ral()` / `create()`                  | 0.66 ms                    | <1 ms                    |
-| 10 000 round-trips, Python HW callback    | **5.5 ms (0.55 µs each)**  | 40 ms (4.0 µs each)      |
+| 10 000 round-trips, Python HW callback    | **5.5 ms (0.55 µs each)**  | 43 ms (4.31 µs each) `wrap_master(...)` <br>**32 ms (3.22 µs each) native `MockMaster`** |
 | Generated artifact format                 | SQLite-backed registry, late-bound types | C++ classes + pybind11 wrappers |
 
 **Why PyRAL wins on Python-callback throughput.** pybind11 has to cross the
