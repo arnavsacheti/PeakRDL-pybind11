@@ -157,8 +157,26 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("__exit__", [](RegisterBase& self, py::object exc_type, py::object exc_value, py::object traceback) {
             self.exit_context();
         }, "Exit context manager")
+        .def("write_only", &RegisterBase::write_only,
+             "Return a write-only context-manager handle. On entry the "
+             "register's cache is seeded to 0 (no master read); field "
+             "writes accumulate; on exit a single master write flushes "
+             "the value. Unspecified bits become 0 -- use only on true "
+             "write-only registers.")
         .def("__repr__", &RegisterBase::__repr__)
         .def("__str__", &RegisterBase::__repr__);
+
+    // Write-only context-manager handle returned by RegisterBase::write_only().
+    py::class_<RegisterWriteOnlyContext>(m, "RegisterWriteOnlyContext")
+        .def("__enter__", &RegisterWriteOnlyContext::__enter__,
+             py::return_value_policy::reference,
+             "Enter write-only context (skip the initial master read)")
+        .def("__exit__",
+             [](RegisterWriteOnlyContext& self, py::object exc_type,
+                py::object exc_value, py::object traceback) {
+                 self.exit_context();
+             },
+             "Exit write-only context (single master write of the cached value)");
 
     // NodeBase
     py::class_<NodeBase>(m, "NodeBase")
