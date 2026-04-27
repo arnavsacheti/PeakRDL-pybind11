@@ -83,6 +83,20 @@ class CallbackMaster(Master):
     def read_many(self, ops: Sequence[AccessOp]) -> list[int]: ...
     def write_many(self, ops: Sequence[AccessOp]) -> None: ...
 
+class Transaction:
+    """Cross-register write-batching context manager.
+
+    Returned by :meth:`{{ soc_name }}_t.transaction`. While entered, every
+    register write issued through the SoC is queued and then flushed in a
+    single ``master.write_many(ops)`` call on exit.
+    """
+
+    def __enter__(self) -> "Transaction": ...
+    def __exit__(self, exc_type, exc_value, traceback) -> None: ...
+
+    @property
+    def pending(self) -> int: ...
+
 class FieldBase:
     """Base class for register fields"""
 
@@ -304,6 +318,10 @@ class {{ soc_name }}_t(NodeBase):
 
     def attach_master(self, master: Master) -> None:
         """Attach a master interface for register access"""
+        ...
+
+    def transaction(self) -> Transaction:
+        """Open a cross-register write-batching transaction context"""
         ...
 
     {% for child in top_node.children() %}

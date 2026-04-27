@@ -118,6 +118,20 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("write_many", &CallbackMaster::write_many, py::arg("ops"))
         .def("__repr__", &CallbackMaster::__repr__);
 
+    // Transaction: cross-register write batching context manager.
+    py::class_<Transaction>(m, "Transaction")
+        .def("__enter__", &Transaction::enter,
+             py::return_value_policy::reference_internal,
+             "Activate this transaction on the underlying master")
+        .def("__exit__",
+             [](Transaction& self, py::object exc_type, py::object, py::object) {
+                 // Discard the queue if we're unwinding from an exception.
+                 self.exit(!exc_type.is_none());
+             },
+             "Flush queued writes via master.write_many() (or discard on error)")
+        .def_property_readonly("pending", &Transaction::pending,
+                               "Number of writes currently queued");
+
     // FieldBase
     py::class_<FieldBase>(m, "FieldBase")
         .def_property_readonly("name", &FieldBase::name)
@@ -243,6 +257,8 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
              // C++ raw pointer stored in NodeBase dangling on first access.
              py::keep_alive<1, 2>(),
              "Attach a master interface")
+        .def("transaction", &{{ soc_name }}_t::transaction,
+             "Open a cross-register write-batching transaction")
         {% for child in top_node.children() %}
         {% if child.inst_name %}
         .def_readonly("{{ child.inst_name | safe_id }}", &{{ soc_name }}_t::{{ child.inst_name | safe_id }})

@@ -21,6 +21,8 @@ __all__ = [
     'Master',
     'MockMaster',
     'CallbackMaster',
+    'Transaction',
+    'AccessOp',
     'create',
     'wrap_master',
     'RegisterInt',
@@ -56,6 +58,20 @@ def wrap_master(master_impl):
 
         def write(self, addr, val, width):
             self.impl.write(addr, val, width)
+
+        def write_many(self, ops):
+            impl_write_many = getattr(self.impl, "write_many", None)
+            if impl_write_many is not None:
+                impl_write_many(ops)
+            else:
+                for op in ops:
+                    self.impl.write(op.address, op.value, op.width)
+
+        def read_many(self, ops):
+            impl_read_many = getattr(self.impl, "read_many", None)
+            if impl_read_many is not None:
+                return impl_read_many(ops)
+            return [self.impl.read(op.address, op.width) for op in ops]
 
     return WrappedMaster()
 
