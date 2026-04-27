@@ -126,6 +126,17 @@ _REGISTER_FIELDS: dict[type, dict[str, tuple[int, int]]] = {
 {% endfor %}
 }
 
+# Per-register field writability metadata used by ``write_fields``.
+_REGISTER_FIELD_WRITABLE: dict[type, dict[str, bool]] = {
+{% for reg in nodes.regs %}
+    {{ reg | pybind_name }}_t: {
+        {% for field in reg.fields() %}
+        "{{ field.inst_name | safe_id }}": {{ 'True' if field.is_hw_writable or field.is_sw_writable else 'False' }},
+        {% endfor %}
+    },
+{% endfor %}
+}
+
 _FLAG_REG_TYPES: dict[type, type] = {
 {% for reg in nodes.flag_regs %}
     {{ reg | pybind_name }}_t: {{ reg | pybind_name }}_f,
@@ -184,6 +195,36 @@ def _enhanced_field_write(original_write):
     return write
 
 
+def _make_write_fields(fields_spec, writable_spec):
+    """Build a ``write_fields(**kwargs)`` shim for a generated register class.
+
+    Collapses N per-field writes into a single C++ ``write_fields(mask, value)``
+    call (1 read + 1 write on the master, regardless of N). Validates field
+    names and writability at the Python boundary so the C++ side stays minimal.
+    """
+    def write_fields(self, **kwargs):
+        combined_mask = 0
+        combined_value = 0
+        for name, raw_value in kwargs.items():
+            spec = fields_spec.get(name)
+            if spec is None:
+                raise KeyError(
+                    f"Unknown field '{name}' on register '{self.name}'. "
+                    f"Known fields: {sorted(fields_spec)}"
+                )
+            if not writable_spec.get(name, False):
+                raise PermissionError(
+                    f"Field '{name}' on register '{self.name}' is not writable"
+                )
+            lsb, width = spec
+            field_mask = ((1 << width) - 1) << lsb
+            combined_mask |= field_mask
+            combined_value |= (int(raw_value) << lsb) & field_mask
+        # Single C++ entry: native RMW under the hood.
+        self._native_write_fields(combined_mask, combined_value)
+    return write_fields
+
+
 def _enhance_register_class(cls, fields_spec):
     if getattr(cls.read, "__peakrdl_enhanced__", False):
         return
@@ -201,6 +242,12 @@ def _enhance_register_class(cls, fields_spec):
     # a plain ``int`` and writes it directly via the underlying C++ method.
     cls.read_raw = raw_read
     cls.write_raw = raw_write
+    # Preserve native binding under a private name; expose Python shim with
+    # validation under the public name.
+    cls._native_write_fields = cls.write_fields
+    cls.write_fields = _make_write_fields(
+        fields_spec, _REGISTER_FIELD_WRITABLE.get(cls, {})
+    )
 
 
 def _enhance_field_class(cls):
