@@ -83,6 +83,20 @@ class CallbackMaster(Master):
     def read_many(self, ops: Sequence[AccessOp]) -> list[int]: ...
     def write_many(self, ops: Sequence[AccessOp]) -> None: ...
 
+class Transaction:
+    """Cross-register write-batching context manager.
+
+    Returned by :meth:`{{ soc_name }}_t.transaction`. While entered, every
+    register write issued through the SoC is queued and then flushed in a
+    single ``master.write_many(ops)`` call on exit.
+    """
+
+    def __enter__(self) -> "Transaction": ...
+    def __exit__(self, exc_type, exc_value, traceback) -> None: ...
+
+    @property
+    def pending(self) -> int: ...
+
 class FieldBase:
     """Base class for register fields"""
 
@@ -172,6 +186,14 @@ class RegisterBase:
         """Return a write-only context-manager handle that skips the initial master read.
 
         Bits not explicitly written inside the context are flushed as 0.
+        """
+        ...
+
+    def write_fields(self, **kwargs: int) -> None:
+        """Atomically write multiple fields in a single read-modify-write.
+
+        Accepts ``field_name=value`` keyword arguments. Unknown field names
+        raise ``KeyError``; read-only fields raise ``PermissionError``.
         """
         ...
 
@@ -320,6 +342,16 @@ class {{ mem | pybind_name }}_t(NodeBase):
         """Iterate over memory entries"""
         ...
 
+    def read_block(self, start: int, count: int) -> list[int]:
+        """Read ``count`` consecutive entries starting at ``start`` in one
+        batched master call. Returns a list of ints (one per entry)."""
+        ...
+
+    def write_block(self, start: int, values: list[int]) -> None:
+        """Write ``values`` to consecutive entries starting at ``start``
+        in one batched master call."""
+        ...
+
 {% endfor %}
 
 class {{ soc_name }}_t(NodeBase):
@@ -329,6 +361,10 @@ class {{ soc_name }}_t(NodeBase):
 
     def attach_master(self, master: Master) -> None:
         """Attach a master interface for register access"""
+        ...
+
+    def transaction(self) -> Transaction:
+        """Open a cross-register write-batching transaction context"""
         ...
 
     {% for child in top_node.children() %}

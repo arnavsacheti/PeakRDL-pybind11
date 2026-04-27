@@ -38,6 +38,17 @@ public:
 
     {{ field.inst_name | safe_id }}_field {{ field.inst_name | safe_id }}{this};
     {% endfor %}
+
+    /**
+     * Multi-field write: single read-modify-write for all fields combined.
+     *
+     * Callers (typically the Python wrapper) precompute ``mask`` and
+     * ``value`` from the per-field metadata and invoke this once,
+     * collapsing N field writes into 1 read + 1 write on the master.
+     */
+    void write_fields(uint64_t mask, uint64_t value) {
+        modify(value, mask);
+    }
 };
 
 {% endfor %}

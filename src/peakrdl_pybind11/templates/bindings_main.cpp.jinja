@@ -38,6 +38,24 @@ public:
             width
         );
     }
+
+    std::vector<uint64_t> read_many(const std::vector<AccessOp>& ops) override {
+        PYBIND11_OVERRIDE(
+            std::vector<uint64_t>,
+            Master,
+            read_many,
+            ops
+        );
+    }
+
+    void write_many(const std::vector<AccessOp>& ops) override {
+        PYBIND11_OVERRIDE(
+            void,
+            Master,
+            write_many,
+            ops
+        );
+    }
 };
 
 // Forward declarations for chunk binding functions
@@ -48,11 +66,23 @@ void bind_registers_chunk_{{ i }}(py::module& m);
 PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     m.doc() = "{{ soc_name }} register map generated from SystemRDL";
 
+    // AccessOp: a single (address, value, width) tuple used by the batch
+    // read_many / write_many APIs.
+    py::class_<AccessOp>(m, "AccessOp")
+        .def(py::init([](uint64_t address, uint64_t value, size_t width) {
+            return AccessOp{address, value, width};
+        }), py::arg("address"), py::arg("value") = 0, py::arg("width") = 0)
+        .def_readwrite("address", &AccessOp::address)
+        .def_readwrite("value", &AccessOp::value)
+        .def_readwrite("width", &AccessOp::width);
+
     // Master interface with trampoline for Python inheritance
     py::class_<Master, PyMaster>(m, "Master")
         .def(py::init<>())
         .def("read", &Master::read, "Read from address")
         .def("write", &Master::write, "Write to address")
+        .def("read_many", &Master::read_many, "Batch read")
+        .def("write_many", &Master::write_many, "Batch write")
         .def("__repr__", &Master::__repr__)
         .def("__str__", &Master::__repr__);
 
@@ -76,6 +106,19 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("set_read", &CallbackMaster::set_read, py::arg("read"))
         .def("set_write", &CallbackMaster::set_write, py::arg("write"))
         .def("__repr__", &CallbackMaster::__repr__);
+
+    // Transaction: cross-register write batching context manager.
+    py::class_<Transaction>(m, "Transaction")
+        .def("__enter__", &Transaction::enter,
+             py::return_value_policy::reference_internal,
+             "Activate this transaction on the underlying master")
+        .def("__exit__",
+             [](Transaction& self, py::object exc_type, py::object, py::object) {
+                 self.exit(!exc_type.is_none());
+             },
+             "Flush queued writes via master.write_many() (or discard on error)")
+        .def_property_readonly("pending", &Transaction::pending,
+                               "Number of writes currently queued");
 
     // FieldBase
     py::class_<FieldBase>(m, "FieldBase")
@@ -190,6 +233,8 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
              // C++ raw pointer stored in NodeBase dangling on first access.
              py::keep_alive<1, 2>(),
              "Attach a master interface")
+        .def("transaction", &{{ soc_name }}_t::transaction,
+             "Open a cross-register write-batching transaction")
         {% for child in top_node.children() %}
         {% if child.inst_name %}
         .def_readonly("{{ child.inst_name | safe_id }}", &{{ soc_name }}_t::{{ child.inst_name | safe_id }})

@@ -118,6 +118,20 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("write_many", &CallbackMaster::write_many, py::arg("ops"))
         .def("__repr__", &CallbackMaster::__repr__);
 
+    // Transaction: cross-register write batching context manager.
+    py::class_<Transaction>(m, "Transaction")
+        .def("__enter__", &Transaction::enter,
+             py::return_value_policy::reference_internal,
+             "Activate this transaction on the underlying master")
+        .def("__exit__",
+             [](Transaction& self, py::object exc_type, py::object, py::object) {
+                 // Discard the queue if we're unwinding from an exception.
+                 self.exit(!exc_type.is_none());
+             },
+             "Flush queued writes via master.write_many() (or discard on error)")
+        .def_property_readonly("pending", &Transaction::pending,
+                               "Number of writes currently queued");
+
     // FieldBase
     py::class_<FieldBase>(m, "FieldBase")
         .def_property_readonly("name", &FieldBase::name)
@@ -175,6 +189,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     // Register class: {{ reg.get_path() }}
     py::class_<{{ reg | pybind_name }}_t, RegisterBase>(m, "{{ reg | pybind_name }}_t"{% if reg.get_property('desc') %}, "{{ reg.get_html_desc() | cpp_string }}"{% endif %})
         .def(py::init<uint64_t>())
+        .def("write_fields", &{{ reg | pybind_name }}_t::write_fields,
+             py::arg("mask"), py::arg("value"),
+             "Combined multi-field RMW: single read+write on the master")
         {% for field in reg.fields() %}
         .def_readonly("{{ field.inst_name | safe_id }}", &{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }})
         {% endfor %}
@@ -248,7 +265,15 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
                 return py::make_iterator(mem.begin(), mem.end());
             },
             py::keep_alive<0, 1>(),
-            "Iterate over memory entries");
+            "Iterate over memory entries")
+        .def("read_block", &{{ mem | pybind_name }}_t::read_block,
+            py::arg("start"), py::arg("count"),
+            "Read ``count`` consecutive entries starting at ``start`` "
+            "in a single batched master call. Returns a list of ints.")
+        .def("write_block", &{{ mem | pybind_name }}_t::write_block,
+            py::arg("start"), py::arg("values"),
+            "Write ``values`` to consecutive entries starting at ``start`` "
+            "in a single batched master call.");
     {% endfor %}
 
     // Top-level SoC class
@@ -261,6 +286,8 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
              // C++ raw pointer stored in NodeBase dangling on first access.
              py::keep_alive<1, 2>(),
              "Attach a master interface")
+        .def("transaction", &{{ soc_name }}_t::transaction,
+             "Open a cross-register write-batching transaction")
         {% for child in top_node.children() %}
         {% if child.inst_name %}
         .def_readonly("{{ child.inst_name | safe_id }}", &{{ soc_name }}_t::{{ child.inst_name | safe_id }})
