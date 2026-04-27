@@ -244,7 +244,15 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
                 return py::make_iterator(mem.begin(), mem.end());
             },
             py::keep_alive<0, 1>(),
-            "Iterate over memory entries");
+            "Iterate over memory entries")
+        .def("read_block", &{{ mem | pybind_name }}_t::read_block,
+            py::arg("start"), py::arg("count"),
+            "Read ``count`` consecutive entries starting at ``start`` "
+            "in a single batched master call. Returns a list of ints.")
+        .def("write_block", &{{ mem | pybind_name }}_t::write_block,
+            py::arg("start"), py::arg("values"),
+            "Write ``values`` to consecutive entries starting at ``start`` "
+            "in a single batched master call.");
     {% endfor %}
 
     // Top-level SoC class
