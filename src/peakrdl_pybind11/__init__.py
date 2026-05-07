@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .exporter import Pybind11Exporter
     from .int_types import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
+    from .runtime.transactions import Burst, Read, Write
 
     # Forward-compat aliases (see ``IDEAL_API_SKETCH.md`` §3): RegisterValue
     # and FieldValue are the names used in the new API surface; they alias
@@ -57,4 +58,8 @@ def __getattr__(name: str) -> type:
         from .int_types import FieldInt
 
         return FieldInt
+    if name in ("Read", "Write", "Burst"):
+        from .runtime.transactions import Burst, Read, Write
+
+        return {"Read": Read, "Write": Write, "Burst": Burst}[name]
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
