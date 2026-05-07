@@ -70,6 +70,15 @@ On success, ``wait_for`` returns the matching ``FieldValue`` (the value the
 field had on the read that satisfied the comparison). On timeout, it raises
 ``WaitTimeoutError`` (see below).
 
+.. note::
+
+   ``wait_for`` is robust against exotic equality comparators. If the wrapped
+   value's ``==`` raises (for example, NumPy ``ndarray``'s vector ``==`` when
+   shapes don't broadcast, or a third-party value wrapper that throws on
+   incompatible types), the polling loop treats that comparison as a no-match
+   and keeps polling instead of crashing the test. This matters when callers
+   wrap fields with custom equality behaviour.
+
 ``wait_until`` on a register predicate
 --------------------------------------
 
@@ -149,6 +158,37 @@ Sampling is intentionally separate from ``wait_for``. Use ``wait_for`` to
 synchronize ("I want a known state before I read"); use ``read(n=...)`` to
 characterize ("I want N samples of whatever the hardware is doing").
 
+Return types
+~~~~~~~~~~~~
+
+The two sampling helpers return distinct, freshly allocated containers:
+
+- ``sample(field, n=N)`` (and the equivalent ``read(n=N)``) returns a
+  :class:`numpy.ndarray`. The dtype is whatever NumPy infers from the readings
+  — for register/field reads that decode to Python ``int`` this lands on a
+  platform-appropriate integer width (typically ``int64``/``uint64`` on 64-bit
+  hosts). Callers that need a specific dtype should cast explicitly. The array
+  is freshly allocated per call; it is not aliased to any internal buffer, so
+  mutation of the returned array is safe.
+- ``histogram(field, n=N)`` returns a :class:`collections.Counter` keyed by
+  value. ``histogram`` deliberately avoids materialising an intermediate
+  ndarray so it works with read payloads that are unhashable as a NumPy dtype
+  but hashable as Python objects (notably enum members and other rich field
+  values).
+
+.. code-block:: python
+
+   import numpy as np
+   from collections import Counter
+
+   samples = soc.adc.sample.read(n=100)
+   assert isinstance(samples, np.ndarray)
+   assert samples.shape == (100,)
+
+   hist = soc.adc.sample.histogram(n=1000)
+   assert isinstance(hist, Counter)
+   hist.most_common(5)
+
 Async equivalents
 -----------------
 
@@ -174,6 +214,43 @@ block the loop.
 The complementary surface (``aread`` / ``awrite`` / ``amodify`` on every
 node) is described in the bus & masters documentation; everything on this
 page about timeouts, predicates, and sampling applies identically there.
+
+.. note::
+
+   **The async dual is not natively non-blocking.** There is no native async
+   master transport at this layer. Inside ``await_for``, ``await_until``, and
+   ``aiowait`` the polling loop calls the sync ``node.read()`` directly; only
+   the inter-poll sleep is an ``await asyncio.sleep`` yield point. The bus
+   read therefore blocks the running event loop for its full duration. This
+   is fine for in-process mocks and short transactions, but if your master
+   has long ``read()`` latency you should not assume the loop stays
+   responsive while a wait is in flight — do not expect true non-blocking
+   I/O from these helpers.
+
+   Want true offload? Wrap the underlying transport in
+   :class:`peakrdl_pybind11.runtime.async_session.AsyncSession`, which uses
+   :func:`asyncio.run_in_executor` against a
+   :class:`concurrent.futures.ThreadPoolExecutor` to push every bus call to
+   a worker thread. ``await_for``/``await_until``/``aiowait`` themselves do
+   not go through that path — they call the sync node's ``read()`` directly.
+
+.. note::
+
+   **The loop= kwarg is accepted but not forwarded.** ``await_for``,
+   ``await_until``, and ``aiowait`` accept a ``loop=`` keyword for API
+   symmetry with older asyncio code, but the value is *ignored*: it is not
+   passed to :func:`asyncio.sleep`, because the explicit-loop parameter was
+   deprecated in Python 3.8 and removed in 3.10. Pass it if you like for
+   backwards source compatibility; do not rely on it to bind the wait to a
+   non-default event loop.
+
+   .. code-block:: python
+
+      # Both forms are valid; the loop= argument is accepted but ignored.
+      await soc.uart.status.tx_ready.await_for(True, timeout=1.0)
+      await soc.uart.status.tx_ready.await_for(
+          True, timeout=1.0, loop=asyncio.get_running_loop()
+      )
 
 Timeout error
 -------------
@@ -217,6 +294,42 @@ objects to the exception under ``.samples``:
 
 ``capture`` is opt-in because the sample list can grow long for tight polling
 loops; the default error message is descriptive enough for most failures.
+
+Which ``WaitTimeoutError``?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two classes share the name:
+
+- :class:`peakrdl_pybind11.errors.WaitTimeoutError` — the one this module
+  raises. It is the user-facing class re-exported at the top-level
+  ``peakrdl_pybind11.errors`` path. It inherits from both
+  :class:`PeakRDLError <peakrdl_pybind11.errors.PeakRDLError>` and
+  :class:`TimeoutError`.
+- :class:`peakrdl_pybind11.runtime.errors.WaitTimeoutError` — the entry in
+  the lower-level error taxonomy, with a different positional argument
+  signature. Some lower-level code paths still raise this one; it inherits
+  only from :class:`TimeoutError`.
+
+Both classes inherit from :class:`TimeoutError`, so a single
+``except TimeoutError`` catches either. If you want to catch every
+PeakRDL-pybind11 error in one clause, catch
+:class:`PeakRDLError <peakrdl_pybind11.errors.PeakRDLError>`; that catches
+the wait-poll variant but **not** the runtime-only one (the runtime one does
+not inherit from ``PeakRDLError``). When you really need to distinguish
+which class was raised, import the user-facing one explicitly:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.errors import WaitTimeoutError
+
+   try:
+       soc.uart.status.tx_ready.wait_for(True, timeout=1.0)
+   except WaitTimeoutError as e:
+       # e.path, e.expected, e.last_seen, e.timeout, e.polls are all set.
+       ...
+
+See :doc:`errors` for the full typed-error taxonomy and the rules for
+catching errors broadly versus narrowly.
 
 See also
 --------
