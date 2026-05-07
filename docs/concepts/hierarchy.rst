@@ -75,7 +75,7 @@ isn't polluted by metadata accessors. The same shape works for any node kind:
 
    soc.uart.control.info.address           # 0x4000_1000
    soc.uart.control.info.path              # "peripherals.uart[0].control"
-   soc.uart.control.info.fields            # OrderedDict[str, FieldInfo]
+   soc.uart.control.info.fields            # dict[str, Info] — each value is itself an Info
 
 The full attribute set:
 
@@ -109,7 +109,9 @@ The full attribute set:
      - Reset value.
    * - ``fields``
      - registers
-     - ``OrderedDict[str, FieldInfo]`` of child fields.
+     - ``dict[str, Info]`` of child fields, keyed by field name. **Recursive** — each
+       value is itself an :class:`Info`, so subfield metadata drills down via
+       ``reg.info.fields["enable"].on_read``.
    * - ``path``
      - all nodes
      - Dotted/indexed RDL path, e.g. ``"peripherals.uart[0].control"``.
@@ -121,7 +123,9 @@ The full attribute set:
      - ``(filename, line)`` tuple pointing at the RDL source.
    * - ``tags``
      - all nodes
-     - Custom user-defined properties (UDPs).
+     - Custom user-defined properties (UDPs), exposed via a
+       :class:`TagsNamespace` that returns ``None`` for unset names (no
+       ``AttributeError``).
 
 Field-specific extras live alongside the common attributes:
 
@@ -149,6 +153,135 @@ Example field probe:
    f.info.paritycheck             # False
    f.info.is_volatile             # False
    f.info.is_interrupt_source     # False
+
+``Info`` dataclass shape
+------------------------
+
+``Info`` is the concrete type behind every ``node.info`` attribute. It lives
+in :mod:`peakrdl_pybind11.runtime.info` and is declared as::
+
+   @dataclass(frozen=True, slots=True)
+   class Info: ...
+
+The ``frozen=True`` makes instances immutable (assigning to a field raises
+``FrozenInstanceError``); ``slots=True`` keeps the per-node memory cost
+small. Every attribute has a safe default, so a bare ``Info()`` is valid
+for stubs and tests.
+
+Construct one explicitly when you need a snapshot for testing or
+programmatic use — e.g. in a unit test for a custom observer that consumes
+``info`` without going through the full RDL pipeline:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.info import Info
+
+   stub = Info(
+       name="control",
+       address=0x4000_1000,
+       offset=0x000,
+       path="uart.control",
+       access="rw",
+       reset=0,
+   )
+   assert stub.name == "control"
+   assert stub.address == 0x4000_1000
+
+Recursive ``Info.fields``
+-------------------------
+
+For register nodes, ``info.fields`` is a ``dict[str, Info]`` keyed by the
+field instance name. Each value is itself an :class:`Info`, so field-level
+metadata drills down through the same attribute surface — there is no
+separate ``FieldInfo`` type to learn:
+
+.. code-block:: python
+
+   reg = soc.uart.control
+   reg.info.fields                       # dict[str, Info]
+   reg.info.fields["enable"]             # Info(path='...enable', access='rw', ...)
+   reg.info.fields["enable"].on_read     # None
+   reg.info.fields["enable"].is_volatile # False
+
+   for fname, finfo in reg.info.fields.items():
+       print(fname, finfo.access, finfo.reset)
+
+This recursion stops at fields: ``Info.fields`` on a non-register node is
+an empty ``dict``.
+
+``TagsNamespace`` — UDP probing without ``try``
+-----------------------------------------------
+
+``info.tags`` is a :class:`TagsNamespace`, a thin :class:`types.SimpleNamespace`
+subclass that returns ``None`` for *unset* names rather than raising
+``AttributeError``. That means you can probe an arbitrary UDP without
+wrapping it in ``try`` / ``except``:
+
+.. code-block:: python
+
+   info = soc.uart.control.info
+
+   # Set in the RDL — returns the value the exporter captured.
+   info.tags.security_class           # e.g. "trusted"
+
+   # Never set on this node — returns None, not AttributeError.
+   if info.tags.deprecated:
+       warn(f"{info.path}: marked deprecated")
+
+   # Equivalent compare against a missing UDP — no try/except needed:
+   if info.tags.security_class == "trusted":
+       grant_access()
+
+Dunder attributes (``__class__``, ``__deepcopy__``, ...) keep the standard
+``AttributeError`` behavior so ``copy``/``pickle`` work unchanged.
+
+``from_rdl_node`` — build an ``Info`` from a ``systemrdl`` node
+---------------------------------------------------------------
+
+The runtime constructs every ``Info`` from a ``systemrdl.node.Node`` via
+the public helper :func:`from_rdl_node`. Use it directly if you have an
+RDL node in hand — for example, in a custom exporter pass, lint plugin,
+or out-of-band tooling that needs the same metadata shape the runtime
+exposes:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.info import from_rdl_node
+
+   # `rdl_node` is a systemrdl.node.RegNode (or any Node subclass).
+   info = from_rdl_node(rdl_node)
+   info.name                  # from RDL `name` property (or inst_name)
+   info.address               # absolute_address
+   info.fields["enable"]      # recursive Info for the enable field
+
+The helper tolerates missing accessors and degrades gracefully: passing
+``None`` (or a stub object without the usual methods) returns
+``Info()`` rather than raising.
+
+``attach_info`` — wire ``Info`` onto a hand-built node class
+------------------------------------------------------------
+
+Generated bindings call :func:`attach_info` once per class at import
+time, setting ``cls.info`` so users can write ``soc.uart.control.info.address``.
+Most users never need to call it directly. It exists for **hand-built SoC
+harnesses** — e.g. tests that mock a register class, or custom integrations
+that wrap the generated tree without re-running the exporter:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.info import Info, attach_info
+
+   class FakeControl:
+       """Stand-in register class for unit tests."""
+       pass
+
+   attach_info(FakeControl, Info(name="control", address=0x4000_1000, path="uart.control"))
+
+   FakeControl.info.address          # 0x4000_1000
+   FakeControl.info.path             # "uart.control"
+
+Because ``Info`` is frozen, the snapshot is safe to share across
+instances of the class.
 
 ``repr``, ``print``, ``help``
 -----------------------------
