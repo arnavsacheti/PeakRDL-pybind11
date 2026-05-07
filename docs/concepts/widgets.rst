@@ -52,6 +52,17 @@ Highlights:
   - ✱ ``sticky`` — sticky (latches until explicitly cleared)
   - ⚡ ``volatile`` — volatile (hardware may change the value at any time)
 
+  The badge mapping itself is exposed as a public dict
+  ``SIDE_EFFECT_BADGES`` in :mod:`peakrdl_pybind11.runtime._registry`
+  for callers who want to render their own representations:
+
+  .. code-block:: python
+
+     from peakrdl_pybind11.runtime._registry import SIDE_EFFECT_BADGES
+
+     SIDE_EFFECT_BADGES
+     # {"rclr": "⚠", "singlepulse": "↻", "sticky": "✱", "volatile": "⚡"}
+
 - Click a row to expand it to show the full RDL source location and any
   user-defined properties (UDPs).
 - ``soc.uart.dump()`` in a notebook renders as a nested collapsible tree,
@@ -108,29 +119,73 @@ Live monitors with ``watch()``
 
 The most-asked-for pattern in tester forums: a refreshing widget for a
 register or set of registers, powered by `ipywidgets`. Calling
-``watch(period=...)`` on any node returns a live widget that polls on
-the given period and updates the rendered HTML in place.
+``watch(node, period=0.1)`` on any node returns a ``Watcher`` object: a
+live widget that polls on the given period and updates the rendered HTML
+in place.
 
 .. code-block:: python
 
    w = soc.uart.control.watch(period=0.1)            # polls every 100 ms
    w = soc.snapshot(["uart.*", "gpio.*"]).watch()    # multi-register dashboard
-   w.stop()                                          # explicit teardown
+
+``Watcher`` lifecycle
+~~~~~~~~~~~~~~~~~~~~~
+
+A ``Watcher`` owns a background polling thread, so it must be torn down
+explicitly. Call ``.stop()`` when you're done — it joins the polling
+thread cleanly so the kernel doesn't keep ticking after the cell
+finishes:
+
+.. code-block:: python
+
+   w = soc.uart.control.watch(period=0.1)
+   try:
+       do_stuff()
+   finally:
+       w.stop()
+
+``try``/``finally`` guarantees teardown even if ``do_stuff()`` raises.
+Where the implementation also exposes a context-manager protocol,
+``with soc.uart.control.watch() as w:`` is equivalent.
+
+Destructive-read registers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``watch()`` respects the side-effect rules described in
-:doc:`/concepts/values_and_io`: you cannot ``watch()`` an ``rclr``
-register without opting in via ``allow_destructive=True``, because
-periodic polling would silently destroy the very state you are trying to
-observe. Each tick of a watched register returns an immutable
-``RegisterValue``, so prior frames remain valid even after the widget
-updates.
+:doc:`/concepts/values_and_io`: periodic polling of an ``rclr`` register
+would silently destroy the very state you are trying to observe, so
+``watch()`` refuses without an explicit opt-in.
+
+.. warning::
+
+   ``watch()`` on a register with ``info.on_read = "rclr"`` (or any
+   other destructive-read semantics) requires
+   ``allow_destructive=True``. Without it, the call raises
+   ``NotSupportedError`` rather than quietly clearing the state on
+   every poll.
+
+.. code-block:: python
+
+   # rclr register: must explicitly acknowledge the destructive read
+   w = soc.system.reset_status.watch(
+       period=0.5,
+       allow_destructive=True,
+   )
+
+Each tick of a watched register returns an immutable ``RegisterValue``,
+so prior frames remain valid even after the widget updates.
 
 .. note::
 
-   Live monitors require the optional ``ipywidgets`` dependency. It is a
-   *soft dependency* — installing it is only necessary if you want to
-   call ``watch()``. All other rich-display features (HTML repr, pretty
-   repr, diff, mem dump) work without ``ipywidgets``.
+   ``watch()`` is the only rich-display surface that requires the
+   optional ``ipywidgets`` dependency. It is a *soft import* — when
+   ``ipywidgets`` is missing, calling ``watch()`` raises::
+
+       NotSupportedError("install peakrdl-pybind11[notebook] for watch()")
+
+   All other rich-display features (HTML repr, pretty repr, diff, mem
+   dump) work without ``ipywidgets``. Install the extra with
+   ``pip install peakrdl-pybind11[notebook]`` to enable live monitors.
 
 Plain-terminal IPython
 ----------------------
