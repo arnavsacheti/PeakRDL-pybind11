@@ -92,6 +92,12 @@ ignore = [
 "src/peakrdl_pybind11/exporter_plugins/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/masters/base.py" = ["ANN401"]
 
+[tool.ruff.lint.per-file-ignores]
+# Runtime helpers wrap duck-typed generated C++ mem objects; ``Any`` is
+# load-bearing in the public surface (one helper module owning many
+# ``mem``-shaped instances of unrelated classes).
+"src/peakrdl_pybind11/runtime/*.py" = ["ANN401"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
