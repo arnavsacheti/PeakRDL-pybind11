@@ -115,6 +115,89 @@ Inside a ``batch`` block, every read and write is staged on the batch builder
 rather than issued. At exit, the master receives the whole list at once and
 can coalesce or pipeline as it sees fit.
 
+BusPolicies bundle
+------------------
+
+Barriers, cache, and retry are not three independent classes the user has to
+juggle: they ship as one umbrella, ``BusPolicies``, which holds a
+``BarrierPolicy``, ``CachePolicy``, and ``RetryPolicy`` bound to a single
+master. The bundle is what installs the wrapping that turns ``master.read``
+/ ``master.write`` into the policy-enforcing chain described below.
+
+There are two ways to obtain the bundle:
+
+**Auto-attached.** When a master is attached via the runtime registry,
+the install function for ``"bus_policies"`` returns a ``BusPolicies``
+already bound to that master. The exporter wires this up as part of
+``MySoC.create``, and every method on the bundle is mirrored as a
+callable on ``soc.master`` so day-to-day code never has to reach into
+the bundle directly:
+
+.. code-block:: python
+
+   soc = MySoC.create(master=OpenOCDMaster("localhost:6666"))
+   soc.master.set_retry_policy(retries=5)        # mirrors retry.configure
+   soc.master.set_barrier_policy("strict")       # mirrors barriers.set_mode
+   soc.master.barrier()                          # mirrors barriers.barrier
+
+**Keyed lookup.** Tests and tools that need direct access to a specific
+policy (to stub backoff sleeps, inspect cache slots, or wire a separate
+disconnect callback) can fetch the bundle by name:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime._registry import attach_master_extension
+
+   bundle = attach_master_extension("bus_policies", master)
+   bundle.retry.configure(retries=10, backoff=0)
+   bundle.cache.invalidate()
+   bundle.barriers.set_mode("strict")
+
+The keyed form is the one to reach for when constructing tests that need
+to introspect or stub a single policy without going through the
+``soc.master`` mirror surface.
+
+The wrapper order
+~~~~~~~~~~~~~~~~~
+
+The three policies wrap ``master.read`` / ``master.write`` in a defined
+order. From the outermost (user-facing) call inwards:
+
+::
+
+   user → cache lookup → retry loop → barrier → master.read
+
+This order is **load-bearing** and documented as such in the source
+(``runtime/bus_policies.py``). The three layers nest deliberately:
+
+- **Cache short-circuits both retry and barrier.** A fresh cache hit
+  returns immediately; the bus is not touched, so neither the retry
+  loop nor the barrier policy fires.
+- **Retry drains a barrier between attempts.** Each retry attempt
+  re-enters ``barrier.before_read`` / ``before_write`` so that a
+  buffered write from a previous attempt cannot leak into the next one.
+- **Barrier sits closest to the bus.** It is the last layer before the
+  underlying ``master.read`` / ``master.write`` runs, so the fence
+  semantics ("barrier before this real transaction") match the wire
+  exactly.
+
+Users debugging timing should keep this stack in mind: a barrier that
+"never fires" on a polled status register is usually a cache hit; a
+write that "didn't drain" between two retry attempts is a barrier mode
+mismatch, not a missing fence.
+
+Hook isolation
+~~~~~~~~~~~~~~
+
+The runtime registry that fires master extensions and post-create hooks
+treats sibling failures as **isolated**: any exception raised by a
+registered hook is logged and swallowed, Django-signal-style, rather
+than propagated. ``BusPolicies`` inherits this property because it
+attaches via the same registry. As a robustness guarantee, this means a
+buggy sibling extension (a third-party trace plugin, a half-installed
+mock) cannot poison the dispatch chain or prevent the bus policies from
+binding. See ``runtime/_registry.py`` for the exact dispatch semantics.
+
 Barriers and fences
 -------------------
 
@@ -182,6 +265,23 @@ present, and the master ignores the cache for those registers even if it
 was somehow attached. Read-clear and read-pulse semantics are not allowed
 to lie. See :doc:`values_and_io` for the side-effect rules that drive this.
 
+The check **fires at attach time**, not at first read: ``cache_for(...)``
+on a destructive register raises ``NotSupportedError`` immediately. A
+buggy cache attempt fails fast at the call site that asked for it
+rather than producing wrong values an hour later when the polling loop
+finally reads:
+
+.. code-block:: python
+
+   soc.uart.intr_status.cache_for(50e-3)
+   # NotSupportedError: cannot cache @0x40001008: register has read side
+   # effects (is_volatile=True, on_read='clear')
+
+This is how the cache layer interacts with the wrapper order described
+in the BusPolicies bundle section above: a cache that was never
+attached cannot short-circuit, so retry and barrier behave exactly as
+if no cache existed.
+
 Bus error recovery
 ------------------
 
@@ -211,6 +311,28 @@ having to re-instrument.
 The ``on_disconnect`` hook fires when the master loses its connection to the
 target (e.g. the JTAG probe drops). Common patterns are reconnect-and-replay
 the last N transactions, or escalate to a hardware reset.
+
+**Per-call retry override.** ``soc.uart.control.read(retries=10)``
+overrides the master-level retry policy for a single call. The keyword
+``retries=`` is a user-facing shortcut; in the implementation it is
+plumbed through an explicit ``_pe_override: CallOverride | None``
+keyword on the wrapped ``read`` / ``write``. The register node packages
+the user's per-call kwargs into a frozen ``CallOverride`` (which also
+carries a ``bypass_cache`` flag) and forwards it via ``_pe_override``;
+the policy wrappers pop it off before delegating to the underlying
+master, so native masters never see the override carrier:
+
+.. code-block:: python
+
+   # User-facing form — short, ergonomic.
+   soc.uart.control.read(retries=10)
+
+   # The register node forwards the override internally as:
+   #     master.read(addr, 32, _pe_override=CallOverride(retries=10))
+   # User code does not call the wrapped form directly.
+
+The override applies to the one call only; the master-level
+``set_retry_policy`` configuration is unchanged.
 
 Tracing and replay
 ------------------
