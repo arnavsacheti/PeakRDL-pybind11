@@ -16,6 +16,28 @@ except ImportError as e:
 
 from peakrdl_pybind11.int_types import RegisterInt, FieldInt, RegisterIntFlag, RegisterIntEnum
 
+# ``--strict-fields=false`` opt-out (IDEAL_API_SKETCH.md §3.4 / §22.8).
+# When the build set strict_fields=False, fire a DeprecationWarning at
+# module import; sibling units that intercept attribute assignment use
+# ``_PEAKRDL_STRICT_FIELDS`` to decide whether to raise (strict, default)
+# or fall back to ``modify(field=value)`` and emit a per-assignment
+# DeprecationWarning. The warning is annoying on purpose — silent RMW
+# on attribute assignment is the leading source of "I thought that
+# wrote" bugs.
+_PEAKRDL_STRICT_FIELDS: bool = {{ 'True' if strict_fields else 'False' }}
+{% if not strict_fields %}
+import warnings as _peakrdl_warnings
+_peakrdl_warnings.warn(
+    "{{ soc_name }} was built with --strict-fields=false. Bare register "
+    "attribute assignment falls back to modify(...) and emits a "
+    "per-assignment DeprecationWarning. Recommended only for porting "
+    "drivers that depend on the legacy attribute-assign-as-RMW idiom; "
+    "see IDEAL_API_SKETCH.md §22.8.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+{% endif %}
+
 __all__ = [
     '{{ soc_name }}_t',
     'Master',

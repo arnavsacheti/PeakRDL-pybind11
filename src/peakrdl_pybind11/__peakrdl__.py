@@ -16,6 +16,8 @@ else:
         # peakrdl is an optional dependency
         ExporterSubcommandPlugin = object  # type: ignore[misc]
 
+from . import cli as _cli
+from .cli.strict_fields import is_strict_from_options as _is_strict_from_options
 from .exporter import _KNOWN_UDPS, Pybind11Exporter
 
 
@@ -108,8 +110,20 @@ class Exporter(ExporterSubcommandPlugin):
             ),
         )
 
+        # Sibling-unit CLI extensions (Unit 24 and friends) discover
+        # themselves under :mod:`peakrdl_pybind11.cli`. Each registers
+        # its own flags directly on this argparse group.
+        _cli.discover_subcommands(arg_group)
+
     def do_export(self, top_node: "AddrmapNode", options: "argparse.Namespace") -> None:
         """Execute the export"""
+        # Sibling-unit subcommands (--diff / --replay / --watch) may
+        # claim the run before any export work happens; if any of them
+        # returns truthy we are done here. ``--explore`` is post-export
+        # and goes through ``run_post_handlers`` below.
+        if _cli.try_handle(options):
+            return
+
         exporter = Pybind11Exporter()
 
         # Get soc_name from options or derive from input
@@ -121,6 +135,7 @@ class Exporter(ExporterSubcommandPlugin):
         gen_pyi = getattr(options, "gen_pyi", True)
         split_bindings = getattr(options, "split_bindings", 100)
         split_by_hierarchy = getattr(options, "split_by_hierarchy", False)
+        strict_fields = _is_strict_from_options(options)
 
         exporter.export(
             top_node,
@@ -130,4 +145,10 @@ class Exporter(ExporterSubcommandPlugin):
             gen_pyi=gen_pyi,
             split_bindings=split_bindings,
             split_by_hierarchy=split_by_hierarchy,
+            strict_fields=strict_fields,
         )
+
+        # Post-export niceties: --explore drops into a REPL once the
+        # generated module is on disk. Other sibling units may layer
+        # additional post-export work via :func:`cli.run_post_handlers`.
+        _cli.run_post_handlers(options)

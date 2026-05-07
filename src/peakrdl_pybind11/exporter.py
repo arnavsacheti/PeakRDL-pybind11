@@ -197,6 +197,7 @@ class Pybind11Exporter:
         gen_pyi: bool = True,
         split_bindings: int = 100,
         split_by_hierarchy: bool = False,
+        strict_fields: bool = True,
     ) -> None:
         """
         Export SystemRDL to PyBind11 modules
@@ -213,6 +214,11 @@ class Pybind11Exporter:
             split_by_hierarchy: When True, split bindings by addrmap/regfile hierarchy instead of
                                by register count. This keeps related registers together and provides
                                more logical grouping. Default: False
+            strict_fields: When True (default), bare attribute assignment on a register
+                          outside a context manager raises (see IDEAL_API_SKETCH.md §3.4).
+                          When False, the generated runtime falls back to ``modify(field=value)``
+                          and emits a DeprecationWarning at module import and per loose
+                          assignment (see §22.8).
         """
         self.top_node = top_node.top if isinstance(top_node, RootNode) else top_node
         self.output_dir = Path(output_dir)
@@ -220,6 +226,7 @@ class Pybind11Exporter:
         self.soc_version = soc_version
         self.split_bindings = split_bindings
         self.split_by_hierarchy = split_by_hierarchy
+        self.strict_fields = strict_fields
 
         # Sanitize soc_name for use as identifier
         self.soc_name = self._sanitize_identifier(self.soc_name)
@@ -486,6 +493,7 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             nodes=nodes,
+            strict_fields=getattr(self, "strict_fields", True),
         )
 
         assert self.output_dir is not None
