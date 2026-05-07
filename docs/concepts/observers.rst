@@ -32,22 +32,59 @@ Adding observers
 ----------------
 
 Register a callback for read events, write events, or both. Each callback
-receives an event object describing the transaction:
+receives an ``Event`` object describing the transaction (see
+`The Event dataclass`_ below):
 
 .. code-block:: python
 
    soc.observers.add_read(lambda evt: cov.record(evt.path, evt.value))
    soc.observers.add_write(lambda evt: audit.log(evt))
 
-The ``evt`` object exposes:
-
-* ``evt.path`` -- dotted RDL path of the node touched (e.g. ``"uart.control"``)
-* ``evt.address`` -- byte address of the underlying register
-* ``evt.value`` -- the value read or written
-* ``evt.op`` -- ``"read"`` or ``"write"``
-* ``evt.timestamp`` -- monotonic time of the transaction
-
 Observers run in registration order, after the master returns.
+
+The ``Event`` dataclass
+-----------------------
+
+Every observer callback receives an ``Event``. It is a frozen, slotted
+dataclass (``@dataclass(frozen=True, slots=True)``) so handlers can rely on
+identity, hashability, and zero accidental mutation when an event is shared
+across the chain.
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.observers import Event
+
+   def my_handler(evt: Event) -> None:
+       if evt.op == "write":
+           audit.log(evt.path, evt.address, evt.value)
+
+.. list-table:: ``Event`` fields
+   :header-rows: 1
+   :widths: 22 22 56
+
+   * - Field
+     - Type
+     - Description
+   * - ``path``
+     - ``str``
+     - Dotted RDL path of the node touched (e.g. ``"uart.control"``).
+   * - ``address``
+     - ``int``
+     - Byte address of the underlying register.
+   * - ``value``
+     - ``int``
+     - The value read or written.
+   * - ``op``
+     - ``Literal["read", "write"]``
+     - Either ``"read"`` or ``"write"``; useful for narrowing in handlers
+       that subscribe to both streams.
+   * - ``timestamp``
+     - ``float``
+     - ``time.monotonic()`` value captured when the transaction completed.
+
+Because ``Event`` is frozen, handlers that need to forward a derived event
+should construct a new instance (``dataclasses.replace(evt, value=...)``)
+rather than mutating in place.
 
 Scoped observation
 ------------------
@@ -67,6 +104,58 @@ exercised inside the block:
 Scoped observers do not survive past the ``with`` block; they self-detach
 on exit, even if ``run_test()`` raises.
 
+The ``CoverageReport`` object
+-----------------------------
+
+``obs.coverage_report()`` returns a ``CoverageReport`` -- a structured
+summary of every node touched inside the observed block, suitable both
+for human inspection and for assertions in CI.
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.observers import CoverageReport
+
+   with soc.observe() as obs:
+       run_test()
+
+   report: CoverageReport = obs.coverage_report()
+
+   assert "uart.control" in report.nodes_written
+   assert report.total_writes >= 1
+   for path, count in report.paths_by_frequency[:5]:
+       print(f"{path:32} {count}")
+
+.. list-table:: ``CoverageReport`` attributes
+   :header-rows: 1
+   :widths: 28 28 44
+
+   * - Attribute
+     - Type
+     - Description
+   * - ``nodes_read``
+     - ``set[str]``
+     - Dotted paths of every node that was read at least once.
+   * - ``nodes_written``
+     - ``set[str]``
+     - Dotted paths of every node that was written at least once.
+   * - ``total_reads``
+     - ``int``
+     - Total number of read transactions observed.
+   * - ``total_writes``
+     - ``int``
+     - Total number of write transactions observed.
+   * - ``paths_by_frequency``
+     - ``list[tuple[str, int]]``
+     - Per-path access counts, sorted by descending count then by path
+       for deterministic output. Each tuple is ``(path, count)`` and
+       counts both reads and writes against that path.
+
+The set and counter attributes make it cheap to write coverage gates
+(``assert report.nodes_written >= required_paths``) without parsing
+text. ``paths_by_frequency`` is the right entry point for a "hot
+register" report or for spotting unexpected polling loops in a long
+test.
+
 Filtering by path
 -----------------
 
@@ -80,6 +169,61 @@ The predicate is the same one used by :doc:`/bus_layer` for
 
 Patterns match against ``evt.path``. ``"uart.*"`` selects every direct
 child of the ``uart`` block; ``"uart.**"`` selects the whole subtree.
+
+Attaching to a hand-built SoC
+-----------------------------
+
+The generated runtime auto-attaches the observer chain on the SoC node it
+builds: ``soc.observers`` and ``soc.observe()`` are present immediately
+after import. Users who assemble their own SoC harness -- mocking the
+top, splicing in stubs, composing peripherals across modules -- need to
+opt in once with ``attach_observers``.
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.observers import attach_observers
+
+   my_soc = build_my_custom_soc(...)   # hand-built top
+   attach_observers(my_soc)            # adds .observers and .observe()
+
+   my_soc.observers.add_write(lambda evt: audit.log(evt))
+   with my_soc.observe() as obs:
+       run_test()
+
+After ``attach_observers(soc)`` returns, the SoC behaves identically to a
+generated one: every read and every write routes through the same chain,
+``soc.observe()`` is a working context manager, and existing tools (the
+notebook ``watch()`` widget, ``RecordingMaster``, ``--coverage``) plug in
+without further setup.
+
+The call is idempotent. Re-attaching the default chain is a no-op; the
+existing subscribers are preserved.
+
+Sharing a chain across SoCs
+---------------------------
+
+Pass an explicit ``ObserverChain`` when you want hooks pre-configured
+before any SoC is wired up, or when several SoCs in the same process
+should funnel into the same audit log:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.observers import ObserverChain, attach_observers
+
+   shared = ObserverChain()
+   shared.add_write(lambda evt: audit.log(evt))   # configure once
+
+   attach_observers(soc_a, chain=shared)
+   attach_observers(soc_b, chain=shared)          # both feed `audit`
+
+   # `shared` is the same object now exposed as soc_a.observers and
+   # soc_b.observers, so adding/removing hooks at runtime affects both.
+   shared.add_read(coverage.record, where="uart.*")
+
+``ObserverChain`` exposes the same surface as ``soc.observers`` --
+``add_read``, ``add_write``, ``remove``, and the ``where=`` predicate --
+so a chain configured ahead of time is interchangeable with one built
+incrementally on the SoC.
 
 Unified mechanism
 -----------------
