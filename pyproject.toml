@@ -88,16 +88,13 @@ ignore = [
 # generated types produced per-SoC; ``Any`` is the correct annotation for
 # the hook surface. Suppress ANN401 on those files only.
 [tool.ruff.lint.per-file-ignores]
+# Runtime/CLI/exporter-plugin helpers wrap duck-typed generated C++ classes
+# and host the seam for hook callbacks; ``Any`` is load-bearing in their
+# public surface, so suppress ANN401 there only.
 "src/peakrdl_pybind11/runtime/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/cli/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/exporter_plugins/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/masters/base.py" = ["ANN401"]
-
-[tool.ruff.lint.per-file-ignores]
-# Runtime helpers wrap duck-typed generated C++ mem objects; ``Any`` is
-# load-bearing in the public surface (one helper module owning many
-# ``mem``-shaped instances of unrelated classes).
-"src/peakrdl_pybind11/runtime/*.py" = ["ANN401"]
 
 [tool.ruff.format]
 quote-style = "double"

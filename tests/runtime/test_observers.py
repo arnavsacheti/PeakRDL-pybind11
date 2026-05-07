@@ -25,7 +25,7 @@ from peakrdl_pybind11.runtime.observers import (
     ObserverChain,
     ObserverScope,
     register_master_extension,
-    register_post_create,
+    attach_observers,
 )
 
 
@@ -70,7 +70,7 @@ def wired_soc(soc: _FakeSoc, chain: ObserverChain) -> _FakeSoc:
     register_master_extension(
         soc.master, chain, path_resolver=soc._resolve
     )
-    register_post_create(soc, chain)
+    attach_observers(soc, chain)
     return soc
 
 
@@ -345,19 +345,19 @@ class TestRegistrationHelpers:
         # And the wrapper is callable as before.
         assert callable(first_read)
 
-    def test_register_post_create_attaches_chain_and_observe(self) -> None:
+    def test_attach_observers_attaches_chain_and_observe(self) -> None:
         soc: Any = type("S", (), {})()
-        chain = register_post_create(soc)
+        chain = attach_observers(soc)
         assert isinstance(chain, ObserverChain)
         assert soc.observers is chain
         # observe() yields a fresh scope each time.
         with soc.observe() as a, soc.observe() as b:
             assert a is not b
 
-    def test_register_post_create_reuses_existing_chain(self) -> None:
+    def test_attach_observers_reuses_existing_chain(self) -> None:
         soc: Any = type("S", (), {})()
-        first = register_post_create(soc)
-        again = register_post_create(soc)
+        first = attach_observers(soc)
+        again = attach_observers(soc)
         assert first is again
 
     def test_no_hooks_means_no_event_objects_built(

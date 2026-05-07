@@ -845,10 +845,17 @@ def _install_lock_property(cls: type, spec: dict[str, object]) -> None:
 def attach_post_create(soc: object) -> None:
     """Wire SoC-level helpers (the §12.3 ``soc.reset_all()`` entry point).
 
-    Idempotent. Called by Unit 1's ``register_post_create`` seam.
+    Idempotent. Called by Unit 1's ``register_post_create`` seam. Skips
+    silently if the target is a slotted object or a generated class
+    without ``__dict__`` — the user just doesn't get this method on
+    that particular SoC.
     """
-    if not hasattr(soc, "reset_all"):
-        soc.reset_all = lambda *, rw_only=True: reset_all_soc(soc, rw_only=rw_only)
+    if hasattr(soc, "reset_all"):
+        return
+    try:
+        soc.reset_all = lambda *, rw_only=True: reset_all_soc(soc, rw_only=rw_only)  # type: ignore[attr-defined]
+    except (AttributeError, TypeError):
+        return
 
 
 # ---------------------------------------------------------------------------

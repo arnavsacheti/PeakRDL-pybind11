@@ -55,7 +55,7 @@ __all__ = [
     "ObserverChain",
     "ObserverScope",
     "register_master_extension",
-    "register_post_create",
+    "attach_observers",
 ]
 
 
@@ -331,7 +331,7 @@ class ObserverScope:
 # to wrap the bound master's ``read`` / ``write`` so every transaction goes
 # through ``ObserverChain._dispatch_read`` / ``_dispatch_write`` after the
 # master returns. The chain itself is attached to the SoC via
-# ``register_post_create``, exposed as ``soc.observers`` and surfaced to the
+# ``attach_observers``, exposed as ``soc.observers`` and surfaced to the
 # context-manager API as ``soc.observe()``.
 #
 # Both helpers are pure-Python and self-contained: they don't depend on the
@@ -389,7 +389,7 @@ def register_master_extension(
     return master
 
 
-def register_post_create(soc: object, chain: ObserverChain | None = None) -> ObserverChain:
+def attach_observers(soc: object, chain: ObserverChain | None = None) -> ObserverChain:
     """Attach an :class:`ObserverChain` to ``soc`` and wire ``soc.observe``.
 
     Sets ``soc.observers`` to ``chain`` (created if not provided) and binds

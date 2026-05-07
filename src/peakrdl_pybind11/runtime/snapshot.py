@@ -16,7 +16,7 @@ The companion :class:`SnapshotDiff` lists changes between two snapshots and
 provides ``assert_only_changed`` for CI-style assertions on which paths a
 test was *allowed* to touch.
 
-The module-level :func:`register_post_create` is the seam that future
+The module-level :func:`attach_snapshot` is the seam that future
 generated SoC modules wire into: it binds ``snapshot()`` and ``restore()``
 methods onto a soc instance.
 """
@@ -569,7 +569,7 @@ def take_snapshot(
 
     This is the implementation behind ``soc.snapshot(...)``. The hosted method
     binds ``soc`` automatically; use this directly only if you have a soc
-    instance that hasn't been wired through :func:`register_post_create`.
+    instance that hasn't been wired through :func:`attach_snapshot`.
     """
     values: dict[PathStr, int] = {}
     metadata: dict[PathStr, Info] = {}
@@ -633,7 +633,7 @@ def restore(
     return intended
 
 
-def register_post_create(soc: Any) -> Any:
+def attach_snapshot(soc: Any) -> Any:
     """Wire :func:`take_snapshot` and :func:`restore` onto a soc instance.
 
     Sibling Unit 1 will surface this seam from the generated ``create()``

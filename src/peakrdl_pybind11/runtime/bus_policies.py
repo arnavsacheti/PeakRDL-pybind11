@@ -44,7 +44,7 @@ from typing import Literal
 
 from ..masters.base import MasterBase
 from ._errors import BusError, NotSupportedError, TransportError
-from ._registry import register_master_extension
+from ._registry import register_master_extension, register_named_master_extension
 
 _logger = logging.getLogger("peakrdl_pybind11.runtime.bus_policies")
 
@@ -589,7 +589,7 @@ class BusPolicies:
 _EXTENSION_NAME = "bus_policies"
 
 
-def install(master: MasterBase) -> BusPolicies:
+def install(master: MasterBase) -> BusPolicies | None:
     """Wrap ``master`` with the combined bus policies and return the bundle.
 
     Equivalent to calling the registered extension factory directly. Not
@@ -597,13 +597,26 @@ def install(master: MasterBase) -> BusPolicies:
     because :class:`BusPolicies` captures whatever ``master.read`` /
     ``master.write`` already point at. Callers that need to re-install must
     reconstruct the master first.
+
+    Returns ``None`` (and skips silently) if the target does not implement
+    the master protocol (no ``read`` attribute) — needed because
+    :func:`register_master_extension` fires on every attached target,
+    including test stubs that may not be full masters.
     """
+    if not hasattr(master, "read") or not hasattr(master, "write"):
+        return None
     return BusPolicies(master=master)
 
 
 # Register the factory at import time so the SoC layer can rely on a
-# single, named seam rather than importing the class directly.
-register_master_extension(_EXTENSION_NAME, install)
+# single, named seam rather than importing the class directly. We register
+# under both:
+#  * ``register_master_extension`` — fires for every attached master as a
+#    side-effect hook (canonical Unit 1 surface).
+#  * ``register_named_master_extension`` — keyed by ``_EXTENSION_NAME`` so
+#    callers can grab the bundle back via ``attach_master_extension(...)``.
+register_master_extension(install)
+register_named_master_extension(_EXTENSION_NAME, install)
 
 
 __all__ = [

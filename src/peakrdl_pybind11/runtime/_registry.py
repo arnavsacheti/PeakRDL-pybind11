@@ -57,6 +57,17 @@ _post_create_hooks: list[PostCreateHook] = []
 _master_extensions: list[MasterExtension] = []
 _node_attributes: dict[str, NodeAttributeFactory] = {}
 
+# Side-effect badge glyphs shared across the runtime (widgets, repr, error
+# messages). Keyed by the canonical RDL effect name. Sibling units (notably
+# ``runtime/widgets.py``) read this to render ⚠ rclr / ↻ singlepulse / ✱
+# sticky / ⚡ volatile inline with field metadata. Per sketch §5.1.
+SIDE_EFFECT_BADGES: dict[str, str] = {
+    "rclr": "⚠",        # ⚠
+    "singlepulse": "↻",  # ↻
+    "sticky": "✱",      # ✱
+    "volatile": "⚡",    # ⚡
+}
+
 # Identity sets so re-registration of the same callable is idempotent.
 # Without these, importing a sibling module twice (rare, but happens with
 # ``importlib.reload`` and the test harness) would double-register hooks.
@@ -124,6 +135,51 @@ def register_master_extension(fn: MasterExtension) -> MasterExtension:
     return fn
 
 
+# Named master extensions — for sibling units (notably bus_policies) that
+# need to attach a result-returning factory to a specific master and
+# retrieve the bundle later by a stable name.
+_named_master_extensions: dict[str, Callable[[Any], Any]] = {}
+
+
+def register_named_master_extension(name: str, fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
+    """Register a result-returning master extension under ``name``.
+
+    Distinct from :func:`register_master_extension`: that one fires every
+    registered hook for side effects; this one is keyed so callers can
+    invoke a specific bundle factory and capture the result.
+    """
+    with _lock:
+        if name in _named_master_extensions and _named_master_extensions[name] is not fn:
+            logger.debug("named master extension %r being overwritten", name)
+        _named_master_extensions[name] = fn
+    return fn
+
+
+def attach_master_extension(name: str, master: Any) -> Any:
+    """Invoke a named master extension factory against ``master``.
+
+    Returns whatever the factory returns (typically a policy bundle bound
+    to the master). Raises :class:`KeyError` if no extension is registered
+    under ``name``.
+    """
+    fn = get_master_extension_factory(name)
+    return fn(master)
+
+
+def get_master_extension_factory(name: str) -> Callable[[Any], Any]:
+    """Return the named master extension factory.
+
+    Raises :class:`KeyError` if no extension is registered under ``name``.
+    Useful when the caller needs to inspect or re-bind the factory before
+    invoking it.
+    """
+    with _lock:
+        fn = _named_master_extensions.get(name)
+    if fn is None:
+        raise KeyError(f"no master extension registered under name {name!r}")
+    return fn
+
+
 def register_node_attribute(name: str) -> Callable[[NodeAttributeFactory], NodeAttributeFactory]:
     """Decorator factory that registers a lazy node attribute.
 
@@ -153,6 +209,14 @@ def _fire(store: list, label: str, target: Any, *args: Any) -> None:
 
     The snapshot lets a long-running hook avoid blocking new
     registrations from sibling units imported on demand.
+
+    Per-hook failures are logged and **swallowed** (Django-signal-style
+    isolation) so one misbehaving sibling cannot poison the whole
+    invocation chain. This matters because sibling units register
+    speculative attach helpers (``attach_trace``, ``install``,
+    ``attach_post_create``) that may not apply to every target shape;
+    silently skipping them is the right policy when the target is a
+    stub object or a slotted generated class without ``__dict__``.
     """
     with _lock:
         funcs = list(store)
@@ -161,7 +225,6 @@ def _fire(store: list, label: str, target: Any, *args: Any) -> None:
             fn(target, *args)
         except Exception:
             logger.exception("%s %r raised on %r", label, fn, target)
-            raise
 
 
 def apply_register_enhancements(cls: type, metadata: dict) -> None:
@@ -174,6 +237,23 @@ def apply_field_enhancements(cls: type) -> None:
     _fire(_field_enhancements, "field enhancement", cls)
 
 
+def apply_enhancements(
+    register_classes: dict[type, dict] | None = None,
+    field_classes: list[type] | None = None,
+) -> None:
+    """Apply every registered enhancement to multiple classes at once.
+
+    Convenience wrapper used by sibling tests that drive the seam from
+    Python (the generated ``runtime.py`` calls the per-class helpers
+    directly). ``register_classes`` maps each register class to its
+    metadata dict; ``field_classes`` is a flat list of field classes.
+    """
+    for cls, metadata in (register_classes or {}).items():
+        apply_register_enhancements(cls, metadata)
+    for cls in field_classes or []:
+        apply_field_enhancements(cls)
+
+
 def fire_post_create_hooks(soc: Any) -> None:
     """Fire every registered post-create hook against ``soc``."""
     _fire(_post_create_hooks, "post-create hook", soc)
@@ -182,6 +262,30 @@ def fire_post_create_hooks(soc: Any) -> None:
 def fire_master_extensions(master: Any) -> None:
     """Fire every registered master extension against ``master``."""
     _fire(_master_extensions, "master extension", master)
+
+
+def get_register_enhancers() -> list[RegisterEnhancement]:
+    """Return a snapshot of currently-registered register enhancements."""
+    with _lock:
+        return list(_register_enhancements)
+
+
+def get_field_enhancers() -> list[FieldEnhancement]:
+    """Return a snapshot of currently-registered field enhancements."""
+    with _lock:
+        return list(_field_enhancements)
+
+
+def get_post_create_hooks() -> list[PostCreateHook]:
+    """Return a snapshot of currently-registered post-create hooks."""
+    with _lock:
+        return list(_post_create_hooks)
+
+
+def get_master_extensions() -> list[MasterExtension]:
+    """Return a snapshot of currently-registered master extensions."""
+    with _lock:
+        return list(_master_extensions)
 
 
 def attach_node_attributes(node_class: type | None) -> None:

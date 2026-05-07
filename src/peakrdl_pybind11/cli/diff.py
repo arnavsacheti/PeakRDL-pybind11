@@ -135,12 +135,16 @@ def compute_diff(snap_a_path: Path, snap_b_path: Path) -> dict[str, Any]:
         try:
             snap_a = snapshot_cls.from_json(str(snap_a_path))  # type: ignore[attr-defined]
             snap_b = snapshot_cls.from_json(str(snap_b_path))  # type: ignore[attr-defined]
-            real = snap_b.diff(snap_a)
-            # Best-effort coercion: a Unit-8 SnapshotDiff exposes
-            # ``changed`` / ``added`` / ``removed`` (possibly as lists
-            # of rows, possibly as something richer). Pull those keys
-            # out via attribute *or* mapping access.
-            return _coerce_real_diff(real)
+            # Format-detection: Snapshot.from_json expects a specific
+            # flat format. If both loaded snapshots are empty but the
+            # JSON files have content, we're looking at a free-form
+            # nested dict (the format the CLI test writes); fall through
+            # to the JSON-level diff which handles arbitrary nesting.
+            empty_a = len(getattr(snap_a, "values", {})) == 0
+            empty_b = len(getattr(snap_b, "values", {})) == 0
+            if not (empty_a and empty_b):
+                real = snap_b.diff(snap_a)
+                return _coerce_real_diff(real)
         except (AttributeError, TypeError, ValueError):
             # If the real Snapshot is present but its ``from_json`` or
             # ``diff`` does not match the expected interface, fall back

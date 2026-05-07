@@ -46,6 +46,51 @@ __all__ = [
 ]
 
 
+def _reexport_public_api() -> None:
+    """Pull every sibling unit's public surface into this package namespace.
+
+    Sibling tests and downstream users import names directly from
+    ``peakrdl_pybind11.runtime``; auto-discovery alone loads modules but
+    does not re-export their symbols. Each unit owns its public list, so
+    we walk the loaded submodules and copy their ``__all__`` entries up.
+    """
+    import sys
+
+    pkg = sys.modules[__name__]
+    # Names defined in the canonical seam (``_registry``) always win. Any
+    # sibling module that shadowed them was a pre-merge stub or a sibling
+    # function that should be imported from its module path explicitly
+    # rather than via the runtime package re-export.
+    canonical = {n for n in vars(_registry) if not n.startswith("_")} | {
+        "FieldValue", "RegisterValue", "_registry",
+    }
+    for info in pkgutil.iter_modules(__path__):  # type: ignore[name-defined]
+        if info.name.startswith("_"):
+            continue
+        full = f"{__name__}.{info.name}"
+        mod = sys.modules.get(full)
+        if mod is None:
+            continue
+        names = getattr(mod, "__all__", None)
+        if names is None:
+            # Fall back: every public, module-defined class/function. Modules
+            # that omitted ``__all__`` (snapshot, info, routing, bits) still
+            # need to surface their public types to ``peakrdl_pybind11.runtime``.
+            names = [
+                n for n, v in vars(mod).items()
+                if not n.startswith("_")
+                and getattr(v, "__module__", None) == full
+            ]
+        for name in names:
+            if name.startswith("_") or name in __all__ or name in canonical:
+                continue
+            value = getattr(mod, name, None)
+            if value is None:
+                continue
+            setattr(pkg, name, value)
+            __all__.append(name)
+
+
 def _auto_import_modules() -> None:
     """Import every submodule under this package.
 
@@ -75,3 +120,4 @@ def _auto_import_modules() -> None:
 
 
 _auto_import_modules()
+_reexport_public_api()

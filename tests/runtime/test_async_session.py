@@ -29,7 +29,7 @@ import pytest
 
 from peakrdl_pybind11.runtime.async_session import (
     AsyncSession,
-    register_post_create,
+    attach_async_session,
 )
 
 
@@ -103,7 +103,7 @@ class _FakeSoc:
 
 @pytest.fixture
 def soc() -> _FakeSoc:
-    return register_post_create(_FakeSoc())
+    return attach_async_session(_FakeSoc())
 
 
 # ---------------------------------------------------------------------------
@@ -125,8 +125,8 @@ class TestRegisterPostCreate:
 
     def test_re_register_is_idempotent(self, soc: _FakeSoc) -> None:
         # Re-binding shouldn't break or pile up state.
-        register_post_create(soc)
-        register_post_create(soc)
+        attach_async_session(soc)
+        attach_async_session(soc)
         assert callable(soc.async_session)  # type: ignore[attr-defined]
 
 
@@ -231,7 +231,7 @@ class TestConcurrency:
         # With four workers and a blocking sync sleep, two awaits should
         # finish in roughly half the wall clock of running them serially.
         # Relax the bound generously to keep CI happy.
-        soc = register_post_create(_FakeSoc())
+        soc = attach_async_session(_FakeSoc())
         soc.uart.control = _FakeReg("uart.control", value=1, work_seconds=0.1)  # type: ignore[attr-defined]
         soc.uart.status = _FakeReg("uart.status", value=2, work_seconds=0.1)  # type: ignore[attr-defined]
 

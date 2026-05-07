@@ -422,12 +422,13 @@ def _enhance_register(cls: type, _metadata: dict[str, Any]) -> None:
 
 
 @register_field_enhancement
-def _enhance_field(cls: type, _metadata: dict[str, Any]) -> None:
+def _enhance_field(cls: type, _metadata: dict[str, Any] | None = None) -> None:
     """Attach the polling toolkit to a generated Field class.
 
-    Predicate-style ``wait_until`` is exposed here too: tests routinely
-    write ``field.wait_until(lambda v: v > 16)`` and the implementation
-    handles it identically to register-scoped predicates.
+    The canonical :class:`FieldEnhancement` seam fires with one positional
+    arg (the class). The optional ``_metadata`` keeps a 2-arg test-call
+    interface working too, since several units' tests call this helper
+    directly with metadata.
     """
 
     _attach_poll_methods(cls)

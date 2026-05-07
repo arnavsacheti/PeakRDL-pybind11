@@ -1,20 +1,34 @@
 """
-PeakRDL-pybind11 typed exception hierarchy.
+PeakRDL-pybind11 typed exception hierarchy — top-level shim.
 
-This module is the canonical home for the library's typed errors. It is a
-sibling-coordinated seam: other Units (Unit 2 in particular) extend this file
-with the rest of the error taxonomy (``AccessError``, ``BusError``,
-``RoutingError``, etc.). Unit 9 only needs ``WaitTimeoutError``.
+The canonical taxonomy now lives in :mod:`peakrdl_pybind11.runtime.errors`
+(landed via the API-overhaul Unit 2). This module re-exports those classes
+at the top-level path that early sibling units (notably Unit 9 wait-poll)
+were already importing from, so existing code keeps working.
 
-Every exception this library raises shares two properties:
+Two extras live here that are not in the runtime taxonomy:
 
-* The message embeds the **path** of the offending node.
-* Stack traces are short. ``__traceback_hide__`` is honored where applicable.
+* :class:`PeakRDLError` — a non-conflicting common base for the library's
+  typed errors. ``isinstance(e, PeakRDLError)`` lets users catch every
+  PeakRDL-pybind11 exception with a single clause.
+* :class:`WaitTimeoutError` — same shape as the runtime version but
+  inheriting from :class:`PeakRDLError` *and* :class:`TimeoutError` so
+  it sits in both hierarchies.
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+# Re-export the full taxonomy from the canonical home.
+from .runtime.errors import (
+    AccessError,
+    BusError,
+    NotSupportedError,
+    RoutingError,
+    SideEffectError,
+    StaleHandleError,
+)
 
 
 class PeakRDLError(Exception):
@@ -29,25 +43,11 @@ class PeakRDLError(Exception):
 class WaitTimeoutError(PeakRDLError, TimeoutError):
     """Raised when a polling wait does not converge before its deadline.
 
-    Attributes
-    ----------
-    path
-        The descriptor path of the node being polled (e.g.
-        ``"soc.uart.status.tx_ready"``). Always present.
-    expected
-        The value, predicate, or description of the condition the wait was
-        looking for. ``None`` when the predicate cannot be summarised.
-    last_seen
-        The most recent value read from the node before the deadline. May be
-        ``None`` if no successful read happened.
-    samples
-        Ordered list of every sample observed during the wait, *only* when
-        the wait was started with ``capture=True``. ``None`` otherwise (the
-        default) so tight polling loops do not pay the memory cost.
-    timeout
-        The deadline in seconds that was exceeded.
-    polls
-        Number of bus reads that were issued before the deadline elapsed.
+    Distinct from :class:`peakrdl_pybind11.runtime.errors.WaitTimeoutError`
+    (which has a different positional-argument signature inherited from
+    Unit 2's error taxonomy). Both classes inherit from :class:`TimeoutError`
+    so a single ``except TimeoutError`` clause catches either; users who
+    want to catch every PeakRDL-pybind11 error use :class:`PeakRDLError`.
     """
 
     def __init__(
@@ -75,3 +75,15 @@ class WaitTimeoutError(PeakRDLError, TimeoutError):
             if polls is not None:
                 message += f" after {polls} reads"
         super().__init__(message)
+
+
+__all__ = [
+    "AccessError",
+    "BusError",
+    "NotSupportedError",
+    "PeakRDLError",
+    "RoutingError",
+    "SideEffectError",
+    "StaleHandleError",
+    "WaitTimeoutError",
+]

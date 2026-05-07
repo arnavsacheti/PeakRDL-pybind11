@@ -19,7 +19,7 @@ Design notes
 * Executor ownership is tracked: a session that *creates* its executor
   shuts it down on ``__aexit__``; one that *received* an executor leaves
   it alone (the caller's lifecycle wins).
-* ``register_post_create(soc, ...)`` is the seam Unit 1 uses to install
+* ``attach_async_session(soc, ...)`` is the seam Unit 1 uses to install
   the feature on every generated SoC. Calling it binds
   ``soc.async_session`` to a zero-argument callable returning a fresh
   :class:`AsyncSession`. Idempotent.
@@ -40,7 +40,7 @@ from typing import Any
 
 __all__ = [
     "AsyncSession",
-    "register_post_create",
+    "attach_async_session",
 ]
 
 
@@ -346,7 +346,7 @@ def _is_node_like(value: object) -> bool:
 # Wiring helper (the seam used by Unit 1's ``_registry``)
 # ---------------------------------------------------------------------------
 #
-# The runtime registry (sibling Unit 1) calls ``register_post_create`` on
+# The runtime registry (sibling Unit 1) calls ``attach_async_session`` on
 # every generated SoC during construction. This module's contribution is
 # a single attribute: ``soc.async_session`` -- a zero-argument callable
 # that returns a fresh :class:`AsyncSession`. Sessions are short-lived
@@ -358,7 +358,7 @@ def _is_node_like(value: object) -> bool:
 # 1 has not yet landed.
 
 
-def register_post_create(soc: object) -> object:
+def attach_async_session(soc: object) -> object:
     """Attach :class:`AsyncSession` factory to ``soc.async_session``.
 
     Sets ``soc.async_session`` to a zero-argument callable that returns a

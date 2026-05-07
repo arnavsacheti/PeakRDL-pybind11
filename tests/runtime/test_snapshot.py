@@ -22,7 +22,7 @@ from peakrdl_pybind11.runtime import (
     SideEffectError,
     Snapshot,
     SnapshotDiff,
-    register_post_create,
+    attach_snapshot,
 )
 
 
@@ -99,7 +99,7 @@ def _make_soc() -> _Soc:
     soc = _Soc()
     soc.add(_Reg("uart.control", value=0x22, access="rw", address=0x4000_1000))
     soc.add(_Reg("uart.data", value=0x55, access="rw", address=0x4000_1004))
-    register_post_create(soc)
+    attach_snapshot(soc)
     return soc
 
 
@@ -216,7 +216,7 @@ class TestWhereFilter:
         soc.add(_Reg("uart.control", value=1, access="rw"))
         soc.add(_Reg("uart.data", value=2, access="rw"))
         soc.add(_Reg("gpio.dir", value=3, access="rw"))
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         snap = soc.snapshot(where="uart.*")
         assert sorted(snap.paths) == ["uart.control", "uart.data"]
@@ -226,7 +226,7 @@ class TestWhereFilter:
         soc = _Soc()
         soc.add(_Reg("uart.control", value=1, access="rw"))
         soc.add(_Reg("gpio.dir", value=3, access="rw"))
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         snap = soc.snapshot(where=lambda p: p.startswith("gpio."))
         assert snap.paths == ["gpio.dir"]
@@ -250,7 +250,7 @@ class TestSideEffectSafety:
                 peekable=False,
             )
         )
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         with pytest.raises(SideEffectError):
             soc.snapshot()
@@ -265,7 +265,7 @@ class TestSideEffectSafety:
             peekable=False,
         )
         soc.add(node)
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         snap = soc.snapshot(allow_destructive=True)
         assert snap["uart.intr_status"] == 0xF
@@ -284,7 +284,7 @@ class TestSideEffectSafety:
             peekable=True,
         )
         soc.add(node)
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         snap = soc.snapshot()
         assert snap["uart.intr_status"] == 0xF
@@ -345,7 +345,7 @@ class TestRestore:
         ro = _Reg("uart.status", value=0xFF, access="ro")
         soc.add(rw)
         soc.add(ro)
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         snap = soc.snapshot()
         # Mutate everything.
@@ -368,7 +368,7 @@ class TestRestore:
         soc.add(_Reg("uart.control", value=0x11, access="rw"))
         soc.add(_Reg("uart.data", value=0x22, access="rw"))
         soc.add(_Reg("gpio.dir", value=0x33, access="rw"))
-        register_post_create(soc)
+        attach_snapshot(soc)
 
         full = soc.snapshot()
         uart_view = full.uart  # subtree: keys are "control", "data"

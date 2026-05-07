@@ -1031,15 +1031,21 @@ def attach_widgets(cls: type) -> None:
 
 
 @register_register_enhancement
-def _attach_to_class(cls: type) -> None:
+def _attach_to_class(cls: type, metadata: dict | None = None) -> None:  # noqa: ARG001 - metadata required by seam signature
     """Hook executed by Unit 1 for every Reg/Field/Mem/RegFile/AddrMap class."""
     attach_widgets(cls)
 
 
 @register_master_extension
-def _attach_to_soc(cls: type) -> None:
-    """Hook executed by Unit 1 for every top-level SoC class."""
-    attach_widgets(cls)
+def _attach_to_soc(master: object) -> None:
+    """Hook executed by Unit 1 when a master attaches to a SoC.
+
+    Widgets are attached to the master's enclosing class so the
+    rich-display surface is available wherever the master object lives.
+    """
+    target = type(master)
+    if isinstance(target, type):
+        attach_widgets(target)
 
 
 __all__ = [
