@@ -30,7 +30,21 @@ extensions = [
 ]
 
 templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+
+# RST-only setup. We intentionally do NOT enable myst_parser; the design
+# sketch is exposed via a `:download:` link in index.rst rather than rendered
+# inline. Keep ``IDEAL_API_SKETCH.md`` out of source discovery so Sphinx does
+# not warn about an orphaned non-RST document.
+#
+# The ``concepts/*`` toctree entries in ``index.rst`` are populated by
+# sibling documentation work units. Until those land, Sphinx will warn about
+# missing documents -- that is expected and acceptable.
+exclude_patterns = [
+    '_build',
+    'Thumbs.db',
+    '.DS_Store',
+    'IDEAL_API_SKETCH.md',
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
