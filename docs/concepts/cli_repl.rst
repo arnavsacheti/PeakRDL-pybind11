@@ -80,6 +80,64 @@ Tab-completion is exhaustive: every node, every field, and every
 generated enum member appears in completion lists, with the type
 information drawn from the generated ``.pyi`` stubs.
 
+Async session
+-------------
+
+Generated SoCs expose an async dual surface via
+``soc.async_session()``. Use it as an async context manager whenever
+the calling code already lives on an event loop (a notebook with
+``%autoawait``, a ``pytest-asyncio`` test, an ``aiohttp`` handler):
+
+.. code-block:: python
+
+   async with soc.async_session() as s:
+       v = await s.uart.control.aread()
+       await s.uart.control.awrite(0x42)
+
+Every node mirrored under ``s`` exposes ``aread`` / ``awrite`` /
+``amodify`` / ``aiowait`` async methods that forward to their sync
+counterparts. The mirror is lazy — only the path you touch becomes a
+proxy — so a 10k-node design pays nothing for unused subtrees.
+
+.. note::
+
+   **There is no native async transport yet.** The dual surface is a
+   thin wrapper that dispatches each call to a
+   ``concurrent.futures.ThreadPoolExecutor`` (default: a single
+   worker) via ``loop.run_in_executor``. Concurrency is therefore
+   bounded by the executor's worker count, and the underlying bus op
+   still blocks the worker thread for its full duration. Callers who
+   need to issue real concurrent transactions pass their own
+   wider-pool executor:
+
+   .. code-block:: python
+
+      from concurrent.futures import ThreadPoolExecutor
+
+      pool = ThreadPoolExecutor(max_workers=4)
+      async with soc.async_session(executor=pool) as s:
+          ...
+      # caller owns `pool`; AsyncSession does not shut it down
+
+The session **owns** its default executor: on ``__aexit__`` the
+shutdown is dispatched off the event loop (so an in-flight bus op
+finishes cleanly without stalling the loop) and the executor is
+disposed. A caller-supplied executor is left untouched — the lifecycle
+belongs to whoever passed it in.
+
+Async forwarder closures are cached per ``(node, async-name)``. A
+tight ``await`` loop such as::
+
+   async with soc.async_session() as s:
+       reg = s.uart.status
+       while not (await reg.aread()).ready:
+           await asyncio.sleep(0)
+
+re-uses the same forwarder closure on every iteration rather than
+rebuilding it on each attribute access. This matters in poll-heavy
+tests where the cost of allocating a fresh closure per cycle would
+otherwise dominate.
+
 Hot reload semantics
 --------------------
 
@@ -109,6 +167,13 @@ On reload, the runtime:
    a consequence of reloading the module. Live registers stay
    exactly where they were before the reload.
 
+To re-emphasize: ``soc.reload()`` re-imports the generated module and
+rebinds the master to the freshly built tree. The hardware bus is not
+touched. Outstanding ``RegisterValue`` and ``Snapshot`` instances raise
+``StaleHandleError`` on use after a reload — see
+:doc:`/concepts/errors` for the exception's place in the hierarchy and
+the recommended catch points.
+
 For users who would rather crash than warn, the reload policy is a
 single configuration knob:
 
@@ -120,6 +185,40 @@ single configuration knob:
 The default policy is ``"warn"`` (emit a warning, invalidate, swap).
 ``"fail"`` raises a ``ReloadAbortedError`` and leaves the existing
 tree in place. Either way, the bus is untouched.
+
+The ``peakrdl.reload.policy`` value is read **at the moment**
+``soc.reload()`` runs, not at module import time. Flipping it from
+``"warn"`` to ``"fail"`` (or back) mid-session takes effect on the
+next call — a notebook can therefore tighten the policy before a
+risky reload and relax it afterwards without restarting the kernel.
+
+Detecting a reload from user code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Long-running test fixtures and notebook helpers occasionally need to
+notice that a reload happened so they can re-fetch handles. Two public
+helpers in :mod:`peakrdl_pybind11.runtime.hot_reload` make this
+explicit rather than implicit:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.hot_reload import (
+       current_generation,
+       check_generation,
+   )
+
+   gen = current_generation()
+   ...
+   # Later, before touching cached handles:
+   check_generation(gen)        # raises StaleHandleError if reloaded
+
+``current_generation()`` returns the monotonic counter that
+``soc.reload()`` bumps on every successful swap. ``check_generation()``
+accepts a previously captured value and raises ``StaleHandleError``
+when it no longer matches — the same exception ``RegisterValue`` and
+``Snapshot`` raise internally. Fixtures that build up cached handles
+across multiple test invocations capture the generation at setup and
+verify it before every use.
 
 The ``--watch`` subcommand additionally requires the optional
 ``watchdog`` package to drive the filesystem-change observer. Install
@@ -171,5 +270,7 @@ See also
 - :doc:`/concepts/widgets` — ``watch()`` is the in-notebook
   counterpart to ``--explore``: a live monitor on a single register
   or snapshot.
+- :doc:`/concepts/errors` — ``StaleHandleError`` and its place in the
+  exception hierarchy, raised after ``soc.reload()``.
 - :doc:`/installation` — the optional ``watchdog`` extras required by
   ``--watch``.
