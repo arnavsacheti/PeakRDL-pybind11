@@ -38,6 +38,7 @@ docs = [
 benchmark = ["pytest >= 7.4.4", "pytest-benchmark >= 5.1.0", "build >= 1.0.0"]
 test = [
     "hypothesis>=6.151.9",
+    "peakrdl-cli>=1.2.3",
     "pytest >= 7.4.4",
     "pytest-cov >= 4.1.0",
 ]

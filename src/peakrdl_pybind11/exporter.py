@@ -197,6 +197,7 @@ class Pybind11Exporter:
         gen_pyi: bool = True,
         split_bindings: int = 100,
         split_by_hierarchy: bool = False,
+        interrupt_pattern: object | None = None,
     ) -> None:
         """
         Export SystemRDL to PyBind11 modules
@@ -213,6 +214,9 @@ class Pybind11Exporter:
             split_by_hierarchy: When True, split bindings by addrmap/regfile hierarchy instead of
                                by register count. This keeps related registers together and provides
                                more logical grouping. Default: False
+            interrupt_pattern: Optional override for the interrupt-state-register matcher used by
+                               the feature_detection exporter plugin. Accepts a regex string,
+                               compiled ``re.Pattern``, or a callable ``(name: str) -> bool``.
         """
         self.top_node = top_node.top if isinstance(top_node, RootNode) else top_node
         self.output_dir = Path(output_dir)
@@ -220,6 +224,7 @@ class Pybind11Exporter:
         self.soc_version = soc_version
         self.split_bindings = split_bindings
         self.split_by_hierarchy = split_by_hierarchy
+        self.interrupt_pattern = interrupt_pattern
 
         # Sanitize soc_name for use as identifier
         self.soc_name = self._sanitize_identifier(self.soc_name)
@@ -246,6 +251,33 @@ class Pybind11Exporter:
         # Generate .pyi stub files if requested
         if gen_pyi:
             self._generate_pyi_stubs(nodes)
+
+        # Run post-export plugins (interrupt detection, schema, etc.).
+        # Plugins are best-effort: a plugin failure must not stop the
+        # main exporter from declaring success.
+        self._run_post_export_plugins(nodes)
+
+    def _run_post_export_plugins(self, nodes: "Nodes") -> None:
+        from .exporter_plugins import PluginContext, run_post_export
+
+        assert self.top_node is not None
+        assert self.output_dir is not None
+        assert self.soc_name is not None
+
+        ctx = PluginContext(
+            exporter=self,
+            top_node=self.top_node,
+            output_dir=self.output_dir,
+            soc_name=self.soc_name,
+            nodes=nodes,
+            options={"interrupt_pattern": self.interrupt_pattern},
+        )
+        try:
+            run_post_export(ctx)
+        except Exception:  # pragma: no cover - defensive
+            import logging
+
+            logging.getLogger(__name__).exception("post_export plugin failed")
 
     def _sanitize_identifier(self, name: str) -> str:
         """Sanitize a name to be a valid Python/C++ identifier.
