@@ -107,6 +107,18 @@ class Exporter(ExporterSubcommandPlugin):
                 "with clear hierarchical structure."
             ),
         )
+        arg_group.add_argument(
+            "--interrupt-pattern",
+            dest="interrupt_pattern",
+            metavar="REGEX",
+            default=None,
+            help=(
+                "Override the regex used by the feature_detection plugin to identify "
+                "interrupt state registers (default matches INTR_STATE / intr_status / "
+                "*_INT_STATUS). The pattern is matched against the register's inst_name "
+                "with re.fullmatch."
+            ),
+        )
 
     def do_export(self, top_node: "AddrmapNode", options: "argparse.Namespace") -> None:
         """Execute the export"""
@@ -121,6 +133,7 @@ class Exporter(ExporterSubcommandPlugin):
         gen_pyi = getattr(options, "gen_pyi", True)
         split_bindings = getattr(options, "split_bindings", 100)
         split_by_hierarchy = getattr(options, "split_by_hierarchy", False)
+        interrupt_pattern = getattr(options, "interrupt_pattern", None)
 
         exporter.export(
             top_node,
@@ -130,4 +143,5 @@ class Exporter(ExporterSubcommandPlugin):
             gen_pyi=gen_pyi,
             split_bindings=split_bindings,
             split_by_hierarchy=split_by_hierarchy,
+            interrupt_pattern=interrupt_pattern,
         )
