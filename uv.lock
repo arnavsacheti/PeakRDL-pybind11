@@ -834,6 +834,7 @@ docs = [
 ]
 test = [
     { name = "hypothesis" },
+    { name = "peakrdl-cli" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -865,6 +866,7 @@ docs = [
 ]
 test = [
     { name = "hypothesis", specifier = ">=6.151.9" },
+    { name = "peakrdl-cli", specifier = ">=1.2.3" },
     { name = "pytest", specifier = ">=7.4.4" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
 ]
