@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .exporter import Pybind11Exporter
     from .int_types import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
+    from .runtime.transactions import Burst, Read, Write
 
 try:
     __version__ = version("peakrdl-pybind11")
@@ -18,7 +19,16 @@ except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
 
-__all__ = ["FieldInt", "Pybind11Exporter", "RegisterInt", "RegisterIntEnum", "RegisterIntFlag"]
+__all__ = [
+    "Burst",
+    "FieldInt",
+    "Pybind11Exporter",
+    "Read",
+    "RegisterInt",
+    "RegisterIntEnum",
+    "RegisterIntFlag",
+    "Write",
+]
 
 
 def __getattr__(name: str) -> type:
@@ -42,4 +52,8 @@ def __getattr__(name: str) -> type:
         from .int_types import FieldInt
 
         return FieldInt
+    if name in ("Read", "Write", "Burst"):
+        from .runtime.transactions import Burst, Read, Write
+
+        return {"Read": Read, "Write": Write, "Burst": Burst}[name]
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
