@@ -362,6 +362,27 @@ class TestRestore:
         assert ro._value == 0  # not restored
         assert ro.write_count == 0
 
+    def test_restore_from_subtree_snapshot(self) -> None:
+        """Restoring a prefix-stripped subtree view still hits absolute paths."""
+        soc = _Soc()
+        soc.add(_Reg("uart.control", value=0x11, access="rw"))
+        soc.add(_Reg("uart.data", value=0x22, access="rw"))
+        soc.add(_Reg("gpio.dir", value=0x33, access="rw"))
+        register_post_create(soc)
+
+        full = soc.snapshot()
+        uart_view = full.uart  # subtree: keys are "control", "data"
+        assert sorted(uart_view.paths) == ["control", "data"]
+
+        # Mutate hardware so restore has work to do.
+        for node in soc.walk():
+            node._value = 0xDEAD
+
+        intended = soc.restore(uart_view, dry_run=True)
+        paths = {p for p, _ in intended}
+        # Only uart.* paths come back, with their absolute names preserved.
+        assert paths == {"uart.control", "uart.data"}
+
 
 # ---------------------------------------------------------------------------
 # Serialization

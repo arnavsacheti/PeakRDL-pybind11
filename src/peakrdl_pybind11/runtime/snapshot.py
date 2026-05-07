@@ -609,15 +609,22 @@ def restore(
         if path is not None:
             nodes_by_path[path] = node
 
+    # Resolve subtree-view paths back to absolute soc paths before lookup.
+    # Snapshot.values strips the prefix, so a `snap.uart` subtree restored
+    # against the parent soc still routes to "uart.control" etc.
+    prefix = getattr(snap, "_prefix", "")
+    prefix_dot = f"{prefix}." if prefix else ""
+
     for path, value in snap.values.items():
-        node = nodes_by_path.get(path)
+        absolute = prefix_dot + path
+        node = nodes_by_path.get(absolute)
         if node is None:
             # Path was captured from a different tree shape — skip silently.
             continue
         info = getattr(node, "info", None)
         if info is None or not _can_write(info):
             continue
-        intended.append((path, value))
+        intended.append((absolute, value))
         if not dry_run:
             write = getattr(node, "write", None)
             if callable(write):
