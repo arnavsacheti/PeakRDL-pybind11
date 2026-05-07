@@ -17,7 +17,6 @@ else:
         ExporterSubcommandPlugin = object  # type: ignore[misc]
 
 from . import cli as _cli
-from .cli.strict_fields import is_strict_from_options as _is_strict_from_options
 from .exporter import _KNOWN_UDPS, Pybind11Exporter
 
 

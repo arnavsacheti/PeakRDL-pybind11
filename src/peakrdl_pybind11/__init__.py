@@ -27,13 +27,16 @@ except PackageNotFoundError:
 
 
 __all__ = [
+    "Burst",
     "FieldInt",
     "FieldValue",
     "Pybind11Exporter",
+    "Read",
     "RegisterInt",
     "RegisterIntEnum",
     "RegisterIntFlag",
     "RegisterValue",
+    "Write",
 ]
 
 

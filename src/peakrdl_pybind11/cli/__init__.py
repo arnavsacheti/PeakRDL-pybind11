@@ -78,9 +78,7 @@ def discover_subcommands(arg_group: argparse._ActionsContainer) -> None:
         try:
             add_arguments(arg_group)
         except Exception:
-            logger.warning(
-                "CLI module %r add_arguments() raised", module.__name__, exc_info=True
-            )
+            logger.warning("CLI module %r add_arguments() raised", module.__name__, exc_info=True)
 
 
 def try_handle(options: argparse.Namespace) -> bool:

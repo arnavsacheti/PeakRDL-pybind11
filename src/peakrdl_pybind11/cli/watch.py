@@ -66,7 +66,7 @@ def import_watchdog() -> ModuleType:
     return watchdog
 
 
-def _build_handler(rdl_path: Path, on_change: Callable[[], None]) -> Any:  # noqa: ANN401
+def _build_handler(rdl_path: Path, on_change: Callable[[], None]) -> Any:
     """Construct a watchdog FileSystemEventHandler routed to ``on_change``.
 
     Returns ``Any`` because the handler subclass is defined locally
@@ -110,7 +110,7 @@ def _default_on_change(rdl_path: Path) -> Callable[[], None]:
     return callback
 
 
-def _live_soc() -> Any | None:  # noqa: ANN401
+def _live_soc() -> Any | None:
     """Best-effort lookup of a live SoC instance.
 
     Unit 16 will publish the most recently created SoC on the runtime
@@ -143,9 +143,7 @@ def handle(options: argparse.Namespace) -> bool:
     observer = Observer()
     observer.schedule(handler, str(rdl_path.parent.resolve()), recursive=False)
     observer.start()
-    sys.stdout.write(
-        f"watch: observing {rdl_path} (Ctrl-C to stop)\n"
-    )
+    sys.stdout.write(f"watch: observing {rdl_path} (Ctrl-C to stop)\n")
     sys.stdout.flush()
     try:
         observer.join()

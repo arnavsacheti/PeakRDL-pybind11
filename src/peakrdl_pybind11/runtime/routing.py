@@ -130,8 +130,7 @@ class _Range:
     def __post_init__(self) -> None:
         if self.end <= self.start:
             raise ValueError(
-                f"range end (0x{self.end:x}) must be strictly greater than "
-                f"start (0x{self.start:x})"
+                f"range end (0x{self.end:x}) must be strictly greater than start (0x{self.start:x})"
             )
 
     def contains(self, addr: int) -> bool:
@@ -149,11 +148,7 @@ def _glob_specificity(pattern: str) -> int:
     between overlapping globs — more literal segments beats fewer.
     """
 
-    return sum(
-        1
-        for seg in pattern.split(".")
-        if seg and not any(c in seg for c in "*?[")
-    )
+    return sum(1 for seg in pattern.split(".") if seg and not any(c in seg for c in "*?["))
 
 
 @dataclass
@@ -241,9 +236,7 @@ class Router:
             self._attach_rule(default_master, where=None)
 
     def __repr__(self) -> str:
-        rules = ", ".join(
-            f"{r.where!r}->{type(r.master).__name__}" for r in self._rules
-        )
+        rules = ", ".join(f"{r.where!r}->{type(r.master).__name__}" for r in self._rules)
         return f"Router({rules})"
 
     # ------------------------------------------------------------------
@@ -483,8 +476,7 @@ def attach_master(
             soc.master = router  # type: ignore[attr-defined]
         except AttributeError as exc:
             raise TypeError(
-                f"cannot install Router on {type(soc).__name__}: "
-                f"'master' attribute is not assignable"
+                f"cannot install Router on {type(soc).__name__}: 'master' attribute is not assignable"
             ) from exc
 
     router.attach_master(master, where=where, soc=soc)

@@ -54,8 +54,8 @@ __all__ = [
     "Event",
     "ObserverChain",
     "ObserverScope",
-    "register_master_extension",
     "attach_observers",
+    "register_master_extension",
 ]
 
 
@@ -134,9 +134,7 @@ def _coerce_predicate(where: Where) -> Predicate | None:
     if isinstance(where, str):
         pattern = where
         return lambda evt: fnmatch.fnmatchcase(evt.path, pattern)
-    raise TypeError(
-        f"where= must be a glob string, a callable, or None; got {type(where).__name__}"
-    )
+    raise TypeError(f"where= must be a glob string, a callable, or None; got {type(where).__name__}")
 
 
 def _remove_first(hooks: list[_Subscription], fn: Hook) -> bool:

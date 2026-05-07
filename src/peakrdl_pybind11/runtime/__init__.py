@@ -62,7 +62,9 @@ def _reexport_public_api() -> None:
     # function that should be imported from its module path explicitly
     # rather than via the runtime package re-export.
     canonical = {n for n in vars(_registry) if not n.startswith("_")} | {
-        "FieldValue", "RegisterValue", "_registry",
+        "FieldValue",
+        "RegisterValue",
+        "_registry",
     }
     for info in pkgutil.iter_modules(__path__):  # type: ignore[name-defined]
         if info.name.startswith("_"):
@@ -77,9 +79,9 @@ def _reexport_public_api() -> None:
             # that omitted ``__all__`` (snapshot, info, routing, bits) still
             # need to surface their public types to ``peakrdl_pybind11.runtime``.
             names = [
-                n for n, v in vars(mod).items()
-                if not n.startswith("_")
-                and getattr(v, "__module__", None) == full
+                n
+                for n, v in vars(mod).items()
+                if not n.startswith("_") and getattr(v, "__module__", None) == full
             ]
         for name in names:
             if name.startswith("_") or name in __all__ or name in canonical:

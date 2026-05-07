@@ -24,7 +24,6 @@ Unit 12 (``InterruptGroup``) land.
 # Renderers operate on duck-typed nodes from generated SoC modules, user
 # subclasses, and test fakes -- no shared base class exists. ``Any`` is
 # the only honest input annotation here.
-# ruff: noqa: ANN401
 
 from __future__ import annotations
 
@@ -72,20 +71,20 @@ except ImportError:  # pragma: no cover - fallback for unit isolation
 # viewer expect; both strip <style> blocks aggressively.
 # ---------------------------------------------------------------------------
 _ACCESS_COLORS: dict[str, str] = {
-    "rw": "#1565c0",   # blue
-    "ro": "#616161",   # grey
-    "wo": "#ef6c00",   # orange
-    "na": "#c62828",   # red
+    "rw": "#1565c0",  # blue
+    "ro": "#616161",  # grey
+    "wo": "#ef6c00",  # orange
+    "na": "#c62828",  # red
     "rwl": "#1565c0",
     "r": "#616161",
     "w": "#ef6c00",
 }
 
 _ANSI_ACCESS_COLORS: dict[str, str] = {
-    "rw": "\x1b[34m",      # blue
-    "ro": "\x1b[37m",      # grey/white
-    "wo": "\x1b[33m",      # orange/yellow
-    "na": "\x1b[31m",      # red
+    "rw": "\x1b[34m",  # blue
+    "ro": "\x1b[37m",  # grey/white
+    "wo": "\x1b[33m",  # orange/yellow
+    "na": "\x1b[31m",  # red
     "rwl": "\x1b[34m",
     "r": "\x1b[37m",
     "w": "\x1b[33m",
@@ -93,14 +92,9 @@ _ANSI_ACCESS_COLORS: dict[str, str] = {
 _ANSI_RESET = "\x1b[0m"
 _ANSI_STRIKE = "\x1b[9m"
 
-_TABLE_STYLE = (
-    "border-collapse: collapse; font-family: monospace; "
-    "font-size: 0.85em; margin: 0.25em 0;"
-)
+_TABLE_STYLE = "border-collapse: collapse; font-family: monospace; font-size: 0.85em; margin: 0.25em 0;"
 _CELL_STYLE = "border: 1px solid #d0d0d0; padding: 2px 6px; text-align: left;"
-_HEADER_CELL_STYLE = (
-    f"{_CELL_STYLE} background: #f5f5f5; font-weight: bold;"
-)
+_HEADER_CELL_STYLE = f"{_CELL_STYLE} background: #f5f5f5; font-weight: bold;"
 
 
 def _esc(text: Any) -> str:
@@ -439,18 +433,12 @@ def _render_register_html(reg: Any) -> str:
     fields = _list_fields(reg)
     addr = _node_address(reg)
     access = _node_access(reg)
-    title = (
-        f"<b>{_esc(_node_path(reg))}</b> @ {_esc(_format_address(addr))} "
-        f"{_access_html(access)}"
-    )
-    header_cells = "".join(
-        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in _FIELD_HEADERS
-    )
+    title = f"<b>{_esc(_node_path(reg))}</b> @ {_esc(_format_address(addr))} {_access_html(access)}"
+    header_cells = "".join(f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in _FIELD_HEADERS)
     rows = [_render_field_row_html(f) for f in fields]
     if not rows:
         rows.append(
-            f'<tr><td colspan="{len(_FIELD_HEADERS)}" style="{_CELL_STYLE}">'
-            "<em>no fields</em></td></tr>"
+            f'<tr><td colspan="{len(_FIELD_HEADERS)}" style="{_CELL_STYLE}"><em>no fields</em></td></tr>'
         )
     return (
         f"<div>{title}"
@@ -464,13 +452,9 @@ def _render_register_html(reg: Any) -> str:
 def _render_field_html(field: Any) -> str:
     """A field renders as a single-row table identical to its register row."""
     title = (
-        f"<b>{_esc(_node_path(field))}</b> "
-        f"{_esc(_field_bits(field))} "
-        f"{_access_html(_field_access(field))}"
+        f"<b>{_esc(_node_path(field))}</b> {_esc(_field_bits(field))} {_access_html(_field_access(field))}"
     )
-    header_cells = "".join(
-        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in _FIELD_HEADERS
-    )
+    header_cells = "".join(f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in _FIELD_HEADERS)
     return (
         f"<div>{title}"
         f'<table style="{_TABLE_STYLE}">'
@@ -550,19 +534,11 @@ def _render_memview_html(view: Any) -> str:
     try:
         data = _coerce_bytes(view)
     except TypeError as exc:
-        return (
-            "<div><b>MemView</b> "
-            f"<em>{_esc(exc)}</em></div>"
-        )
+        return f"<div><b>MemView</b> <em>{_esc(exc)}</em></div>"
 
-    title = (
-        f"<b>{_esc(_node_path(view))}</b> "
-        f"@ {_esc(_format_address(int(base)))} "
-        f"({len(data)} bytes)"
-    )
+    title = f"<b>{_esc(_node_path(view))}</b> @ {_esc(_format_address(int(base)))} ({len(data)} bytes)"
     header_cells = "".join(
-        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>'
-        for h in ("Address", "Hex", "ASCII")
+        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in ("Address", "Hex", "ASCII")
     )
     rows: list[str] = []
     for offset in range(0, len(data), 16):
@@ -580,9 +556,7 @@ def _render_memview_html(view: Any) -> str:
             "</tr>"
         )
     if not rows:
-        rows.append(
-            f'<tr><td colspan="3" style="{_CELL_STYLE}"><em>empty view</em></td></tr>'
-        )
+        rows.append(f'<tr><td colspan="3" style="{_CELL_STYLE}"><em>empty view</em></td></tr>')
     return (
         f"<div>{title}"
         f'<table style="{_TABLE_STYLE}">'
@@ -633,14 +607,10 @@ def _render_snapshotdiff_html(diff: Any) -> str:
     title = "<b>SnapshotDiff</b>"
     entries = _diff_entries(diff)
     header_cells = "".join(
-        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>'
-        for h in ("Path", "Before", "After")
+        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in ("Path", "Before", "After")
     )
     if not entries:
-        body = (
-            f'<tr><td colspan="3" style="{_CELL_STYLE}">'
-            "<em>no differences</em></td></tr>"
-        )
+        body = f'<tr><td colspan="3" style="{_CELL_STYLE}"><em>no differences</em></td></tr>'
     else:
         rows = []
         for path, before, after in entries:
@@ -720,8 +690,7 @@ def _render_interruptgroup_html(group: Any) -> str:
     title = f"<b>{_esc(_node_path(group))}</b> (interrupts)"
     sources = _irq_sources(group)
     header_cells = "".join(
-        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>'
-        for h in ("Source", *_IRQ_COLUMNS)
+        f'<th style="{_HEADER_CELL_STYLE}">{_esc(h)}</th>' for h in ("Source", *_IRQ_COLUMNS)
     )
     if not sources:
         body = (
@@ -731,18 +700,14 @@ def _render_interruptgroup_html(group: Any) -> str:
     else:
         rows = []
         for source in sources:
-            cells = [
-                f'<td style="{_CELL_STYLE}">{_esc(_node_path(source))}</td>'
-            ]
-            pending = (
-                _safe_call(getattr(source, "is_pending", None))
-                and _safe_call(getattr(source, "is_enabled", None))
+            cells = [f'<td style="{_CELL_STYLE}">{_esc(_node_path(source))}</td>']
+            pending = _safe_call(getattr(source, "is_pending", None)) and _safe_call(
+                getattr(source, "is_enabled", None)
             )
             highlight = "background: #ffe8b3;" if pending else ""
             for column in _IRQ_COLUMNS:
                 cells.append(
-                    f'<td style="{_CELL_STYLE} {highlight}">'
-                    f'{_esc(_irq_cell_value(source, column))}</td>'
+                    f'<td style="{_CELL_STYLE} {highlight}">{_esc(_irq_cell_value(source, column))}</td>'
                 )
             rows.append("<tr>" + "".join(cells) + "</tr>")
         body = "".join(rows)
@@ -825,8 +790,7 @@ def render_pretty(node: Any) -> str:
         lines = [header]
         for child in children:
             lines.append(
-                f"  {_format_address(_node_address(child))}  "
-                f"{_node_kind(child):<8} {_node_path(child)}"
+                f"  {_format_address(_node_address(child))}  {_node_kind(child):<8} {_node_path(child)}"
             )
         return "\n".join(lines)
     if kind == "mem":
@@ -975,9 +939,7 @@ def watch(
             is ``False``.
     """
     if ipywidgets is None:
-        raise NotSupportedError(
-            "install peakrdl-pybind11[notebook] for watch() (ipywidgets is required)"
-        )
+        raise NotSupportedError("install peakrdl-pybind11[notebook] for watch() (ipywidgets is required)")
 
     if not allow_destructive and _is_destructive(node):
         raise NotSupportedError(
@@ -1024,6 +986,7 @@ def attach_widgets(cls: type) -> None:
     cls._repr_pretty_ = _repr_pretty_  # type: ignore[attr-defined]
 
     if not hasattr(cls, "watch"):
+
         def _watch(self: Any, period: float = 0.1, **kwargs: Any) -> Watcher:
             return watch(self, period=period, **kwargs)
 
@@ -1031,7 +994,7 @@ def attach_widgets(cls: type) -> None:
 
 
 @register_register_enhancement
-def _attach_to_class(cls: type, metadata: dict | None = None) -> None:  # noqa: ARG001 - metadata required by seam signature
+def _attach_to_class(cls: type, metadata: dict | None = None) -> None:
     """Hook executed by Unit 1 for every Reg/Field/Mem/RegFile/AddrMap class."""
     attach_widgets(cls)
 

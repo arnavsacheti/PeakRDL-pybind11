@@ -90,9 +90,7 @@ class BitProxy:
         falsy value clears it. Costs one register read + one register write.
         """
         bit = 1 if value else 0
-        _rmw_field_slice(
-            self._field, start=self._index, length=1, bits=bit
-        )
+        _rmw_field_slice(self._field, start=self._index, length=1, bits=bit)
 
     def __bool__(self) -> bool:
         return self.read()
@@ -117,10 +115,7 @@ class BitsRangeProxy:
 
     def __init__(self, field: _FieldLike, start: int, stop: int) -> None:
         if stop < start:
-            raise ValueError(
-                f"bits[{start}:{stop}] has negative length on field "
-                f"{_field_name(field)!r}"
-            )
+            raise ValueError(f"bits[{start}:{stop}] has negative length on field {_field_name(field)!r}")
         self._field = field
         self._start = start
         self._stop = stop
@@ -146,9 +141,7 @@ class BitsRangeProxy:
         # Round up to bytes, unpack, then trim to the exact slice length.
         byte_count = (length + 7) // 8
         as_bytes = slice_value.to_bytes(byte_count, byteorder="little")
-        return np.unpackbits(
-            np.frombuffer(as_bytes, dtype=np.uint8), bitorder="little"
-        )[:length].astype(bool)
+        return np.unpackbits(np.frombuffer(as_bytes, dtype=np.uint8), bitorder="little")[:length].astype(bool)
 
     def write(self, value: BitsWriteValue) -> None:
         """RMW the covered slice on the parent register.
@@ -178,10 +171,7 @@ class BitsRangeProxy:
             yield bool(value)
 
     def __repr__(self) -> str:
-        return (
-            f"BitsRangeProxy(field={_field_name(self._field)!r}, "
-            f"start={self._start}, stop={self._stop})"
-        )
+        return f"BitsRangeProxy(field={_field_name(self._field)!r}, start={self._start}, stop={self._stop})"
 
 
 class BitsAccessor:
@@ -202,19 +192,13 @@ class BitsAccessor:
         if isinstance(key, slice):
             start, stop, step = key.indices(width)
             if step != 1:
-                raise ValueError(
-                    f"bits[{key.start}:{key.stop}:{key.step}] step must be 1"
-                )
+                raise ValueError(f"bits[{key.start}:{key.stop}:{key.step}] step must be 1")
             return BitsRangeProxy(self._field, start, stop)
         if isinstance(key, bool) or not isinstance(key, int):
-            raise TypeError(
-                f"bits index must be int or slice, got {type(key).__name__}"
-            )
+            raise TypeError(f"bits index must be int or slice, got {type(key).__name__}")
         index = key if key >= 0 else width + key
         if not 0 <= index < width:
-            raise IndexError(
-                f"bits[{key}] out of range for field width {width}"
-            )
+            raise IndexError(f"bits[{key}] out of range for field width {width}")
         return BitProxy(self._field, index)
 
     def __setitem__(self, key: int | slice, value: BitsWriteValue) -> None:
@@ -231,10 +215,7 @@ class BitsAccessor:
             yield BitProxy(self._field, i)
 
     def __repr__(self) -> str:
-        return (
-            f"BitsAccessor(field={_field_name(self._field)!r}, "
-            f"width={_field_width(self._field)})"
-        )
+        return f"BitsAccessor(field={_field_name(self._field)!r}, width={_field_width(self._field)})"
 
 
 # ---------------------------------------------------------------------------
@@ -277,9 +258,7 @@ register_field_enhancement(attach_bits_accessor)
 # ---------------------------------------------------------------------------
 
 
-def _rmw_field_slice(
-    field: _FieldLike, *, start: int, length: int, bits: int
-) -> int:
+def _rmw_field_slice(field: _FieldLike, *, start: int, length: int, bits: int) -> int:
     """Apply ``bits`` to ``field[start:start + length]`` via a register RMW.
 
     Returns the value that was written. The mask covers exactly the slice
@@ -348,9 +327,7 @@ def _lookup_width(obj: object) -> int | None:
 def _field_width(field: _FieldLike) -> int:
     width = _lookup_width(field)
     if width is None:
-        raise AttributeError(
-            f"field {_field_name(field)!r} has no width metadata"
-        )
+        raise AttributeError(f"field {_field_name(field)!r} has no width metadata")
     return width
 
 
@@ -369,10 +346,7 @@ def _bits_to_int(value: BitsWriteValue, length: int) -> int:
         return int(value) & ((1 << length) - 1)
     arr = np.asarray(value)
     if arr.ndim != 1 or arr.shape[0] != length:
-        raise ValueError(
-            f"bits write expected length-{length} array or int bitmask, "
-            f"got shape {arr.shape}"
-        )
+        raise ValueError(f"bits write expected length-{length} array or int bitmask, got shape {arr.shape}")
     # numpy.packbits gives us back the bit pattern as bytes; we then read
     # it out as a little-endian integer. Avoids a Python-level loop and
     # works for arbitrary slice widths (registers can be 64+ bits wide).

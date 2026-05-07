@@ -54,8 +54,8 @@ class WaitTimeoutError(PeakRDLError, TimeoutError):
         self,
         path: str,
         *,
-        expected: Any = None,
-        last_seen: Any = None,
+        expected: Any = None,  # noqa: ANN401 - register/field values are user-typed
+        last_seen: Any = None,  # noqa: ANN401 - register/field values are user-typed
         samples: list[Any] | None = None,
         timeout: float | None = None,
         polls: int | None = None,

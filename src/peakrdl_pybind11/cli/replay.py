@@ -90,9 +90,7 @@ def handle(options: argparse.Namespace) -> bool:
     # generated module); we drive the master directly from the session
     # file and let it replay every transaction.
     master = replay_master_cls.from_file(str(session_path))
-    sys.stdout.write(
-        f"Loaded replay session {session_path} into {type(master).__name__}\n"
-    )
+    sys.stdout.write(f"Loaded replay session {session_path} into {type(master).__name__}\n")
     sys.stdout.flush()
     # Caller-controlled replay: the user may want to wire the replay
     # master into their own tree before calling ``execute``. We expose

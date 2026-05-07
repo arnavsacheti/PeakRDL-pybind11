@@ -310,7 +310,7 @@ _MEM_PROPS: tuple[str, ...] = (
 )
 
 
-def _safe_property(node: Node, name: str) -> Any | None:  # noqa: ANN401 - RDL props are heterogeneous
+def _safe_property(node: Node, name: str) -> Any | None:
     try:
         value = node.get_property(name)
     except LookupError:
@@ -318,7 +318,7 @@ def _safe_property(node: Node, name: str) -> Any | None:  # noqa: ANN401 - RDL p
     return _to_jsonable(value)
 
 
-def _to_jsonable(value: Any) -> Any:  # noqa: ANN401 - polymorphic by design
+def _to_jsonable(value: Any) -> Any:
     """Coerce a value into something ``json.dumps`` can handle.
 
     Falls back to ``str()`` for anything exotic (RDL enum members, class
@@ -577,7 +577,7 @@ def _strip_existing_block(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _format_python_literal(value: Any) -> str:  # noqa: ANN401 - emitted JSON-shaped literal
+def _format_python_literal(value: Any) -> str:
     """Render ``value`` as Python source. ``json.dumps`` would emit
     ``null`` / ``true`` / ``false`` which aren't valid Python."""
     return pprint.pformat(value, indent=2, width=88, sort_dicts=False)

@@ -103,9 +103,7 @@ class Burst:
 
     def __post_init__(self) -> None:
         if self.op not in ("read", "write"):
-            raise ValueError(
-                f"Burst.op must be 'read' or 'write', got {self.op!r}"
-            )
+            raise ValueError(f"Burst.op must be 'read' or 'write', got {self.op!r}")
         if self.count < 0:
             raise ValueError(f"Burst.count must be >= 0, got {self.count}")
         if self.op == "read":
@@ -116,8 +114,7 @@ class Burst:
                 raise ValueError("Burst(op='write') requires values=...")
             if len(self.values) != self.count:
                 raise ValueError(
-                    f"Burst(op='write') values length {len(self.values)} "
-                    f"does not match count {self.count}"
+                    f"Burst(op='write') values length {len(self.values)} does not match count {self.count}"
                 )
 
 
@@ -181,9 +178,7 @@ def execute(master: Any, txns: Sequence[Read | Write | Burst]) -> list[int]:
                     for op in ops:
                         master.write(op.address, op.value, op.width)
         else:
-            raise TypeError(
-                f"execute(): unsupported transaction type {type(txn).__name__!r}"
-            )
+            raise TypeError(f"execute(): unsupported transaction type {type(txn).__name__!r}")
     return out
 
 
@@ -212,9 +207,7 @@ def batch(soc: Any) -> Iterator[Any]:
     """
     transaction = getattr(soc, "transaction", None)
     if transaction is None:
-        raise AttributeError(
-            "soc.batch() requires soc.transaction() — attach a master first"
-        )
+        raise AttributeError("soc.batch() requires soc.transaction() — attach a master first")
     with transaction():
         yield soc
 

@@ -96,9 +96,7 @@ def _flatten(obj: object, prefix: str = "") -> dict[str, Any]:
         # Treat ``{"path": ..., "value": ...}`` snapshot rows specially
         # so the fallback diff produces useful output even when the
         # snapshot uses Unit 8's row-list shape.
-        if "path" in obj and "value" in obj and not any(
-            isinstance(v, (dict, list)) for v in obj.values()
-        ):
+        if "path" in obj and "value" in obj and not any(isinstance(v, (dict, list)) for v in obj.values()):
             flat[str(obj["path"]) or prefix or "<root>"] = obj["value"]
             return flat
         for key, value in obj.items():
@@ -160,9 +158,7 @@ def compute_diff(snap_a_path: Path, snap_b_path: Path) -> dict[str, Any]:
     keys_b = set(flat_b)
     return {
         "changed": sorted(
-            (path, flat_a[path], flat_b[path])
-            for path in keys_a & keys_b
-            if flat_a[path] != flat_b[path]
+            (path, flat_a[path], flat_b[path]) for path in keys_a & keys_b if flat_a[path] != flat_b[path]
         ),
         "added": sorted((path, flat_b[path]) for path in keys_b - keys_a),
         "removed": sorted((path, flat_a[path]) for path in keys_a - keys_b),
@@ -171,7 +167,8 @@ def compute_diff(snap_a_path: Path, snap_b_path: Path) -> dict[str, Any]:
 
 def _coerce_real_diff(diff: object) -> dict[str, Any]:
     """Best-effort conversion of a real ``SnapshotDiff`` to the dict shape."""
-    def _get(name: str) -> Any:  # noqa: ANN401
+
+    def _get(name: str) -> Any:
         # Support both attribute and mapping access — Unit 8 may pick
         # either, and we don't want the CLI to be fragile to that
         # choice.
@@ -246,9 +243,7 @@ def _format_html(diff: dict[str, Any]) -> str:
     return (
         "<!doctype html><html><body><table>"
         "<thead><tr><th>kind</th><th>path</th><th>before</th>"
-        "<th>after</th></tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table></body></html>\n"
+        "<th>after</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table></body></html>\n"
     )
 
 

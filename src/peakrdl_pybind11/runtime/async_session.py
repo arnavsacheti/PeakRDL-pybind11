@@ -129,7 +129,7 @@ class AsyncSession:
     # Lazy mirror of the SoC's tree
     # ------------------------------------------------------------------
 
-    def __getattr__(self, name: str) -> Any:  # noqa: ANN401
+    def __getattr__(self, name: str) -> Any:
         # ``Any`` because the dual mirrors a generated tree whose
         # accessors aren't visible to the type checker at this level;
         # consumers wanting strict typing use the generated ``.pyi``.
@@ -161,7 +161,7 @@ class AsyncSession:
         return sorted(set(sync_attrs) | set(own))
 
     @property
-    def soc(self) -> Any:  # noqa: ANN401
+    def soc(self) -> Any:
         """The wrapped synchronous SoC. Useful for falling back to sync."""
         return self._soc
 
@@ -193,7 +193,7 @@ class _AsyncNode:
         # on every ``s.uart.control.aread()`` access.
         self._forwarder_cache: dict[str, Callable[..., Any]] = {}
 
-    def __getattr__(self, name: str) -> Any:  # noqa: ANN401
+    def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             # Pickling, ``hasattr('__getstate__')``, and similar dunder
             # probes must not spin up bogus proxies.
@@ -224,7 +224,7 @@ class _AsyncNode:
         return sorted(set(sync_attrs) | _ASYNC_TO_SYNC.keys())
 
     @property
-    def sync(self) -> Any:  # noqa: ANN401
+    def sync(self) -> Any:
         """The wrapped sync node, for callers that want to drop back."""
         return self._sync_node
 
@@ -259,7 +259,7 @@ class _AsyncNode:
                 f"{type(sync_node).__name__!s}.{sync_name} is not callable; cannot expose as {async_name!r}"
             )
 
-        async def _forward(*args: object, **kwargs: object) -> Any:  # noqa: ANN401
+        async def _forward(*args: object, **kwargs: object) -> Any:
             # ``Any`` return because the wrapped op may produce a
             # ``RegisterValue``, an int, an ndarray, ``None`` for writes,
             # or any caller-defined value.

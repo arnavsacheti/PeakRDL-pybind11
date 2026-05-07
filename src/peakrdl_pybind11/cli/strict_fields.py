@@ -64,8 +64,7 @@ def parse_strict_fields_value(value: str | bool | None) -> bool:
     if text in _FALSE_LITERALS:
         return False
     raise argparse.ArgumentTypeError(
-        f"--strict-fields expected one of "
-        f"{sorted(_TRUE_LITERALS | _FALSE_LITERALS)!r}, got {value!r}"
+        f"--strict-fields expected one of {sorted(_TRUE_LITERALS | _FALSE_LITERALS)!r}, got {value!r}"
     )
 
 

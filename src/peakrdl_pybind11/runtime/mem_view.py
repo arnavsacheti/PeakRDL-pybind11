@@ -290,9 +290,7 @@ class MemView:
             substart, substop, _ = _normalize_slice(index, len(self))
             return MemView(self._mem, self._start + substart, self._start + substop)
         if not isinstance(index, (int, np.integer)):
-            raise TypeError(
-                f"MemView indices must be int or slice, not {type(index).__name__}"
-            )
+            raise TypeError(f"MemView indices must be int or slice, not {type(index).__name__}")
         i = int(index)
         if i < 0:
             i += len(self)
@@ -308,9 +306,7 @@ class MemView:
             _write_block(self._mem, self._start + substart, values)
             return
         if not isinstance(index, (int, np.integer)):
-            raise TypeError(
-                f"MemView indices must be int or slice, not {type(index).__name__}"
-            )
+            raise TypeError(f"MemView indices must be int or slice, not {type(index).__name__}")
         i = int(index)
         if i < 0:
             i += len(self)
@@ -365,9 +361,7 @@ class MemView:
         if n < 0:
             raise ValueError(f"byte count must be non-negative, got {n}")
         if offset + n > total:
-            raise ValueError(
-                f"read_bytes(offset={offset}, n={n}) exceeds view size {total} bytes"
-            )
+            raise ValueError(f"read_bytes(offset={offset}, n={n}) exceeds view size {total} bytes")
         if n == 0:
             return b""
         first_word = offset // wbytes
@@ -388,9 +382,7 @@ class MemView:
         n = len(data)
         total = len(self) * wbytes
         if offset < 0 or offset + n > total:
-            raise ValueError(
-                f"write_bytes(offset={offset}, len={n}) out of range [0, {total}]"
-            )
+            raise ValueError(f"write_bytes(offset={offset}, len={n}) out of range [0, {total}]")
         if offset % wbytes != 0 or n % wbytes != 0:
             raise NotImplementedError(
                 "MemView.write_bytes currently requires word-aligned offset and length; "
@@ -413,9 +405,7 @@ class MemView:
             value = value.copy()
         if isinstance(value, np.ndarray):
             if value.size != count:
-                raise ValueError(
-                    f"cannot assign {value.size} values to MemView slice of length {count}"
-                )
+                raise ValueError(f"cannot assign {value.size} values to MemView slice of length {count}")
             return [int(v) for v in value.ravel()]
         if isinstance(value, (bytes, bytearray, memoryview)):
             dtype = _np_dtype_for(self._mem)
@@ -432,9 +422,7 @@ class MemView:
                 f"cannot assign object of type {type(value).__name__} to a MemView slice"
             ) from exc
         if len(seq) != count:
-            raise ValueError(
-                f"cannot assign {len(seq)} values to MemView slice of length {count}"
-            )
+            raise ValueError(f"cannot assign {len(seq)} values to MemView slice of length {count}")
         return [int(v) for v in seq]
 
     # -- diagnostics ------------------------------------------------------
@@ -513,9 +501,7 @@ class MemWindow:
             self._buffer[i] = value
             self._dirty[i] = True
             return
-        raise TypeError(
-            f"MemWindow indices must be int or slice, not {type(index).__name__}"
-        )
+        raise TypeError(f"MemWindow indices must be int or slice, not {type(index).__name__}")
 
     def flush(self) -> None:
         """Write back every dirty word in one (coalesced) burst."""
@@ -589,9 +575,7 @@ def _mem_window(self: Any, offset: int = 0, length: int | None = None) -> MemWin
     if length is None:
         length = depth - offset
     if offset < 0 or length < 0 or offset + length > depth:
-        raise ValueError(
-            f"window(offset={offset}, length={length}) out of range [0, {depth}]"
-        )
+        raise ValueError(f"window(offset={offset}, length={length}) out of range [0, {depth}]")
     return MemWindow(self, offset, length)
 
 
@@ -626,9 +610,7 @@ def _mem_read_into(
     count = int(buf.size)
     depth = _depth(self)
     if offset < 0 or offset + count > depth:
-        raise ValueError(
-            f"read_into(offset={offset}, count={count}) out of range [0, {depth}]"
-        )
+        raise ValueError(f"read_into(offset={offset}, count={count}) out of range [0, {depth}]")
     if count == 0:
         return buf
     words = _read_block(self, offset, count)
@@ -645,9 +627,7 @@ def _mem_write_from(self: Any, buf: NDArray[Any], offset: int = 0) -> None:
     count = int(buf.size)
     depth = _depth(self)
     if offset < 0 or offset + count > depth:
-        raise ValueError(
-            f"write_from(offset={offset}, count={count}) out of range [0, {depth}]"
-        )
+        raise ValueError(f"write_from(offset={offset}, count={count}) out of range [0, {depth}]")
     if count == 0:
         return
     _write_block(self, offset, buf.tolist())

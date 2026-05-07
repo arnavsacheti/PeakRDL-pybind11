@@ -123,8 +123,7 @@ def _trace_context_manager(
         original = _get_master(soc)
         if original is None:
             raise RuntimeError(
-                "soc.trace() requires a master to be attached; "
-                "call soc.attach_master(...) first"
+                "soc.trace() requires a master to be attached; call soc.attach_master(...) first"
             )
         recorder = RecordingMaster(original, file=file)
         _set_master(soc, recorder)
@@ -190,9 +189,7 @@ def _set_master(soc: object, master: MasterBase | None) -> None:
     if hasattr(soc, "_master"):
         soc._master = master  # type: ignore[attr-defined]
         return
-    raise RuntimeError(
-        "could not assign master back to SoC: no attach_master / master / _master"
-    )
+    raise RuntimeError("could not assign master back to SoC: no attach_master / master / _master")
 
 
 # ---------------------------------------------------------------------------

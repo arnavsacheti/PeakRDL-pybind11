@@ -283,8 +283,17 @@ class Snapshot:
         if isinstance(info, dict):
             return {k: v for k, v in info.items() if _is_jsonable(v)}
         out: dict[str, Any] = {}
-        for attr in ("name", "path", "address", "offset", "regwidth", "access",
-                     "reset", "on_read", "on_write"):
+        for attr in (
+            "name",
+            "path",
+            "address",
+            "offset",
+            "regwidth",
+            "access",
+            "reset",
+            "on_read",
+            "on_write",
+        ):
             if hasattr(info, attr):
                 value = getattr(info, attr)
                 if _is_jsonable(value):
@@ -337,9 +346,7 @@ class Snapshot:
     def __getstate__(self) -> dict[str, Any]:
         # Convert info objects to plain dicts for portability across processes
         # that may not have the original Info type defined.
-        meta_dicts = {
-            k: self._info_to_dict(v) for k, v in self._metadata.items()
-        }
+        meta_dicts = {k: self._info_to_dict(v) for k, v in self._metadata.items()}
         return {
             "values": dict(self._values),
             "metadata": meta_dicts,
@@ -349,8 +356,7 @@ class Snapshot:
     def __setstate__(self, state: dict[str, Any]) -> None:
         self._values = dict(state.get("values", {}))
         self._metadata = {
-            k: _InfoDict(v) if isinstance(v, dict) else v
-            for k, v in state.get("metadata", {}).items()
+            k: _InfoDict(v) if isinstance(v, dict) else v for k, v in state.get("metadata", {}).items()
         }
         self._prefix = state.get("prefix", "")
 
@@ -426,15 +432,12 @@ class SnapshotDiff:
             >>> diff = before.diff(after)  # doctest: +SKIP
             >>> diff.assert_only_changed("uart.intr_state.*", "uart.data")
         """
-        all_paths: list[PathStr] = sorted(
-            set(self.changed) | set(self.added) | set(self.removed)
-        )
+        all_paths: list[PathStr] = sorted(set(self.changed) | set(self.added) | set(self.removed))
 
         if not globs:
             if all_paths:
                 raise AssertionError(
-                    f"expected no changes; got {len(all_paths)} differences:\n  "
-                    + "\n  ".join(all_paths)
+                    f"expected no changes; got {len(all_paths)} differences:\n  " + "\n  ".join(all_paths)
                 )
             return
 
@@ -468,8 +471,7 @@ class SnapshotDiff:
 
     def __repr__(self) -> str:
         return (
-            f"SnapshotDiff(changed={len(self.changed)}, "
-            f"added={len(self.added)}, removed={len(self.removed)})"
+            f"SnapshotDiff(changed={len(self.changed)}, added={len(self.added)}, removed={len(self.removed)})"
         )
 
     # -- jupyter -----------------------------------------------------------
@@ -483,9 +485,7 @@ class SnapshotDiff:
         if self.is_empty:
             return title + "<div><em>(no differences)</em></div>"
 
-        rows: list[str] = [
-            "<tr><th>Path</th><th>Before</th><th>After</th><th>Status</th></tr>"
-        ]
+        rows: list[str] = ["<tr><th>Path</th><th>Before</th><th>After</th><th>Status</th></tr>"]
         for path in sorted(self.changed):
             before, after = self.changed[path]
             rows.append(
@@ -510,12 +510,7 @@ class SnapshotDiff:
                 f"<td>—</td>"
                 f'<td style="color:#dc322f">removed</td></tr>'
             )
-        return (
-            title
-            + '<table style="border-collapse:collapse">'
-            + "".join(rows)
-            + "</table>"
-        )
+        return title + '<table style="border-collapse:collapse">' + "".join(rows) + "</table>"
 
 
 # ---------------------------------------------------------------------------
@@ -536,16 +531,11 @@ def _walk_readable(soc: Any) -> Iterable[Any]:
 
     walk = getattr(soc, "walk", None)
     if not callable(walk):
-        raise TypeError(
-            f"soc {soc!r} does not expose iter_readable() or walk(); "
-            "snapshot needs at least one"
-        )
+        raise TypeError(f"soc {soc!r} does not expose iter_readable() or walk(); snapshot needs at least one")
 
     def _filtered() -> Iterator[Any]:
         for node in walk():
-            if callable(getattr(node, "peek", None)) or callable(
-                getattr(node, "read", None)
-            ):
+            if callable(getattr(node, "peek", None)) or callable(getattr(node, "read", None)):
                 yield node
 
     return _filtered()
@@ -642,6 +632,7 @@ def attach_snapshot(soc: Any) -> Any:
 
     Returns the same ``soc`` for fluent use.
     """
+
     def _snapshot(
         self: Any,
         *,
@@ -715,5 +706,3 @@ def _is_jsonable(value: Any) -> bool:
     if isinstance(value, dict):
         return all(isinstance(k, str) and _is_jsonable(v) for k, v in value.items())
     return False
-
-

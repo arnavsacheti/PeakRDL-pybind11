@@ -124,7 +124,7 @@ def _normalize_field_meta(
     return out
 
 
-def _coerce_field_value(value: Any, *, name: str, width: int) -> int:  # noqa: ANN401
+def _coerce_field_value(value: Any, *, name: str, width: int) -> int:
     """Coerce a field write value (int / IntEnum / bool) and bounds-check it."""
     # bool and IntEnum are both int subclasses, so a single isinstance covers them.
     if not isinstance(value, int):
@@ -380,7 +380,7 @@ class RegisterValue(int):
         address: int = 0,
         width: int = 32,
         fields: Mapping[str, Any] | None = None,
-        register_class: Any = None,  # noqa: ANN401
+        register_class: Any = None,
         name: str | None = None,
         path: str | None = None,
         description: str | None = None,
@@ -426,7 +426,7 @@ class RegisterValue(int):
         return self._description
 
     @property
-    def register_class(self) -> Any:  # noqa: ANN401
+    def register_class(self) -> Any:
         return self._register_class
 
     # -- field access ------------------------------------------------------ #
@@ -487,7 +487,7 @@ class RegisterValue(int):
 
     # -- mutation (returns a new value) ----------------------------------- #
 
-    def replace(self, **fields: Any) -> RegisterValue:  # noqa: ANN401
+    def replace(self, **fields: Any) -> RegisterValue:
         """Return a new :class:`RegisterValue` with the given fields replaced.
 
         Unknown field names raise ``KeyError`` with a did-you-mean suggestion.
@@ -692,7 +692,7 @@ class RegisterValue(int):
     @classmethod
     def build(
         cls,
-        register_class: Any = None,  # noqa: ANN401
+        register_class: Any = None,
         /,
         *,
         address: int | None = None,
@@ -701,7 +701,7 @@ class RegisterValue(int):
         name: str | None = None,
         path: str | None = None,
         description: str | None = None,
-        **field_values: Any,  # noqa: ANN401
+        **field_values: Any,
     ) -> RegisterValue:
         """Compose a new :class:`RegisterValue` from field values.
 
@@ -741,7 +741,7 @@ class RegisterValue(int):
         return seed.replace(**field_values) if field_values else seed
 
 
-def _extract_register_class_meta(register_class: Any) -> dict[str, Any]:  # noqa: ANN401
+def _extract_register_class_meta(register_class: Any) -> dict[str, Any]:
     """Pull the bits we need off a register-descriptor object.
 
     Any of the keys may be missing — the caller will fill them with defaults.
@@ -769,6 +769,6 @@ def _extract_register_class_meta(register_class: Any) -> dict[str, Any]:  # noqa
     return out
 
 
-def build(register_class: Any = None, /, **field_values: Any) -> RegisterValue:  # noqa: ANN401
+def build(register_class: Any = None, /, **field_values: Any) -> RegisterValue:
     """Module-level alias for :meth:`RegisterValue.build`."""
     return RegisterValue.build(register_class, **field_values)

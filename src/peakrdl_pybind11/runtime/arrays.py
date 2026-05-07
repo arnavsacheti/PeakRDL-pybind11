@@ -23,8 +23,6 @@ but no enforced base type. Tightening the annotation to a Protocol
 would over-constrain callers; the duck-typed surface is the contract.
 """
 
-# ruff: noqa: ANN401  (see module docstring)
-
 from __future__ import annotations
 
 import sys
@@ -63,16 +61,12 @@ def _row_major_strides(shape: tuple[int, ...]) -> tuple[int, ...]:
 def _normalize_int_index(idx: int, dim_size: int, axis: int) -> int:
     """Normalize a (possibly negative) integer index against ``dim_size``."""
     if not isinstance(idx, (int, np.integer)):
-        raise TypeError(
-            f"array index must be int, slice, or tuple thereof; got {type(idx).__name__}"
-        )
+        raise TypeError(f"array index must be int, slice, or tuple thereof; got {type(idx).__name__}")
     real = int(idx)
     if real < 0:
         real += dim_size
     if real < 0 or real >= dim_size:
-        raise IndexError(
-            f"index {idx} is out of bounds for axis {axis} with size {dim_size}"
-        )
+        raise IndexError(f"index {idx} is out of bounds for axis {axis} with size {dim_size}")
     return real
 
 
@@ -148,9 +142,7 @@ def _make_access_op(element: Any, value: int = 0) -> Any:
     return AccessOp(address=int(address), value=int(value), width=int(width))
 
 
-def _values_to_ndarray(
-    values: Sequence[Any], shape: tuple[int, ...]
-) -> np.ndarray:
+def _values_to_ndarray(values: Sequence[Any], shape: tuple[int, ...]) -> np.ndarray:
     """Promote a flat sequence of read values to an ``ndarray`` of ``shape``.
 
     Picks dtype from the first element; falls back to ``object`` when
@@ -274,8 +266,7 @@ class ArrayView:
                 expected *= dim
             if expected != visible:
                 raise ValueError(
-                    f"shape {shape} (product={expected}) does not match "
-                    f"visible element count {visible}"
+                    f"shape {shape} (product={expected}) does not match visible element count {visible}"
                 )
         self._elements: list[Any] = elements_list
         self._shape: tuple[int, ...] = shape
@@ -326,9 +317,7 @@ class ArrayView:
         if isinstance(value, np.ndarray):
             arr = value.ravel()
             if arr.size != n:
-                raise ValueError(
-                    f"cannot broadcast array of size {arr.size} to {n} elements"
-                )
+                raise ValueError(f"cannot broadcast array of size {arr.size} to {n} elements")
             return arr.tolist()
         if isinstance(value, str):
             # Treat as scalar (broadcast). Mirrors enum-by-name in §8.
@@ -336,9 +325,7 @@ class ArrayView:
         if isinstance(value, Iterable):
             seq = list(value)
             if len(seq) != n:
-                raise ValueError(
-                    f"cannot broadcast iterable of length {len(seq)} to {n} elements"
-                )
+                raise ValueError(f"cannot broadcast iterable of length {len(seq)} to {n} elements")
             return seq
         # Fallback: scalar broadcast for anything else (e.g. enum members).
         return [value] * n
@@ -352,9 +339,7 @@ class ArrayView:
             return self._getitem_slice(key)
         if isinstance(key, (int, np.integer)):
             return self._getitem_int(int(key))
-        raise TypeError(
-            f"array indices must be int, slice, or tuple; got {type(key).__name__}"
-        )
+        raise TypeError(f"array indices must be int, slice, or tuple; got {type(key).__name__}")
 
     def _getitem_int(self, idx: int) -> Any:
         if not self._shape:
@@ -391,9 +376,7 @@ class ArrayView:
         # NumPy-like int/slice tuple indexing. Ellipsis and newaxis are
         # intentionally unsupported -- callers can chain ``arr[i][j]``.
         if len(key) > len(self._shape):
-            raise IndexError(
-                f"too many indices for array: {len(key)} for shape {self._shape}"
-            )
+            raise IndexError(f"too many indices for array: {len(key)} for shape {self._shape}")
         full_key: list[Any] = list(key) + [slice(None)] * (len(self._shape) - len(key))
 
         per_axis: list[list[int]] = []
@@ -408,9 +391,7 @@ class ArrayView:
                 per_axis.append(coords)
                 result_shape.append(len(coords))
             else:
-                raise TypeError(
-                    f"tuple element {axis} must be int or slice, got {type(item).__name__}"
-                )
+                raise TypeError(f"tuple element {axis} must be int or slice, got {type(item).__name__}")
 
         strides = _row_major_strides(self._shape)
         flat_index_set = [0]
@@ -488,9 +469,7 @@ class ArrayView:
         for i, el in enumerate(elements):
             value = el.read() if hasattr(el, "read") else el
             iv = int(value)
-            row = tuple(
-                (iv >> lsb) & ((1 << width) - 1) for lsb, width in field_spec.values()
-            )
+            row = tuple((iv >> lsb) & ((1 << width) - 1) for lsb, width in field_spec.values())
             flat[i] = row
         return result
 
@@ -526,10 +505,7 @@ class ArrayView:
 
         master = _master_for(elements)
         if master is not None and hasattr(master, "write_many"):
-            ops = [
-                _make_access_op(el, value=int(v))
-                for el, v in zip(elements, values, strict=True)
-            ]
+            ops = [_make_access_op(el, value=int(v)) for el, v in zip(elements, values, strict=True)]
             if all(op is not None for op in ops):
                 master.write_many(ops)
                 return

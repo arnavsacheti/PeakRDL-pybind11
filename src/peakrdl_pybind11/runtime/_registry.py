@@ -62,10 +62,10 @@ _node_attributes: dict[str, NodeAttributeFactory] = {}
 # ``runtime/widgets.py``) read this to render ⚠ rclr / ↻ singlepulse / ✱
 # sticky / ⚡ volatile inline with field metadata. Per sketch §5.1.
 SIDE_EFFECT_BADGES: dict[str, str] = {
-    "rclr": "⚠",        # ⚠
+    "rclr": "⚠",  # ⚠
     "singlepulse": "↻",  # ↻
-    "sticky": "✱",      # ✱
-    "volatile": "⚡",    # ⚡
+    "sticky": "✱",  # ✱
+    "volatile": "⚡",  # ⚡
 }
 
 # Identity sets so re-registration of the same callable is idempotent.

@@ -76,7 +76,7 @@ def spawn_repl(namespace: dict[str, Any], banner: str = "") -> None:
     code.interact(banner=banner, local=namespace)
 
 
-def _import_generated_module(name: str) -> Any:  # noqa: ANN401
+def _import_generated_module(name: str) -> Any:
     """Import the generated module by name.
 
     The export step writes the module under ``options.output``; the

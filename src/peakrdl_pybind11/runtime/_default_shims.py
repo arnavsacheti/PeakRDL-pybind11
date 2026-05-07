@@ -98,8 +98,7 @@ def _make_write_fields(
             spec = fields_spec.get(name)
             if spec is None:
                 raise KeyError(
-                    f"Unknown field '{name}' on register '{self.name}'. "
-                    f"Known fields: {sorted(fields_spec)}"
+                    f"Unknown field '{name}' on register '{self.name}'. Known fields: {sorted(fields_spec)}"
                 )
             if not writable_spec.get(name, False):
                 raise PermissionError(f"Field '{name}' on register '{self.name}' is not writable")

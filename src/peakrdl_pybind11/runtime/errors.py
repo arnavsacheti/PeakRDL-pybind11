@@ -62,9 +62,7 @@ class SideEffectError(Exception):
     def __init__(self, node_path: str, message: str | None = None) -> None:
         self.node_path = node_path
         if message is None:
-            message = (
-                f"{node_path} would trigger a side-effect inside no_side_effects()"
-            )
+            message = f"{node_path} would trigger a side-effect inside no_side_effects()"
         self.message = message
         super().__init__(message)
 
@@ -161,10 +159,7 @@ class WaitTimeoutError(TimeoutError):
         self.expected = expected
         self.last_seen = last_seen
         self.samples = tuple(samples) if samples is not None else None
-        message = (
-            f"timeout waiting for {node_path} == {expected!r}; "
-            f"last_seen={last_seen!r}"
-        )
+        message = f"timeout waiting for {node_path} == {expected!r}; last_seen={last_seen!r}"
         if self.samples is not None:
             message += f"; samples={list(self.samples)!r}"
         self.message = message

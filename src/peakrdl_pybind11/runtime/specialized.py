@@ -738,7 +738,7 @@ class LockController:
 # ---------------------------------------------------------------------------
 
 
-def attach_counter(reg_or_field: object, **counter_kwargs: Any) -> Counter:  # noqa: ANN401
+def attach_counter(reg_or_field: object, **counter_kwargs: Any) -> Counter:
     """Build and attach a :class:`Counter` wrapper to ``reg_or_field``.
 
     The wrapper is also stored as ``reg_or_field.counter`` for discoverability.
@@ -749,7 +749,7 @@ def attach_counter(reg_or_field: object, **counter_kwargs: Any) -> Counter:  # n
     return counter
 
 
-def attach_lock_controller(reg: object, **lock_kwargs: Any) -> LockController:  # noqa: ANN401
+def attach_lock_controller(reg: object, **lock_kwargs: Any) -> LockController:
     """Construct a :class:`LockController` and bind it onto ``reg``.
 
     Adds ``reg.lock``, ``reg.is_locked``, and ``reg.unlock_sequence`` as
