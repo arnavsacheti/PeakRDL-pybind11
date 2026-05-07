@@ -526,6 +526,7 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             nodes=nodes,
+            strict_fields=getattr(self, "strict_fields", True),
         )
 
         assert self.output_dir is not None

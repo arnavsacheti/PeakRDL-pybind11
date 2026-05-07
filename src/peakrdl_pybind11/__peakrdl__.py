@@ -16,6 +16,8 @@ else:
         # peakrdl is an optional dependency
         ExporterSubcommandPlugin = object  # type: ignore[misc]
 
+from . import cli as _cli
+from .cli.strict_fields import is_strict_from_options as _is_strict_from_options
 from .exporter import _KNOWN_UDPS, Pybind11Exporter
 
 
@@ -127,8 +129,20 @@ class Exporter(ExporterSubcommandPlugin):
 
         discover_subcommands(arg_group)
 
+        # Sibling-unit CLI extensions (Unit 24 and friends) discover
+        # themselves under :mod:`peakrdl_pybind11.cli`. Each registers
+        # its own flags directly on this argparse group.
+        _cli.discover_subcommands(arg_group)
+
     def do_export(self, top_node: "AddrmapNode", options: "argparse.Namespace") -> None:
         """Execute the export"""
+        # Sibling-unit subcommands (--diff / --replay / --watch) may
+        # claim the run before any export work happens; if any of them
+        # returns truthy we are done here. ``--explore`` is post-export
+        # and goes through ``run_post_handlers`` below.
+        if _cli.try_handle(options):
+            return
+
         exporter = Pybind11Exporter()
 
         # Get soc_name from options or derive from input
