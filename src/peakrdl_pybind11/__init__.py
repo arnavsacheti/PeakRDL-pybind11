@@ -12,13 +12,28 @@ if TYPE_CHECKING:
     from .exporter import Pybind11Exporter
     from .int_types import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
 
+    # Forward-compat aliases (see ``IDEAL_API_SKETCH.md`` §3): RegisterValue
+    # and FieldValue are the names used in the new API surface; they alias
+    # the existing ``RegisterInt`` / ``FieldInt`` types so user code can be
+    # ported to the new vocabulary without behavioural change.
+    RegisterValue = RegisterInt
+    FieldValue = FieldInt
+
 try:
     __version__ = version("peakrdl-pybind11")
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
 
-__all__ = ["FieldInt", "Pybind11Exporter", "RegisterInt", "RegisterIntEnum", "RegisterIntFlag"]
+__all__ = [
+    "FieldInt",
+    "FieldValue",
+    "Pybind11Exporter",
+    "RegisterInt",
+    "RegisterIntEnum",
+    "RegisterIntFlag",
+    "RegisterValue",
+]
 
 
 def __getattr__(name: str) -> type:
@@ -26,7 +41,7 @@ def __getattr__(name: str) -> type:
         from .exporter import Pybind11Exporter
 
         return Pybind11Exporter
-    if name == "RegisterInt":
+    if name in ("RegisterInt", "RegisterValue"):
         from .int_types import RegisterInt
 
         return RegisterInt
@@ -38,7 +53,7 @@ def __getattr__(name: str) -> type:
         from .int_types import RegisterIntEnum
 
         return RegisterIntEnum
-    if name == "FieldInt":
+    if name in ("FieldInt", "FieldValue"):
         from .int_types import FieldInt
 
         return FieldInt

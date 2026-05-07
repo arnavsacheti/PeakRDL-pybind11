@@ -188,6 +188,14 @@ class Pybind11Exporter:
         self.output_dir: Path | None = None
         self._name_cache: dict[str, str] = {}
 
+        # Discover sibling-unit exporter plugins. Each plugin's
+        # ``register(self)`` runs immediately so it can install Jinja
+        # filters, store references, etc.; codegen-time hooks (if any)
+        # are scheduled by the plugin via attributes on the exporter.
+        from .exporter_plugins import discover_plugins
+
+        discover_plugins(self)
+
     def export(
         self,
         top_node: RootNode | AddrmapNode,

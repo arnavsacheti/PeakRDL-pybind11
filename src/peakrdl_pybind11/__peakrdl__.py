@@ -108,6 +108,13 @@ class Exporter(ExporterSubcommandPlugin):
             ),
         )
 
+        # Sibling-unit CLI extensions can attach extra arguments here.
+        # These are *not* new top-level subcommands of ``peakrdl``;
+        # they extend the existing ``peakrdl pybind11`` invocation.
+        from .cli import discover_subcommands
+
+        discover_subcommands(arg_group)
+
     def do_export(self, top_node: "AddrmapNode", options: "argparse.Namespace") -> None:
         """Execute the export"""
         exporter = Pybind11Exporter()
@@ -131,3 +138,10 @@ class Exporter(ExporterSubcommandPlugin):
             split_bindings=split_bindings,
             split_by_hierarchy=split_by_hierarchy,
         )
+
+        # Run sibling-unit CLI handlers after the primary export. Order
+        # matters for some siblings (e.g. ``--explore`` wants to drop
+        # into a REPL only after generated files are on disk).
+        from .cli import run_handlers
+
+        run_handlers(options)
