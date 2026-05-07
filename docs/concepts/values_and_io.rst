@@ -104,6 +104,24 @@ build a value directly and write it:
 register; it returns a ``RegisterValue`` (see below) that round-trips through
 ``write()``.
 
+The same factory is also reachable as :meth:`RegisterValue.build`, which takes
+a register class (any object exposing ``.fields``, ``.address``, ``.width``,
+and an optional ``.reset``) followed by field keyword arguments. Use it when
+you have a handle to the descriptor but not the per-class subclass — for
+example, in generic tooling or tests:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.values import RegisterValue
+
+   # Equivalent to UartControl.build(enable=1, baudrate=2)
+   v = RegisterValue.build(UartControl, enable=1, baudrate=2)
+   soc.uart.control.write(v)
+
+Either form returns a fully-formed ``RegisterValue``: every field not passed
+in starts at the descriptor's reset value (or zero), so the result can be
+written without an intervening read.
+
 Context manager (secondary)
 ---------------------------
 
@@ -186,7 +204,50 @@ golden-state checks. Both are picklable and JSON-serializable for
 distributed test harnesses and CI artefacts.
 
 Mutation goes through ``.replace(**fields)`` (returns a new value) and never
-through assignment.
+through assignment. ``.replace(**fields)`` returns a **new** ``RegisterValue``
+— the original is unchanged and remains safe to reuse as a snapshot key.
+
+.. _values-int-subclass:
+
+``RegisterValue`` and ``FieldValue`` are concrete ``int`` subclasses
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These are **not opaque wrappers** — they are real ``int`` subclasses with a
+small bag of decode metadata bolted on. That has a few practical
+implications worth knowing:
+
+.. note::
+
+   - ``isinstance(rv, int) is True`` — values pass ``int`` type checks and
+     drop into any function that accepts ``int`` (NumPy, ``struct.pack``,
+     ``ctypes``, third-party math) without a conversion.
+   - ``int(rv) == rv`` — converting back to a plain ``int`` is a no-op; it
+     simply returns the same numeric value, with metadata stripped.
+   - ``hash(rv) == hash(int(rv))`` — hashing degenerates to the underlying
+     ``int`` hash, so a value-equal ``RegisterValue`` and a plain ``int``
+     land in the same dict slot. ``{rv: "x"}[0x22]`` works.
+   - Metadata (``fields``, ``address``, ``width``, ``name``, ``path``,
+     ``description``, ``encode``) lives on the instance ``__dict__``.
+     CPython forbids ``__slots__`` on ``int`` subclasses, so the metadata
+     is treated as private and accessed through properties.
+   - Pickle and JSON round-trips preserve the metadata. ``pickle.loads(
+     pickle.dumps(rv))`` and ``RegisterValue.from_json(rv.to_json())`` both
+     give back a value-equal ``RegisterValue`` with its fields intact.
+
+.. code-block:: python
+
+   rv = soc.uart.control.read()
+   isinstance(rv, int)        # True
+   int(rv) == rv              # True
+   hash(rv) == hash(int(rv))  # True
+   rv + 1                     # plain int arithmetic; result is a plain int
+   {rv: "saved"}[0x22]        # 'saved' — int-compatible hash slot
+
+   import pickle
+   pickle.loads(pickle.dumps(rv)).enable == rv.enable   # True
+
+In day-to-day use, the metadata on top of the int gives you printable repr,
+field accessors, and ``replace``:
 
 .. code-block:: python
 
@@ -229,13 +290,32 @@ pretending to be a value — leaks bugs (a stale read silently mutating, a
 snapshot dict whose keys all alias the same int). The cost is paid on
 purpose. ``Snapshot`` follows the same rule.
 
-Field reads return enums when the field has ``encode``, and ``bool`` for
-1-bit fields:
+Field reads return enums when the field has ``encode``, and ``bool``-compatible
+``FieldValue`` for 1-bit fields:
 
 .. code-block:: python
 
    soc.uart.control.baudrate.read()   # → BaudRate.BAUD_19200
-   soc.uart.intr.tx_done.read()       # → bool (1-bit field)
+   soc.uart.intr.tx_done.read()       # → FieldValue (1-bit, bool-compatible)
+
+``FieldValue.__bool__`` returns ``int(self) != 0``, so
+``bool(field_value) == bool(int(field_value))``. That means the natural
+truthiness pattern just works:
+
+.. code-block:: python
+
+   if soc.uart.intr.tx_done.read():       # truthy iff the bit is 1
+       drain_tx_fifo()
+
+   reg = soc.uart.intr.read()
+   if reg.tx_done:                        # same — reg.tx_done is a FieldValue
+       drain_tx_fifo()
+
+If you need the literal ``True``/``False`` object — for ``is True`` checks,
+JSON serialization, or for forwarding into APIs that distinguish ``bool`` from
+``int`` — call ``bool(...)`` explicitly: ``bool(reg.tx_done)``. ``FieldValue``
+is an ``int`` subclass, so ``reg.tx_done is True`` is always ``False`` even
+when the bit is set.
 
 Bit-level access in multi-bit fields
 ------------------------------------
