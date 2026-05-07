@@ -104,6 +104,14 @@ in one place -- is available as a single document.
    concepts/cli_repl
 
 .. toctree::
+   :maxdepth: 1
+   :caption: Extending
+
+   extending/runtime
+   extending/exporter
+   extending/cli
+
+.. toctree::
    :maxdepth: 2
    :caption: API Reference
 
