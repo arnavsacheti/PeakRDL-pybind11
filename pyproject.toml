@@ -24,10 +24,11 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
 ]
-dependencies = ["systemrdl-compiler >= 1.30.1", "jinja2"]
+dependencies = ["systemrdl-compiler >= 1.30.1", "jinja2", "numpy>=1.24"]
 
 [project.optional-dependencies]
 cli = ["peakrdl-cli >= 1.2.3"]
+notebook = ["ipywidgets>=8", "watchdog>=3", "pandas>=2"]
 
 [dependency-groups]
 docs = [
@@ -54,6 +55,12 @@ pybind11 = "peakrdl_pybind11.__peakrdl__:Exporter"
 [tool.setuptools.package-data]
 peakrdl_pybind11 = ["templates/*.jinja", "templates/**/*.jinja"]
 
+# --------------------- PYTEST ---------------------
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that build a generated SoC module via cmake (slow; needs a C++ toolchain)",
+]
+
 # ---------------------- RUFF ----------------------
 [tool.ruff]
 line-length = 110
@@ -76,9 +83,14 @@ ignore = [
     "E501",  # line-too-long
 ]
 
-# Make tests less strict for annotations.
-# [tool.ruff.lint.per-file-ignores]
-# "tests/**/*" = ["ANN*"]
+# The runtime/CLI/exporter-plugin seams are deliberately generic over the
+# generated types produced per-SoC; ``Any`` is the correct annotation for
+# the hook surface. Suppress ANN401 on those files only.
+[tool.ruff.lint.per-file-ignores]
+"src/peakrdl_pybind11/runtime/**/*.py" = ["ANN401"]
+"src/peakrdl_pybind11/cli/**/*.py" = ["ANN401"]
+"src/peakrdl_pybind11/exporter_plugins/**/*.py" = ["ANN401"]
+"src/peakrdl_pybind11/masters/base.py" = ["ANN401"]
 
 [tool.ruff.format]
 quote-style = "double"

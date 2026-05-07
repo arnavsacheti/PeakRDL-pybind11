@@ -14,7 +14,14 @@ except ImportError as e:
     print(f"  cd <output_dir> && python setup.py build_ext --inplace", file=sys.stderr)
     raise
 
+# Importing the runtime package both auto-loads the default shims and
+# every sibling-unit module so they can register their hooks before we
+# fire ``apply_register_enhancements`` below. ``_registry`` is the seam
+# documented in ``IDEAL_API_SKETCH.md`` §1-§3.
+from peakrdl_pybind11 import runtime as _peakrdl_runtime
+from peakrdl_pybind11.runtime import _registry as _peakrdl_registry
 from peakrdl_pybind11.int_types import RegisterInt, FieldInt, RegisterIntFlag, RegisterIntEnum
+from peakrdl_pybind11.runtime import RegisterValue, FieldValue  # forward-compat aliases
 
 __all__ = [
     '{{ soc_name }}_t',
@@ -29,12 +36,17 @@ __all__ = [
     'FieldInt',
     'RegisterIntFlag',
     'RegisterIntEnum',
+    'RegisterValue',
+    'FieldValue',
 ]
 
 
 def create():
     """Create a new instance of the {{ soc_name }} register map."""
-    return {{ soc_name }}_t()
+    soc = {{ soc_name }}_t()
+    # Sibling units can attach observers, snapshot tooling, etc.
+    _peakrdl_registry.fire_post_create_hooks(soc)
+    return soc
 
 
 def wrap_master(master_impl):
@@ -73,7 +85,9 @@ def wrap_master(master_impl):
                 return impl_read_many(ops)
             return [self.impl.read(op.address, op.width) for op in ops]
 
-    return WrappedMaster()
+    wrapped = WrappedMaster()
+    _peakrdl_registry.fire_master_extensions(wrapped)
+    return wrapped
 
 
 # Generated flag/enum types from SystemRDL fields
@@ -109,11 +123,9 @@ __all__.append('{{ reg | pybind_name }}_e')
 
 
 # ---------------------------------------------------------------------------
-# Read/write enhancement
-#
-# Each generated register/field class is rewrapped at module-load time so
-# that .read() returns RegisterInt/FieldInt (instead of bare ints) and
-# .write() accepts FieldInt for read-modify-write.
+# Per-register field metadata. Consumed by the default register
+# enhancement (``runtime/_default_shims.py``) and by sibling units that
+# want to introspect register layout without re-parsing RDL.
 # ---------------------------------------------------------------------------
 
 _REGISTER_FIELDS: dict[type, dict[str, tuple[int, int]]] = {
@@ -158,115 +170,27 @@ _FIELD_CLASSES: tuple = (
 )
 
 
-def _enhanced_register_read(original_read, flag_type, enum_type, fields_spec):
-    def read(self):
-        value = original_read(self)
-        if flag_type is not None:
-            return flag_type(value)
-        if enum_type is not None:
-            return enum_type(value)
-        return RegisterInt(value, self.offset, self.width, fields_spec)
-    read.__peakrdl_enhanced__ = True
-    return read
-
-
-def _enhanced_register_write(original_write, original_modify):
-    def write(self, value):
-        if isinstance(value, FieldInt):
-            shifted = (int(value) << value.lsb) & value.mask
-            original_modify(self, shifted, value.mask)
-        else:
-            original_write(self, int(value))
-    write.__peakrdl_enhanced__ = True
-    return write
-
-
-def _enhanced_field_read(original_read):
-    def read(self):
-        return FieldInt(original_read(self), self.lsb, self.width, self.offset)
-    read.__peakrdl_enhanced__ = True
-    return read
-
-
-def _enhanced_field_write(original_write):
-    def write(self, value):
-        original_write(self, int(value))
-    write.__peakrdl_enhanced__ = True
-    return write
-
-
-def _make_write_fields(fields_spec, writable_spec):
-    """Build a ``write_fields(**kwargs)`` shim for a generated register class.
-
-    Collapses N per-field writes into a single C++ ``write_fields(mask, value)``
-    call (1 read + 1 write on the master, regardless of N). Validates field
-    names and writability at the Python boundary so the C++ side stays minimal.
-    """
-    def write_fields(self, **kwargs):
-        combined_mask = 0
-        combined_value = 0
-        for name, raw_value in kwargs.items():
-            spec = fields_spec.get(name)
-            if spec is None:
-                raise KeyError(
-                    f"Unknown field '{name}' on register '{self.name}'. "
-                    f"Known fields: {sorted(fields_spec)}"
-                )
-            if not writable_spec.get(name, False):
-                raise PermissionError(
-                    f"Field '{name}' on register '{self.name}' is not writable"
-                )
-            lsb, width = spec
-            field_mask = ((1 << width) - 1) << lsb
-            combined_mask |= field_mask
-            combined_value |= (int(raw_value) << lsb) & field_mask
-        # Single C++ entry: native RMW under the hood.
-        self._native_write_fields(combined_mask, combined_value)
-    return write_fields
-
-
-def _enhance_register_class(cls, fields_spec):
-    if getattr(cls.read, "__peakrdl_enhanced__", False):
-        return
-    raw_read = cls.read
-    raw_write = cls.write
-    cls.read = _enhanced_register_read(
-        raw_read,
-        _FLAG_REG_TYPES.get(cls),
-        _ENUM_REG_TYPES.get(cls),
-        fields_spec,
-    )
-    cls.write = _enhanced_register_write(raw_write, cls.modify)
-    # Fast-path scalar accessors: bypass RegisterInt wrapping / FieldInt
-    # handling. ``read_raw`` returns a plain ``int``; ``write_raw`` accepts
-    # a plain ``int`` and writes it directly via the underlying C++ method.
-    cls.read_raw = raw_read
-    cls.write_raw = raw_write
-    # Preserve native binding under a private name; expose Python shim with
-    # validation under the public name.
-    cls._native_write_fields = cls.write_fields
-    cls.write_fields = _make_write_fields(
-        fields_spec, _REGISTER_FIELD_WRITABLE.get(cls, {})
-    )
-
-
-def _enhance_field_class(cls):
-    if getattr(cls.read, "__peakrdl_enhanced__", False):
-        return
-    raw_read = cls.read
-    raw_write = cls.write
-    cls.read = _enhanced_field_read(raw_read)
-    cls.write = _enhanced_field_write(raw_write)
-    # Fast-path scalar accessors: ``read_raw`` returns a plain ``int`` (the
-    # field-space value, identical to what the C++ getter returns -- no
-    # ``FieldInt`` allocation). ``write_raw`` takes a plain ``int`` in
-    # field-space and forwards directly to the C++ setter (which performs
-    # the shift+mask+modify on the underlying register).
-    cls.read_raw = raw_read
-    cls.write_raw = raw_write
-
-
+# Apply every registered enhancement (defaults + sibling units). The
+# metadata dict carries everything the defaults need plus an open
+# extension surface so sibling units can read additional keys.
+# Wrapping is idempotent: each enhancement checks for ``__peakrdl_enhanced__``
+# (set by ``runtime/_default_shims.py``) and bails out on the second pass.
 for _reg_cls, _spec in _REGISTER_FIELDS.items():
-    _enhance_register_class(_reg_cls, _spec)
+    _peakrdl_registry.apply_register_enhancements(
+        _reg_cls,
+        {
+            "fields": _spec,
+            "writable": _REGISTER_FIELD_WRITABLE.get(_reg_cls, {}),
+            "flag_type": _FLAG_REG_TYPES.get(_reg_cls),
+            "enum_type": _ENUM_REG_TYPES.get(_reg_cls),
+        },
+    )
+
 for _field_cls in _FIELD_CLASSES:
-    _enhance_field_class(_field_cls)
+    _peakrdl_registry.apply_field_enhancements(_field_cls)
+
+# Wire any registered lazy node attributes onto the shared node base, if
+# one exists in this generated module. Sibling units that introduce a
+# base class will export it as ``_PEAKRDL_NODE_BASE``; until then we
+# pass ``None`` and the registry no-ops.
+_peakrdl_registry.attach_node_attributes(globals().get("_PEAKRDL_NODE_BASE"))
