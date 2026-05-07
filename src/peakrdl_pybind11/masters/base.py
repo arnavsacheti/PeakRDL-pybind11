@@ -75,3 +75,17 @@ class MasterBase(ABC):
         """Batched write. Default impl loops single-op :meth:`write`."""
         for op in ops:
             self.write(op.address, op.value, op.width)
+
+    def barrier(self) -> None:
+        """Drain any in-flight writes on this master.
+
+        Default implementation is a no-op: most masters issue writes
+        synchronously and have nothing to drain. Bus backends that
+        post writes asynchronously (e.g. write FIFOs, RDMA-style
+        engines) override this to wait for completion.
+
+        This is the seam used by :mod:`peakrdl_pybind11.runtime.bus_policies`
+        to implement :meth:`Soc.barrier`, the auto-barrier policy, and
+        per-subtree barriers.
+        """
+        return None
