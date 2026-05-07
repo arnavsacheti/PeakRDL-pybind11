@@ -28,6 +28,12 @@ dependencies = ["systemrdl-compiler >= 1.30.1", "jinja2"]
 
 [project.optional-dependencies]
 cli = ["peakrdl-cli >= 1.2.3"]
+# Soft deps for the Jupyter / IPython rich-display surface in
+# ``peakrdl_pybind11.runtime.widgets``. Installing this extra is only
+# required if you want ``node.watch(...)`` live monitors -- the
+# ``_repr_html_`` / ``_repr_pretty_`` renderers themselves are pure
+# Python and ship without any extra dependencies.
+notebook = ["ipywidgets >= 8.0"]
 
 [dependency-groups]
 docs = [
