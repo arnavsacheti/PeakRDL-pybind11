@@ -1,282 +1,162 @@
-Integer Types
-=============
+Register and Field Values
+=========================
 
-PeakRDL-pybind11 provides enhanced integer types that preserve metadata about register fields and positions.
+PeakRDL-pybind11 returns typed value wrappers from ``read()`` calls — not bare
+``int`` objects. ``RegisterValue`` carries the whole-register decode along with
+field metadata. ``FieldValue`` is a single-field value, decoded as an
+``IntEnum`` member or ``bool`` where the RDL says it should be.
 
 Overview
 --------
 
-When reading from generated register maps, ``read()`` methods return ``RegisterInt`` or ``FieldInt`` objects
-instead of plain Python integers. These enhanced types:
+A node (``Reg`` or ``Field``) is a *descriptor*. It produces a *value* by being
+read. Values are int-compatible wrappers that print well, compare to enums,
+and round-trip cleanly back into writes:
 
-* Inherit from Python's ``int``, so they work anywhere an integer does
-* Preserve position and width metadata
-* Support all integer operations (comparison, arithmetic, etc.)
-* Enable smart read-modify-write operations
+* ``RegisterValue`` — returned by ``reg.read()``. Holds the whole register
+  word plus per-field decode information. Field access by attribute or by
+  ``__getitem__`` returns ``FieldValue`` instances.
+* ``FieldValue`` — returned by ``field.read()``. A single field, narrowed to
+  the field's bit range. When the field has ``encode = SomeEnum``, the value
+  is the matching ``IntEnum`` member; for a 1-bit field, it is ``bool``-like.
 
-RegisterInt
------------
-
-.. autoclass:: peakrdl_pybind11.RegisterInt
-   :members:
-   :inherited-members:
-   :special-members: __new__
-
-A ``RegisterInt`` represents a complete register value with metadata about its fields.
-
-**Example:**
+Both behave like ``int`` for arithmetic and comparison, so existing code that
+expects integers keeps working. The richer surface — formatting, decode,
+field access, replacement — is layered on top.
 
 .. code-block:: python
 
-   from peakrdl_pybind11 import RegisterInt
+   v = soc.uart.control.read()
+   print(v)
+   # UartControl(0x00000022)
+   #   enable[0]    = 1
+   #   baudrate[3:1]= BaudRate.BAUD_19200  (1)
+   #   parity[5:4]  = Parity.NONE          (0)
 
-   # Create a RegisterInt with fields
-   reg = RegisterInt(
-       0xABCD,
-       offset=0x1000,
-       width=4,
-       fields={
-           'enable': (0, 1),      # bit 0, width 1
-           'mode': (1, 3),        # bits 3:1, width 3
-           'data': (8, 8),        # bits 15:8, width 8
-       }
-   )
-
-   # Use as a regular integer
-   print(f"Register value: {int(reg):#x}")  # 0xabcd
-
-   # Access metadata
-   print(f"Offset: {reg.offset:#x}")  # 0x1000
-   print(f"Width: {reg.width} bytes")  # 4
-
-   # Access fields (returns FieldInt objects)
-   print(f"Enable: {reg.enable}")      # 1
-   print(f"Mode: {reg.mode}")          # 6
-   print(f"Data: {reg.data:#x}")       # 0xab
-
-**With Generated Code:**
-
-.. code-block:: python
-
-   # Read returns RegisterInt
-   reg_value = soc.control.read()
-   
-   # Access fields directly from the returned value
-   if reg_value.enable == 1:
-       print(f"Mode is {reg_value.mode}")
-
-
-FieldInt
---------
-
-.. autoclass:: peakrdl_pybind11.FieldInt
-   :members:
-   :inherited-members:
-   :special-members: __new__
-
-A ``FieldInt`` represents a field value with metadata about its position within a register.
-
-**Example:**
-
-.. code-block:: python
-
-   from peakrdl_pybind11 import FieldInt
-
-   # Create a FieldInt for a 3-bit field at bits 3:1
-   field = FieldInt(5, lsb=1, width=3, offset=0x1000)
-
-   # Use as a regular integer
-   print(f"Field value: {int(field)}")  # 5
-
-   # Access metadata
-   print(f"LSB: {field.lsb}")          # 1
-   print(f"MSB: {field.msb}")          # 3
-   print(f"Width: {field.width} bits") # 3
-   print(f"Mask: {field.mask:#x}")     # 0xe
-
-**With Generated Code:**
-
-.. code-block:: python
-
-   # Read field returns FieldInt
-   enable_val = soc.control.enable.read()
-   
-   # Check field properties
-   print(f"Enable at bit {enable_val.lsb}")
-
-
-Read-Modify-Write Operations
+Immutability and hashability
 ----------------------------
 
-One of the key features of ``FieldInt`` is automatic read-modify-write when passed to ``write()``:
+``RegisterValue`` and ``FieldValue`` are **immutable and hashable**. Once a
+read returns a value, that value cannot mutate — there is no attribute
+assignment, no in-place op, no aliasing surprise. Both are safe to use as
+``dict`` keys or ``set`` members, which makes them suitable for snapshots,
+coverage maps, and golden-state comparisons.
+
+Mutation is performed by *replacement*. ``v.replace(**fields)`` returns a new
+``RegisterValue`` with the named fields overwritten and every other field
+left untouched:
 
 .. code-block:: python
 
-   # Set initial register value
-   soc.control.write(0x5B)  # enable=1, mode=5, priority=5
+   v  = soc.uart.control.read()       # RegisterValue(0x22)
+   v2 = v.replace(enable=0)           # new RegisterValue(0x20); v unchanged
+   v == v2                            # False; both still hashable
 
-   # Create a FieldInt to change only the mode field
-   new_mode = FieldInt(7, lsb=1, width=3, offset=0x0)
+   seen = {}
+   seen[v] = "before"                 # immutable & hashable → safe dict key
+   seen[v2] = "after"
 
-   # Write the FieldInt - automatically does RMW!
-   # Only bits 3:1 are modified, enable and priority unchanged
-   soc.control.write(new_mode)
+The cost is one allocation per read. The benefit is that no stale handle ever
+silently changes underneath you.
 
-   # Result: enable=1, mode=7, priority=5 (0x5F)
-   result = soc.control.read()
-   assert result.enable == 1      # unchanged
-   assert result.mode == 7        # changed
-   assert result.priority == 5    # unchanged
-
-This is much safer than manually doing read-modify-write:
-
-.. code-block:: python
-
-   # Manual RMW (error-prone):
-   current = soc.control.read()
-   new_value = (current & ~0xE) | ((7 << 1) & 0xE)
-   soc.control.write(new_value)
-
-   # With FieldInt (safe and clear):
-   new_mode = FieldInt(7, lsb=1, width=3, offset=0x0)
-   soc.control.write(new_mode)
-
-
-Type Compatibility
-------------------
-
-Both ``RegisterInt`` and ``FieldInt`` are fully compatible with Python's ``int`` type:
-
-.. code-block:: python
-
-   field = FieldInt(5, lsb=0, width=4, offset=0)
-
-   # Comparison
-   assert field == 5
-   assert field > 3
-   assert field < 10
-
-   # Arithmetic (returns plain int)
-   result = field + 2      # 7 (plain int)
-   result = field * 2      # 10 (plain int)
-
-   # Use anywhere an int is expected
-   value = int(field)      # 5
-   hex_str = f"{field:#x}" # "0x5"
-
-
-Flags and Enums
+Pickle and JSON
 ---------------
 
-PeakRDL-pybind11 can generate enum-style types for registers when you mark them with UDP properties.
-Registers tagged with ``is_flag`` generate ``IntFlag``-compatible classes (named ``<reg>_f``), and
-registers tagged with ``is_enum`` generate ``IntEnum``-compatible classes (named ``<reg>_e``).
-These are also exported as
-``RegisterIntFlag`` and ``RegisterIntEnum`` from the core package. Reads from these registers
-return the generated flag/enum type instead of ``RegisterInt``.
-
-**SystemRDL UDPs:**
-
-.. code-block:: systemrdl
-
-   // Required for CLI users; programmatic callers can instead use
-   // Pybind11Exporter.register_udps(rdlc) to register them all at once.
-   property is_flag      { component = reg;   type = boolean; };
-   property is_enum      { component = reg;   type = boolean; };
-   property flag_disable { component = field; type = string;  };
-   property flag_names   { component = field; type = string;  };
-
-   addrmap example {
-       reg {
-           is_flag = true;
-           field { sw = r; hw = w; } ready[0:0];
-           field { sw = r; hw = w; } error[1:1];
-       } status @ 0x00;
-
-       reg {
-           is_enum = true;
-           field { sw = rw; hw = r; } idle[0:0];
-           field { sw = rw; hw = r; } running[1:1];
-       } mode @ 0x04;
-   };
-
-**Python usage:**
+Both value types are picklable and JSON-serializable. They round-trip across
+process boundaries — useful for distributed test harnesses, CI artefacts, and
+``snapshot()`` blobs that need to survive a worker restart.
 
 .. code-block:: python
 
-   import example
-   soc = example.create()
-   # ... attach master ...
+   import pickle, json
 
-   # IntFlag operations
-   Flags = example.status_f
-   soc.status.write(Flags.Ready | Flags.Error)
-   if Flags.Ready in soc.status.read():
-       print("Ready")
+   v = soc.uart.control.read()
 
-   # IntEnum operations
-   Mode = example.mode_e
-   soc.mode.write(Mode.Running)
-   if soc.mode.read() == Mode.Idle:
-       print("Idle")
+   # Pickle round-trip
+   blob = pickle.dumps(v)
+   v2   = pickle.loads(blob)
+   assert v == v2
 
-**Member generation rules** (apply to both ``is_flag`` and ``is_enum`` registers):
+   # JSON round-trip
+   payload = json.dumps(v.to_json())
+   v3      = RegisterValue.from_json(json.loads(payload))
+   assert v == v3
 
-For each field, every enabled bit position contributes one member with value
-``1 << (field.lsb + i)``. A single-bit field uses the field's name; a width-N
-field defaults to ``{field}_0 .. {field}_{N-1}``. Two field-level UDPs let you
-shape this:
+The JSON form preserves the integer value and enough metadata to reconstruct
+the decoded view (field names, widths, encodings).
 
-* ``flag_disable`` — comma-separated list of bit indices within the field
-  (``0`` = lsb) to drop. Disabled positions never produce a member, and the
-  remaining members keep their original bit-position index in the default
-  name. Example: a width-4 field with ``flag_disable = "1,3";`` emits
-  ``field_0`` and ``field_2``.
-* ``flag_names`` — comma-separated identifiers, mapped 1:1 to the bits that
-  remain after ``flag_disable``, in ascending order. Trailing positions
-  without a name fall back to ``{field}_{i}``. Providing more names than
-  remaining bits is an error.
+Format helpers
+--------------
 
-Example combining the two on a width-4 field where bits 1 and 3 are unused
-in hardware::
-
-   field {
-       sw = rw; hw = r;
-       flag_disable = "1,3";
-       flag_names    = "low,high";
-   } quad[3:0];
-
-generates ``low = 1`` (bit 0) and ``high = 4`` (bit 2).
-
-
-Complete Example
----------------
+Users always want to format a register value four different ways. The helpers
+are short, predictable, and live on the value itself:
 
 .. code-block:: python
 
-   import simple_soc
-   from peakrdl_pybind11.masters import MockMaster
-   from peakrdl_pybind11 import RegisterInt, FieldInt
+   v.hex()                       # "0x00000022"
+   v.hex(group=4)                # "0x0000_0022"
+   v.bin()                       # "0b00000000_00000000_00000000_00100010"
+   v.bin(group=8, fields=True)   # annotates groups with field boundaries
+   print(reg, fmt="bin")          # alt-format on the live read
+   soc.uart.control.read().table()   # ASCII table of fields, ready for logs
 
-   # Setup
-   soc = simple_soc.create()
-   master = simple_soc.wrap_master(MockMaster())
-   soc.attach_master(master)
+``v.table()`` is what you paste into a bug report — a compact, monospaced
+field-by-field view that survives copy-paste.
 
-   # Read register (returns RegisterInt)
-   control = soc.control.read()
-   print(f"Control: {control:#x}")
-   print(f"  Enable: {control.enable}")
-   print(f"  Mode: {control.mode}")
+Field access on RegisterValue
+-----------------------------
 
-   # Read field (returns FieldInt)
-   enable = soc.control.enable.read()
-   print(f"Enable bit at position {enable.lsb}")
+A ``RegisterValue`` exposes its fields by attribute and by name:
 
-   # Write with automatic RMW
-   new_mode = FieldInt(7, lsb=1, width=3, offset=0x0)
-   soc.control.write(new_mode)  # Only changes mode field
+.. code-block:: python
 
-   # Write full register
-   soc.control.write(0xAB)
-   soc.control.write(RegisterInt(0xCD, offset=0, width=4))
+   v = soc.uart.control.read()
+
+   v == 0x22                     # True — RegisterValue is int-compatible
+   v.enable                      # 1 (FieldValue, 1-bit → bool-like)
+   v["enable"]                   # same as above, by name
+   v.baudrate                    # <BaudRate.BAUD_19200: 1>
+   v.replace(enable=0)           # → new RegisterValue with enable=0
+
+Comparisons against bare ints, against enum members, and against other
+``RegisterValue`` instances all do the right thing. Field access never hits
+the bus — the read already happened, and ``RegisterValue`` is just the
+decoded snapshot.
+
+Round-trip back to write
+------------------------
+
+Because ``RegisterValue`` is int-compatible and carries the decoded fields,
+it round-trips into ``write()`` without ceremony:
+
+.. code-block:: python
+
+   v = soc.uart.control.read()
+   # ... some logic ...
+   soc.uart.control.write(v)              # raw write of the same word
+   soc.uart.control.write(v.replace(enable=0))   # write the replaced value
+
+Pair this with ``modify(**fields)`` (the canonical RMW) for cases where you
+want a single read-modify-write rather than a separate read and write.
+
+Legacy compatibility
+--------------------
+
+The names ``RegisterInt`` and ``FieldInt`` are the **legacy** spellings of
+these types. ``RegisterValue`` and ``FieldValue`` are the canonical names
+going forward. New code should use the canonical names; the legacy names
+remain importable for backward compatibility but are not documented here —
+their reference lives elsewhere in the API documentation.
+
+Reference
+---------
+
+.. autoclass:: peakrdl_pybind11.RegisterValue
+   :members:
+   :inherited-members:
+   :special-members: __new__
+
+.. autoclass:: peakrdl_pybind11.FieldValue
+   :members:
+   :inherited-members:
+   :special-members: __new__
