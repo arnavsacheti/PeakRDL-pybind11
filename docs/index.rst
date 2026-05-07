@@ -5,100 +5,109 @@ PeakRDL-pybind11 Documentation
    :target: https://github.com/arnavsacheti/PeakRDL-pybind11/blob/main/LICENSE
    :alt: License
 
-PeakRDL-pybind11 is an exporter for the PeakRDL toolchain that generates PyBind11 modules from SystemRDL register descriptions. This enables Python-based hardware testing and interaction with register maps through a clean, type-safe Python API.
+PeakRDL-pybind11 generates Python bindings from SystemRDL register
+descriptions so a Python-fluent person who is *not* a hardware engineer can
+stay productive on hardware.
 
-Features
---------
+**One-line goal:** make ``dir(soc)`` and a docstring enough to drive the chip
+from the REPL or a notebook.
 
-- **PyBind11 Module Generation**: Automatically generates C++ descriptors and Python bindings from SystemRDL
-- **SoC Hierarchy Exposure**: Import generated modules to access the complete SoC register hierarchy
-- **Pluggable Master Backends**: Support for multiple communication backends:
+Who this is for
+---------------
 
-  - Mock Master (for testing without hardware)
-  - OpenOCD Master (for JTAG/SWD debugging)
-  - SSH Master (for remote access)
-  - Custom Master backends (extensible interface)
+Five user roles drive the design. Anything that helps them is a feature.
 
-- **Comprehensive API**:
+.. list-table::
+   :header-rows: 1
+   :widths: 18 42 40
 
-  - ``attach_master()``: Connect to hardware or simulator
-  - ``read()``: Read register values
-  - ``write()``: Write register values
-  - ``modify()``: Read-modify-write operations
+   * - Role
+     - What they do most
+     - What hurts most today
+   * - Bring-up engineer
+     - Poke registers from a REPL, verify hardware came up.
+     - "Does this register need RMW or write?"
+   * - Test author
+     - Write directed/random tests, wait for events.
+     - Polling boilerplate, magic constants.
+   * - FW dev
+     - Mirror the C driver's behavior in Python for co-simulation.
+     - Mismatched semantics with ``mmio_*`` helpers.
+   * - Lab automator
+     - Long-running scripts in Jupyter, log + replay sessions.
+     - No transcript, no diffing, weak notebook UX.
+   * - Debugger
+     - Attached over JTAG/SWD, want a state dump and snapshot.
+     - Each tool has its own register browser.
 
-- **Type Safety**: Generated ``.pyi`` stub files for full IDE support and type checking
-- **Python-Based Testing**: Enable hardware testing with callbacks and custom logic
-
-Installation
+Mental model
 ------------
 
-.. code-block:: bash
+A generated module is a typed tree of nodes that mirrors the RDL hierarchy.
+Nodes are descriptors; values come from reads. Reads return typed wrappers
+(``RegisterValue``, ``FieldValue``) that behave like ints but carry decode
+info.
 
-   pip install peakrdl-pybind11
-
-Quick Start
------------
-
-Command Line Usage
-~~~~~~~~~~~~~~~~~~
-
-.. code-block:: bash
-
-   peakrdl pybind11 input.rdl -o output_dir --soc-name MySoC --top top_addrmap --gen-pyi
-
-Python API Usage
-~~~~~~~~~~~~~~~~
+Four primitive ops cover the read/write surface:
 
 .. code-block:: python
 
-   from peakrdl_pybind11 import Pybind11Exporter
-   from systemrdl import RDLCompiler
+   reg.read()              # one bus read  -> RegisterValue
+   reg.write(value)        # one bus write, no read
+   reg.modify(**fields)    # one read + one write (RMW)
+   reg.poke(value)         # explicit "I know what I'm doing", same as write
 
-   # Compile SystemRDL
-   rdl = RDLCompiler()
-   rdl.compile_file("input.rdl")
-   root = rdl.elaborate()
+See :doc:`concepts/values_and_io` and :doc:`concepts/side_effects` for the
+full surface, including ``peek()``, ``clear()``, ``set()``, ``pulse()``, and
+``acknowledge()`` for side-effecting registers.
 
-   # Export to PyBind11
-   exporter = Pybind11Exporter()
-   exporter.export(root, "output_dir", soc_name="MySoC")
+.. note::
+   These docs describe the **target API**. The sketch is the source of truth;
+   the implementation catches up to it. Where the current code differs, treat
+   the sketch as authoritative.
 
-Using Generated Modules
-~~~~~~~~~~~~~~~~~~~~~~~~
+Design Sketch
+-------------
 
-.. code-block:: python
+The full design sketch -- audience, principles, and every concept page below
+in one place -- is available as a single document.
 
-   import MySoC
-   from peakrdl_pybind11.masters import MockMaster
-
-   # Create and attach a master
-   soc = MySoC.create()
-   master = MockMaster()
-   soc.attach_master(master)
-
-   # Read/write registers
-   value = soc.peripherals.uart.control.read()
-   soc.peripherals.uart.control.write(0x1234)
-
-   # Modify specific fields
-   soc.peripherals.uart.control.modify(enable=1, mode=2)
-
-Contents
---------
+* :download:`IDEAL_API_SKETCH.md <IDEAL_API_SKETCH.md>` -- the design sketch in full.
 
 .. toctree::
    :maxdepth: 2
-   :caption: User Guide
+   :caption: Getting started
 
    installation
    usage
    feature_matrix
 
 .. toctree::
+   :maxdepth: 1
+   :caption: Concepts
+
+   concepts/hierarchy
+   concepts/values_and_io
+   concepts/widgets
+   concepts/memory
+   concepts/arrays
+   concepts/enums_flags
+   concepts/interrupts
+   concepts/aliases
+   concepts/side_effects
+   concepts/specialized
+   concepts/bus_layer
+   concepts/wait_poll
+   concepts/snapshots
+   concepts/observers
+   concepts/errors
+   concepts/cli_repl
+
+.. toctree::
    :maxdepth: 2
    :caption: API Reference
 
-   api
+   api/int_types
    api/exporter
    api/masters
 
