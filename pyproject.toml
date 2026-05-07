@@ -28,6 +28,11 @@ dependencies = ["systemrdl-compiler >= 1.30.1", "jinja2"]
 
 [project.optional-dependencies]
 cli = ["peakrdl-cli >= 1.2.3"]
+# CLI subcommand --watch (Unit 24) uses watchdog as a soft filesystem
+# observer; --explore prefers IPython but falls back to ``code.interact``.
+# Bundled here so the documented install hint
+# (``pip install peakrdl-pybind11[notebook]``) actually resolves.
+notebook = ["watchdog>=3"]
 
 [dependency-groups]
 docs = [
