@@ -83,11 +83,11 @@ def test_clear_woclr_writes_one() -> None:
     assert f.calls["write"] == [1]
 
 
-def test_clear_wclr_writes_all_ones() -> None:
-    """``wclr`` accepts any write; we send all-ones for determinism."""
+def test_clear_wclr_writes_zero() -> None:
+    """``wclr`` -> write 0 to all bits (sketch §11)."""
     f = _make_field(on_write="wclr", width=8)
     clear(f)
-    assert f.calls["write"] == [0xFF]
+    assert f.calls["write"] == [0]
 
 
 def test_clear_wzc_writes_zero() -> None:
@@ -203,6 +203,30 @@ def test_no_side_effects_blocks_rclr_read() -> None:
             check_read_allowed(f)
     assert "soc.intr_status.tx_done" in str(exc.value)
     assert "rclr" in str(exc.value)
+
+
+def test_no_side_effects_blocks_field_read_via_seam() -> None:
+    """A field whose ``read()`` calls ``check_read_allowed`` raises in-guard.
+
+    This mirrors how generated read paths are expected to wire up: each
+    bus-touching read consults the guard before issuing the transaction.
+    """
+    info = SimpleNamespace(
+        on_read="rclr", on_write=None, width=1, lsb=0,
+        path="soc.uart.intr.por", address=0x18, singlepulse=False,
+    )
+
+    field: SimpleNamespace
+
+    def read() -> int:
+        check_read_allowed(field)
+        return 0
+
+    field = SimpleNamespace(info=info, read=read, write=lambda _v: None, master=None)
+
+    with no_side_effects():
+        with pytest.raises(SideEffectError):
+            field.read()
 
 
 def test_no_side_effects_does_not_block_clean_read() -> None:

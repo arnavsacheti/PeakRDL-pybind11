@@ -225,8 +225,7 @@ def clear(target: object) -> None:
     """Clear ``target`` using whichever path the metadata declares.
 
     - ``onwrite = woclr``  -> write 1
-    - ``onwrite = wclr``   -> write all-ones (any write clears, but all-ones
-      is a deterministic choice that works for both fields and registers)
+    - ``onwrite = wclr``   -> write 0 to all bits (per sketch §11)
     - ``onwrite = wzc``    -> write 0
     - ``onread  = rclr``   -> issue a read (and discard)
     - otherwise            -> raise ``NotSupportedError``
@@ -236,7 +235,7 @@ def clear(target: object) -> None:
         target.write(1)
         return
     if on_write == "wclr":
-        target.write(_all_ones(target))
+        target.write(0)
         return
     if on_write == "wzc":
         target.write(0)
