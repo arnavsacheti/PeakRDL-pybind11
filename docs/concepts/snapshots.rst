@@ -25,6 +25,31 @@ Snapshots are immutable, hashable, picklable, and JSON-serializable, which
 makes them safe to pass between processes, attach to bug reports, and compare
 without worrying about aliasing or accidental mutation.
 
+Attaching to a hand-built SoC
+-----------------------------
+
+The generated ``create()`` factory wires ``soc.snapshot()`` and
+``soc.restore()`` onto the returned soc instance automatically (it calls
+``register_post_create`` under the hood). If you build your own SoC harness
+— a mock, a unit-test stub, a hand-rolled adapter — you can attach the same
+methods explicitly with one call:
+
+.. code-block:: python
+
+   from peakrdl_pybind11.runtime.snapshot import attach_snapshot
+
+   my_soc = MyHandBuiltSoc(...)        # not produced by create()
+   attach_snapshot(my_soc)             # binds .snapshot() and .restore()
+
+   snap = my_soc.snapshot()
+   my_soc.restore(snap)
+
+``attach_snapshot`` is idempotent (calling it twice rebinds harmlessly) and
+returns the same ``soc`` so it composes with other ``attach_*`` helpers.
+Test mocks only need to expose ``walk()`` (or ``iter_readable()``) and the
+per-node ``peek()`` / ``read()`` / ``write()`` surface — anything that walks
+like a soc snapshots like a soc.
+
 Capturing
 ---------
 
@@ -87,6 +112,22 @@ silently; write-only fields are written from the captured "intended" value
 recorded at capture time. A subtree snapshot restored against the matching
 subtree (``soc.uart.restore(uart_snap)``) only writes that peripheral.
 
+A subtree view of a whole-soc snapshot also restores cleanly against the
+parent soc — paths from the subtree view are re-absolutized at restore time,
+so the writes still land at the right addresses:
+
+.. code-block:: python
+
+   snap = soc.snapshot()                 # whole-device capture
+   soc.restore(snap.uart)                # restores only the uart paths
+
+   # Equivalent, captured directly as a subtree:
+   uart_snap = soc.uart.snapshot()
+   soc.restore(uart_snap)                # also routes correctly
+
+This means you can keep one big snapshot around and replay just one
+peripheral from it without re-capturing.
+
 Serialization
 -------------
 
@@ -105,10 +146,86 @@ Snapshots round-trip through JSON for human-readable artefacts and through
    data = pickle.dumps(snap)
    restored = pickle.loads(data)
 
-JSON output is keyed by dotted path with hex string values and explicit
-``access`` and ``reset`` metadata; ``SocSnapshot.from_json`` reattaches the
-snapshot to the matching SoC tree at load time so ``restore`` knows which
-addresses to write.
+JSON output is keyed by dotted path with explicit ``access`` and ``reset``
+metadata; ``SocSnapshot.from_json`` reattaches the snapshot to the matching
+SoC tree at load time so ``restore`` knows which addresses to write.
+
+JSON file format
+~~~~~~~~~~~~~~~~
+
+``Snapshot.to_json(path)`` writes a stable, hand-authorable file. The
+top-level object is a flat dict with three keys: ``"version"`` (currently
+``1``), ``"values"``, and ``"metadata"``. ``values`` is a flat
+``{absolute-dotted-path: integer}`` mapping; integers are written as decimal
+JSON numbers (not hex strings), so the file diffs cleanly under git and
+``json.load`` round-trips without custom parsing. ``metadata`` mirrors the
+same key set and carries a JSON-friendly subset of each node's
+``Info`` — ``name``, ``path``, ``address``, ``offset``, ``regwidth``,
+``access``, ``reset``, ``on_read``, ``on_write`` — limited to fields that
+``json.dumps`` accepts; missing or non-serializable attributes are dropped
+silently. ``metadata`` is purely descriptive: ``Snapshot.from_json`` and
+``restore`` work even if ``metadata`` is empty (``{}``), which means you
+can build a snapshot file by hand or from a script with no SoC introspection.
+
+The schema is small enough to write directly:
+
+.. code-block:: json
+
+   {
+     "version": 1,
+     "values": {
+       "uart.control": 34,
+       "uart.status.tx_ready": 1
+     },
+     "metadata": {
+       "uart.control": {
+         "path": "uart.control",
+         "address": 1024,
+         "regwidth": 32,
+         "access": "rw",
+         "reset": 0
+       },
+       "uart.status.tx_ready": {
+         "path": "uart.status.tx_ready",
+         "access": "r",
+         "reset": 0
+       }
+     }
+   }
+
+Keys in ``values`` must be absolute paths (``"uart.control"``, not
+``"control"``); ``restore`` resolves them through the soc's path index.
+Paths that don't exist in the target soc are skipped silently — an
+authored file can target a subset of the device, and a captured file
+loaded against an older firmware ignores paths the device no longer
+exposes. Snapshots authored without ``metadata`` round-trip through
+``from_json`` and restore correctly; the diff/notebook renderers degrade
+gracefully when access info is missing.
+
+Hashing & dict-key use
+----------------------
+
+``Snapshot`` is hashable: any snapshot can be used as a dict key or a set
+member, which is the right shape for golden-state checks where the test
+fixture is "the device must end in *one of these* known good states":
+
+.. code-block:: python
+
+   golden_idle  = soc.snapshot()
+   reset(soc); arm(soc)
+   golden_armed = soc.snapshot()
+
+   GOLDEN = {golden_idle: "idle", golden_armed: "armed"}
+
+   actual = soc.snapshot()
+   assert actual in GOLDEN, f"unexpected state: {actual.diff(golden_idle)}"
+
+Equality and hashing key off ``values`` only — captured metadata is
+descriptive and is deliberately ignored, so two snapshots with identical
+paths and integer values compare equal and hash to the same bucket even if
+they were captured from different soc revisions. That makes
+``set(snaps)`` and ``Counter(snaps)`` cheap deduplication primitives in
+soak tests.
 
 Side-effect safety
 ------------------
