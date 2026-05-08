@@ -32,10 +32,11 @@ from __future__ import annotations
 import importlib
 import json
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, ClassVar, Self
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from typing import Self
 
 try:  # pragma: no cover - depends on Unit 2 landing
     from .errors import did_you_mean as _did_you_mean
