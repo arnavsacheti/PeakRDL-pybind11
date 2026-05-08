@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 
+from peakrdl_pybind11.runtime import _registry
 from peakrdl_pybind11.runtime.async_session import (
     AsyncSession,
     attach_async_session,
@@ -128,6 +129,31 @@ class TestRegisterPostCreate:
         attach_async_session(soc)
         attach_async_session(soc)
         assert callable(soc.async_session)  # type: ignore[attr-defined]
+
+
+class TestPostCreateHookWiring:
+    """Verify ``attach_async_session`` is wired as a post-create hook so
+    every generated SoC gains ``soc.async_session()`` automatically.
+    """
+
+    def test_attach_async_session_is_registered_post_create_hook(self) -> None:
+        # Re-register defensively: the registry is idempotent on identity,
+        # but a prior test that called ``_reset_for_tests`` would otherwise
+        # leave us with an empty list.
+        _registry.register_post_create(attach_async_session)
+        hooks = _registry.get_post_create_hooks()
+        assert attach_async_session in hooks
+
+    def test_firing_post_create_hooks_attaches_async_session(self) -> None:
+        # Drive the registry path -- not ``attach_async_session`` directly
+        # -- to prove generated SoCs pick up the factory through Unit 1's
+        # seam.
+        _registry.register_post_create(attach_async_session)
+        bare = _FakeSoc()
+        assert not hasattr(bare, "async_session")
+        _registry.fire_post_create_hooks(bare)
+        assert callable(bare.async_session)  # type: ignore[attr-defined]
+        assert isinstance(bare.async_session(), AsyncSession)  # type: ignore[attr-defined]
 
 
 class TestContextManager:
