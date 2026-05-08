@@ -384,3 +384,25 @@ def attach_async_session(soc: object) -> object:
     )
     soc.async_session = _factory  # type: ignore[attr-defined]
     return soc
+
+
+# ---------------------------------------------------------------------------
+# Registry wiring (sibling-dep: Unit 1's runtime/_registry).
+#
+# When the registry seam is present we register ``attach_async_session`` as
+# a post-create hook so every ``MySoc.create()`` automatically gains the
+# ``soc.async_session()`` factory. When it isn't (this unit can land before
+# Unit 1), the import quietly fails and callers can still use
+# ``attach_async_session(soc)`` explicitly.
+# ---------------------------------------------------------------------------
+
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry  # type: ignore[attr-defined]
+except ImportError:
+    _registry = None  # type: ignore[assignment]
+
+if _registry is not None and hasattr(_registry, "register_post_create"):
+    # ``attach_async_session`` returns ``object`` for chaining; the registry
+    # expects a ``Callable[[Any], None]``. The return value is discarded by
+    # ``_fire``, so the mismatch is purely nominal.
+    _registry.register_post_create(attach_async_session)  # type: ignore[arg-type]
