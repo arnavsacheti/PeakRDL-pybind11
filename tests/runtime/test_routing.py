@@ -14,10 +14,12 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from peakrdl_pybind11.runtime import _registry
 from peakrdl_pybind11.runtime.routing import (
     Router,
     RoutingError,
     attach_master,
+    attach_router,
 )
 
 
@@ -381,3 +383,117 @@ def test_routing_error_carries_address_attribute() -> None:
     err = RoutingError(0xCAFEBABE)
     assert err.address == 0xCAFEBABE
     assert "0xcafebabe" in str(err)
+
+
+# ---------------------------------------------------------------------------
+# Post-create hook wiring (Unit 9 wire-up).
+# ---------------------------------------------------------------------------
+class FakeSoCWithAttach:
+    """Stand-in for a generated SoC.
+
+    Mimics the C++ ``attach_master(Master*) -> None`` shape: the only
+    thing the wrapper needs from the SoC is a callable ``attach_master``
+    that takes a single positional master and rejects unknown kwargs.
+    Each call records the master so tests can assert on what the C++
+    side ultimately saw.
+    """
+
+    def __init__(self) -> None:
+        self.attached_masters: list[object] = []
+
+    def attach_master(self, master: object) -> None:
+        self.attached_masters.append(master)
+
+
+def test_attach_router_is_registered_as_post_create_hook() -> None:
+    """``attach_router`` is wired into the post-create registry."""
+
+    hooks = _registry.get_post_create_hooks()
+    assert attach_router in hooks
+
+
+def test_attach_router_lets_attach_master_accept_where_kwarg() -> None:
+    """After the hook fires, ``soc.attach_master(m, where=...)`` no longer raises."""
+
+    soc = FakeSoCWithAttach()
+    attach_router(soc)
+
+    master = RecordingMaster("m")
+    # Without the wrapper this would raise TypeError because the
+    # underlying ``attach_master`` only accepts the master positionally.
+    soc.attach_master(master, where="uart.*")
+
+    # The wrapper installed a Router, not the bare master, on the SoC.
+    assert len(soc.attached_masters) == 1
+    assert isinstance(soc.attached_masters[0], Router)
+
+
+def test_attach_router_passthrough_when_where_is_none() -> None:
+    """``where=None`` (the default) hits the original C++ method directly."""
+
+    soc = FakeSoCWithAttach()
+    attach_router(soc)
+
+    master = RecordingMaster("m")
+    soc.attach_master(master)
+
+    # Passthrough: the SoC saw the bare master, not a Router.
+    assert soc.attached_masters == [master]
+
+
+def test_attach_router_routes_two_masters_by_address() -> None:
+    """Two ``where=`` calls with non-overlapping ranges route correctly."""
+
+    soc = FakeSoCWithAttach()
+    attach_router(soc)
+
+    uart = RecordingMaster("uart")
+    ram = RecordingMaster("ram")
+
+    # Use range tuples so the router doesn't need to walk the SoC tree;
+    # the FakeSoC stand-in deliberately has no walk()/info surface.
+    soc.attach_master(uart, where=(0x4000_1000, 0x4000_2000))
+    soc.attach_master(ram, where=(0x4000_2000, 0x4000_3000))
+
+    # Both attaches re-installed the router as the SoC's master.
+    router = soc.attached_masters[-1]
+    assert isinstance(router, Router)
+    # The same router is reused across calls (no new instance per attach).
+    assert all(m is router for m in soc.attached_masters)
+
+    # Routing works: 0x4000_1000 -> uart, 0x4000_2000 -> ram.
+    router.read(0x4000_1000)
+    router.read(0x4000_2000)
+    assert uart.reads == [(0x4000_1000, 4)]
+    assert ram.reads == [(0x4000_2000, 4)]
+
+
+def test_attach_router_is_idempotent() -> None:
+    """Calling the hook twice leaves a single wrapper layer."""
+
+    soc = FakeSoCWithAttach()
+    attach_router(soc)
+    first_wrapper = soc.attach_master
+    attach_router(soc)
+    # Second call is a no-op: same wrapper, no double-wrapping.
+    assert soc.attach_master is first_wrapper
+
+    # The wrapper still works — and crucially, ``where=None`` still
+    # passes the bare master through. (If we had double-wrapped, the
+    # inner wrapper would treat the outer wrapper's master as a Router
+    # and spin up rules.)
+    master = RecordingMaster("m")
+    soc.attach_master(master)
+    assert soc.attached_masters == [master]
+
+
+def test_attach_router_no_op_when_soc_lacks_attach_master() -> None:
+    """SoCs without ``attach_master`` (e.g. pre-bind stubs) are skipped."""
+
+    class Bare:
+        pass
+
+    soc = Bare()
+    # Should not raise, should not set anything on the SoC.
+    attach_router(soc)
+    assert not hasattr(soc, "attach_master")
