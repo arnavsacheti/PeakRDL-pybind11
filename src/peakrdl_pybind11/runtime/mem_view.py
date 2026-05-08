@@ -41,10 +41,14 @@ the new methods (``window``, ``iter_chunks``, ``read_into``,
 instead of lists. :func:`enhance_mem_instance` is the per-object
 fallback for cases where a class cannot be patched.
 
-If Unit 1's ``register_node_attribute`` registry is importable, this
-module also registers itself there so the exporter pipeline can apply
-the enhancement automatically. The wiring is best-effort and is
-silently skipped if the registry seam is not present.
+The module registers :func:`attach_mem_view` with Unit 1's
+``register_register_enhancement`` seam so every generated mem class is
+wrapped automatically when ``apply_register_enhancements`` runs. The
+hook detects mem-shaped classes by structural attributes
+(``mementries`` / ``memwidth``) or by the ``"is_mem"`` metadata key
+exporter pipelines can stamp; non-mem classes are left untouched. The
+wiring is best-effort and silently skipped when the registry seam is
+not present (this unit is importable in isolation).
 """
 
 from __future__ import annotations
@@ -63,8 +67,10 @@ __all__ = [
     "MemLike",
     "MemView",
     "MemWindow",
+    "attach_mem_view",
     "enhance_mem_class",
     "enhance_mem_instance",
+    "is_mem_class",
 ]
 
 
@@ -751,20 +757,66 @@ def enhance_mem_instance(mem: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Optional registry wiring (Unit 1's seam).
+# Mem-class detection + register-enhancement hook.
+#
+# Unit 1's ``apply_register_enhancements`` fires for every generated
+# *register* class; the generated mem classes flow through the same seam
+# (the template feeds them into ``_REGISTER_FIELDS``). The hook below
+# filters down to mem-shaped classes by structural attributes
+# (``mementries`` / ``memwidth``, set on every generated mem) plus an
+# explicit ``"is_mem"`` metadata key that exporter pipelines can stamp
+# when class shape alone is ambiguous (e.g. test fixtures). Non-mem
+# classes are left untouched.
 # ---------------------------------------------------------------------------
 
 
-def _register_with_registry() -> None:
-    """Register :func:`enhance_mem_class` with Unit 1's node-attribute hook,
-    if that registry is importable. Silent no-op otherwise.
+_MEM_CLASS_MARKERS: tuple[str, ...] = ("mementries", "memwidth")
+
+
+def is_mem_class(cls: type, metadata: dict[str, Any] | None = None) -> bool:
+    """Return ``True`` when ``cls`` looks like a generated mem class.
+
+    Detection prefers an explicit ``metadata["is_mem"]`` flag (the
+    exporter can stamp this once Unit 23 lands) and falls back to a
+    structural probe for the canonical mem attributes. The structural
+    probe is intentionally lenient -- duck-typed test fixtures that set
+    ``mementries`` / ``memwidth`` on the class also count.
     """
-    try:
-        from .._registry import register_node_attribute  # type: ignore[attr-defined]
-    except (ImportError, ModuleNotFoundError):
+    if metadata is not None and bool(metadata.get("is_mem", False)):
+        return True
+    return any(hasattr(cls, marker) for marker in _MEM_CLASS_MARKERS)
+
+
+def attach_mem_view(cls: type, metadata: dict[str, Any] | None = None) -> None:
+    """Registry hook: enhance ``cls`` with ``MemView`` glue when it's a mem.
+
+    Signature matches ``RegisterEnhancement`` so the function can be
+    fed straight into :func:`register_register_enhancement`. Non-mem
+    register classes are skipped (the default register/field shims in
+    ``_default_shims.py`` handle them). Idempotent: calling twice on
+    the same class is a no-op thanks to the
+    ``__peakrdl_mem_view_enhanced__`` flag.
+    """
+    if not is_mem_class(cls, metadata):
         return
-    with contextlib.suppress(Exception):
-        register_node_attribute("mem", enhance_mem_class)
+    enhance_mem_class(cls)
 
 
-_register_with_registry()
+# ---------------------------------------------------------------------------
+# Optional registry wiring (Unit 1's seam).
+#
+# When the registry seam is present we register ``attach_mem_view`` as a
+# register enhancement so every generated mem class is wrapped
+# automatically the first time ``apply_register_enhancements`` runs in
+# the per-SoC ``runtime.py``. When the seam isn't importable (this unit
+# can be loaded in isolation, e.g. unit tests), the import quietly fails
+# and callers can still apply :func:`enhance_mem_class` explicitly.
+# ---------------------------------------------------------------------------
+
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry  # type: ignore[attr-defined]
+except ImportError:
+    _registry = None  # type: ignore[assignment]
+
+if _registry is not None and hasattr(_registry, "register_register_enhancement"):
+    _registry.register_register_enhancement(attach_mem_view)
