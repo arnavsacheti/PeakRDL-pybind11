@@ -12,12 +12,17 @@ Reads and writes go through a shared :class:`_FakeMaster` so the assertion
 
 from __future__ import annotations
 
+import sys
+import types
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from peakrdl_pybind11.runtime import _registry
 from peakrdl_pybind11.runtime.aliases import (
+    _auto_attach_aliases_from_metadata,
+    _auto_attach_aliases_from_module,
     apply_alias_relationship,
     register_register_enhancement,
     registered_enhancements,
@@ -405,3 +410,218 @@ class TestRegisterEnhancementSeam:
         assert alt.is_alias is True
         assert alt.target is primary
         assert primary.aliases == (alt,)
+
+
+# ---------------------------------------------------------------------------
+# Auto-attach hooks — Unit 1's registry seams (the production path)
+# ---------------------------------------------------------------------------
+
+
+class TestAutoAttachHookRegistration:
+    """The aliases module wires itself into the canonical Unit 1 registry."""
+
+    def test_register_enhancement_hook_is_in_registry(self) -> None:
+        # The closer test in the task description checks for any function
+        # whose qualname contains "alias"; we want a stronger assertion
+        # that the auto-attach hook is the one that's been wired.
+        enhancers = _registry.get_register_enhancers()
+        assert _auto_attach_aliases_from_metadata in enhancers
+
+    def test_post_create_hook_is_in_registry(self) -> None:
+        hooks = _registry.get_post_create_hooks()
+        assert _auto_attach_aliases_from_module in hooks
+
+
+class TestAutoAttachFromMetadata:
+    """``_auto_attach_aliases_from_metadata`` consumes the metadata dict."""
+
+    def test_metadata_with_alias_target_class_wires_relationship(self) -> None:
+        primary = _make_register_class(
+            name="UartControl", path="uart.control", address=0x40001000
+        )
+        alt = _make_register_class(
+            name="UartControlAlt", path="uart.control_alt", address=0x40001000
+        )
+
+        # The exporter is free to drop a class reference in either key —
+        # the hook accepts ``alias`` (preferred) or ``alias_target``.
+        _auto_attach_aliases_from_metadata(alt, {"alias": primary})
+
+        assert alt.target is primary
+        assert primary.aliases == (alt,)
+
+    def test_metadata_with_alias_target_dict_wires_relationship(self) -> None:
+        primary = _make_register_class(
+            name="UartControl", path="uart.control", address=0x40001000
+        )
+        alt = _make_register_class(
+            name="UartControlAlt", path="uart.control_alt", address=0x40001000
+        )
+
+        _auto_attach_aliases_from_metadata(
+            alt,
+            {"alias_target": {"target_cls": primary, "kind": "sw_view"}},
+        )
+
+        assert alt.target is primary
+        assert alt.is_alias is True
+        # ``kind`` flowed through so the alias_kind backfill ran.
+        assert alt.info.alias_kind == "sw_view"  # type: ignore[attr-defined]
+
+    def test_metadata_without_alias_keys_is_noop(self) -> None:
+        # Most regs aren't aliases; the hook must not mutate their state
+        # when no alias payload is present.
+        reg = _make_register_class(
+            name="PlainReg", path="block.plain", address=0x40002000
+        )
+        before_repr = reg.__repr__
+
+        _auto_attach_aliases_from_metadata(reg, {"fields": {}, "writable": {}})
+
+        assert not hasattr(reg, "target")
+        assert not hasattr(reg, "aliases")
+        # The repr override fires only when the relationship is wired.
+        assert reg.__repr__ is before_repr
+
+    def test_non_dict_metadata_is_tolerated(self) -> None:
+        # The registry's ``apply_register_enhancements`` always passes a
+        # dict, but we also accept odd shapes silently rather than crash
+        # the whole enhancement pipeline.
+        reg = _make_register_class(
+            name="PlainReg", path="block.plain", address=0x40002000
+        )
+        _auto_attach_aliases_from_metadata(reg, None)  # type: ignore[arg-type]
+        _auto_attach_aliases_from_metadata(reg, "not a dict")  # type: ignore[arg-type]
+
+    def test_self_alias_in_metadata_is_skipped(self) -> None:
+        # ``apply_alias_relationship`` raises when alt is primary; the
+        # auto-attach hook guards against that case so a buggy upstream
+        # detector doesn't poison the whole register pipeline.
+        reg = _make_register_class(
+            name="UartControl", path="uart.control", address=0x40001000
+        )
+
+        # Should not raise — the hook detects self-target and bails.
+        _auto_attach_aliases_from_metadata(reg, {"alias": reg})
+
+        # Still no relationship recorded on the class.
+        assert getattr(reg, "target", None) is None or getattr(reg, "target") is reg
+
+
+class TestAutoAttachFromModule:
+    """``_auto_attach_aliases_from_module`` reads the emitted ``aliases.py``."""
+
+    def test_post_create_walks_tree_and_wires_pairs(self) -> None:
+        # Build a synthetic generated-module + soc shape that the hook
+        # can resolve. The soc owns a regfile whose attributes expose two
+        # register instances (canonical + alias).
+        primary_cls = _make_register_class(
+            name="UartControl", path="top.uart.control", address=0x40001000
+        )
+        alt_cls = _make_register_class(
+            name="UartControlAlt",
+            path="top.uart.control_alt",
+            address=0x40001000,
+        )
+
+        master = _FakeMaster()
+
+        class _Uart:
+            def __init__(self) -> None:
+                self.control = primary_cls(master)
+                self.control_alt = alt_cls(master)
+
+        # Stage a fake generated module + sibling ``aliases`` mapping.
+        mod_name = "_peakrdl_test_alias_mod"
+        gen_mod = types.ModuleType(mod_name)
+        aliases_mod = types.ModuleType(f"{mod_name}.aliases")
+        aliases_mod.aliases = {  # type: ignore[attr-defined]
+            "top.uart.control_alt": "top.uart.control",
+        }
+        sys.modules[mod_name] = gen_mod
+        sys.modules[f"{mod_name}.aliases"] = aliases_mod
+
+        try:
+
+            class Soc:
+                # ``__module__`` drives ``importlib.import_module(f"{mod}.aliases")``.
+                __module__ = mod_name
+                inst_name = "top"
+
+                def __init__(self) -> None:
+                    self.uart = _Uart()
+
+            soc = Soc()
+            wired = _auto_attach_aliases_from_module(soc)
+            assert wired == 1
+            assert alt_cls.target is primary_cls
+            assert primary_cls.aliases == (alt_cls,)
+        finally:
+            sys.modules.pop(mod_name, None)
+            sys.modules.pop(f"{mod_name}.aliases", None)
+
+    def test_post_create_returns_zero_when_module_has_no_aliases(self) -> None:
+        mod_name = "_peakrdl_test_alias_empty"
+        gen_mod = types.ModuleType(mod_name)
+        sys.modules[mod_name] = gen_mod
+        try:
+
+            class Soc:
+                __module__ = mod_name
+
+            assert _auto_attach_aliases_from_module(Soc()) == 0
+        finally:
+            sys.modules.pop(mod_name, None)
+
+    def test_post_create_returns_zero_when_aliases_dict_empty(self) -> None:
+        mod_name = "_peakrdl_test_alias_empty_mapping"
+        gen_mod = types.ModuleType(mod_name)
+        aliases_mod = types.ModuleType(f"{mod_name}.aliases")
+        aliases_mod.aliases = {}  # type: ignore[attr-defined]
+        sys.modules[mod_name] = gen_mod
+        sys.modules[f"{mod_name}.aliases"] = aliases_mod
+        try:
+
+            class Soc:
+                __module__ = mod_name
+
+            assert _auto_attach_aliases_from_module(Soc()) == 0
+        finally:
+            sys.modules.pop(mod_name, None)
+            sys.modules.pop(f"{mod_name}.aliases", None)
+
+    def test_unresolved_paths_are_skipped(self) -> None:
+        # Paths in the ``aliases.py`` mapping that the soc tree can't
+        # resolve must not raise; they're logged and skipped so a stale
+        # cached aliases.py doesn't break SoC creation.
+        primary_cls = _make_register_class(
+            name="UartControl", path="top.uart.control", address=0x40001000
+        )
+
+        master = _FakeMaster()
+
+        class _Uart:
+            def __init__(self) -> None:
+                self.control = primary_cls(master)
+
+        mod_name = "_peakrdl_test_alias_unresolved"
+        gen_mod = types.ModuleType(mod_name)
+        aliases_mod = types.ModuleType(f"{mod_name}.aliases")
+        aliases_mod.aliases = {  # type: ignore[attr-defined]
+            "top.uart.control_alt": "top.uart.control",  # alt not on tree
+        }
+        sys.modules[mod_name] = gen_mod
+        sys.modules[f"{mod_name}.aliases"] = aliases_mod
+        try:
+
+            class Soc:
+                __module__ = mod_name
+                inst_name = "top"
+
+                def __init__(self) -> None:
+                    self.uart = _Uart()
+
+            assert _auto_attach_aliases_from_module(Soc()) == 0
+        finally:
+            sys.modules.pop(mod_name, None)
+            sys.modules.pop(f"{mod_name}.aliases", None)
