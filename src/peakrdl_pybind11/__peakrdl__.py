@@ -121,16 +121,11 @@ class Exporter(ExporterSubcommandPlugin):
             ),
         )
 
-        # Sibling-unit CLI extensions can attach extra arguments here.
-        # These are *not* new top-level subcommands of ``peakrdl``;
-        # they extend the existing ``peakrdl pybind11`` invocation.
-        from .cli import discover_subcommands
-
-        discover_subcommands(arg_group)
-
         # Sibling-unit CLI extensions (Unit 24 and friends) discover
         # themselves under :mod:`peakrdl_pybind11.cli`. Each registers
-        # its own flags directly on this argparse group.
+        # its own flags directly on this argparse group. These are *not*
+        # new top-level subcommands of ``peakrdl``; they extend the
+        # existing ``peakrdl pybind11`` invocation.
         _cli.discover_subcommands(arg_group)
 
     def do_export(self, top_node: "AddrmapNode", options: "argparse.Namespace") -> None:

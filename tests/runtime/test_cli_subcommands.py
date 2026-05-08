@@ -85,6 +85,33 @@ class TestDiscovery:
         assert "--watch" in action_strings
         assert "--strict-fields" in action_strings
 
+    def test_exporter_registers_each_sibling_flag_exactly_once(self) -> None:
+        """Regression: the exporter ran ``discover_subcommands`` twice, which
+        produced an ``argparse.ArgumentError: argument --watch: conflicting
+        option string: --watch`` (and equivalents for ``--diff`` /
+        ``--explore`` / ``--replay`` / ``--strict-fields``) the moment a real
+        ``peakrdl pybind11`` invocation was parsed. The duplicates were
+        swallowed by the per-module ``try/except`` inside
+        :func:`discover_subcommands`, so naive "does it raise?" tests passed
+        before the fix. Inspect the parser directly to catch the regression.
+        """
+        from peakrdl_pybind11.__peakrdl__ import Exporter
+
+        parser = argparse.ArgumentParser()
+        group = parser.add_argument_group("exporter args")
+        Exporter().add_exporter_arguments(group)
+
+        flag_counts: dict[str, int] = {}
+        for action in parser._actions:
+            for opt in action.option_strings:
+                flag_counts[opt] = flag_counts.get(opt, 0) + 1
+
+        for sibling_flag in ("--watch", "--diff", "--explore", "--replay", "--strict-fields"):
+            assert flag_counts.get(sibling_flag, 0) == 1, (
+                f"{sibling_flag} registered {flag_counts.get(sibling_flag, 0)} "
+                "times via Exporter.add_exporter_arguments(); expected exactly 1"
+            )
+
 
 # ---------------------------------------------------------------------------
 # --diff
