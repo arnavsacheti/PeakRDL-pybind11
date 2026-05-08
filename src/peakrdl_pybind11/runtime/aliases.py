@@ -465,4 +465,4 @@ except ImportError:
 if _registry is not None and hasattr(_registry, "register_register_enhancement"):
     _registry.register_register_enhancement(_auto_attach_aliases_from_metadata)
 if _registry is not None and hasattr(_registry, "register_post_create"):
-    _registry.register_post_create(_auto_attach_aliases_from_module)
+    _registry.register_post_create(_auto_attach_aliases_from_module)  # type: ignore[arg-type]

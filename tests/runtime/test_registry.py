@@ -293,15 +293,26 @@ def test_auto_import_picks_up_fake_module() -> None:
 
 
 def test_runtime_re_exports_register_value_alias() -> None:
-    from peakrdl_pybind11 import int_types
+    """RegisterValue / FieldValue are int subclasses available from the runtime.
+
+    They were originally aliases of RegisterInt / FieldInt, but Unit 1's
+    wire-up gave them dedicated classes (in runtime.values). They remain
+    int-compatible so existing code that checks ``isinstance(rv, int)``
+    keeps working, but they are no longer the same class object.
+    """
     from peakrdl_pybind11.runtime import FieldValue, RegisterValue
 
-    assert RegisterValue is int_types.RegisterInt
-    assert FieldValue is int_types.FieldInt
+    assert issubclass(RegisterValue, int)
+    assert issubclass(FieldValue, int)
+    assert RegisterValue.__module__.endswith(".values")
+    assert FieldValue.__module__.endswith(".values")
 
 
 def test_top_level_init_re_exports_value_aliases() -> None:
+    """Top-level peakrdl_pybind11 exposes both legacy and new value names."""
     from peakrdl_pybind11 import FieldInt, FieldValue, RegisterInt, RegisterValue
 
-    assert RegisterValue is RegisterInt
-    assert FieldValue is FieldInt
+    assert issubclass(RegisterValue, int)
+    assert issubclass(FieldValue, int)
+    assert issubclass(RegisterInt, int)
+    assert issubclass(FieldInt, int)
