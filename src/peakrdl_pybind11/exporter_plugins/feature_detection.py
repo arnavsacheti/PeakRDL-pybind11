@@ -36,7 +36,7 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from systemrdl.node import (
     AddrmapNode,
@@ -346,7 +346,7 @@ def _udp_dict(node: Node) -> dict[str, Any]:
     if not callable(list_props):
         return udps
     try:
-        names = list_props(only_udp=True)
+        names = cast(Iterable[str], list_props(only_udp=True))
     except TypeError:  # pragma: no cover - older systemrdl versions
         names = ()
     for name in names:
@@ -658,7 +658,7 @@ def _output_targets(output_dir: Path, soc_name: str) -> list[Path]:
     return [output_dir, output_dir / soc_name]
 
 
-def register(_module: object) -> FeatureDetectionPlugin:
+def register(_module: Any) -> FeatureDetectionPlugin:
     """Discovery entry point: invoked by ``exporter_plugins.discover_plugins``."""
     return FeatureDetectionPlugin()
 

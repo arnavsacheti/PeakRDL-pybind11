@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger("peakrdl_pybind11.runtime.registry")
 
@@ -318,7 +318,7 @@ def attach_node_attributes(node_class: type | None) -> None:
                 self.__dict__[cache_key] = value
                 return value
 
-            return property(getter)
+            return cast(property, property(getter))
 
         setattr(node_class, name, _make_property(factory, name))
 

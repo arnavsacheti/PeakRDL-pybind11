@@ -30,7 +30,7 @@ import types
 import warnings
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 # Unit 4 will define a typed Info; for now we type it loosely so callers can
 # pass anything with ``.path`` / ``.access`` / ``.on_read``.
@@ -118,7 +118,7 @@ def _peek_or_read(node: Any, *, allow_destructive: bool) -> int:
     peek = getattr(node, "peek", None)
     if callable(peek):
         try:
-            return int(peek())
+            return int(cast(int, peek()))
         except SideEffectError:
             if allow_destructive:
                 # The bus or node refused peek; fall through to read.
@@ -213,7 +213,7 @@ class Snapshot:
     def __iter__(self) -> Iterator[PathStr]:
         return iter(self.paths)
 
-    def __contains__(self, path: object) -> bool:
+    def __contains__(self, path: Any) -> bool:
         if not isinstance(path, str):
             return False
         return self._absolute(path) in self._values
@@ -362,7 +362,7 @@ class Snapshot:
 
     # -- equality / hash ---------------------------------------------------
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Snapshot):
             return NotImplemented
         return self.values == other.values
@@ -527,14 +527,14 @@ def _walk_readable(soc: Any) -> Iterable[Any]:
     """
     iter_readable = getattr(soc, "iter_readable", None)
     if callable(iter_readable):
-        return iter_readable()
+        return cast(Iterable[Any], iter_readable())
 
     walk = getattr(soc, "walk", None)
     if not callable(walk):
         raise TypeError(f"soc {soc!r} does not expose iter_readable() or walk(); snapshot needs at least one")
 
     def _filtered() -> Iterator[Any]:
-        for node in walk():
+        for node in cast(Iterable[Any], walk()):
             if callable(getattr(node, "peek", None)) or callable(getattr(node, "read", None)):
                 yield node
 
@@ -689,7 +689,7 @@ class _InfoDict:
     def __repr__(self) -> str:
         return f"_InfoDict({self._data!r})"
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other: Any) -> bool:
         if isinstance(other, _InfoDict):
             return self._data == other._data
         if isinstance(other, dict):

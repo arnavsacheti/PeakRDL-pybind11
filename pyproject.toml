@@ -95,6 +95,7 @@ ignore = [
 "src/peakrdl_pybind11/cli/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/exporter_plugins/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/masters/base.py" = ["ANN401"]
+"src/peakrdl_pybind11/masters/mock_extensions.py" = ["ANN401"]
 
 [tool.ruff.format]
 quote-style = "double"

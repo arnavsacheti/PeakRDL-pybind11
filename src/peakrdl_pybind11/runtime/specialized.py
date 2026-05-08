@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any
+from typing import Any, cast
 
 # Graceful sibling-unit imports. ``runtime.errors`` and ``runtime.info`` may
 # not be merged into ``exp/api_overhaul`` yet; in that case we fall back to a
@@ -92,7 +92,7 @@ class _EmptyInfo:
         self.tags = _EmptyTags()
 
 
-def _info_of(node: object) -> object:
+def _info_of(node: Any) -> object:
     """Return ``node.info`` if present, else an empty namespace.
 
     Falling back to an empty namespace makes the wrappers work on stub /
@@ -102,7 +102,7 @@ def _info_of(node: object) -> object:
     return getattr(node, "info", _EmptyInfo())
 
 
-def _path_of(node: object) -> str:
+def _path_of(node: Any) -> str:
     """Best-effort dotted path for a node, used in error messages."""
     info = _info_of(node)
     path = getattr(info, "path", "") or getattr(info, "name", "")
@@ -159,7 +159,7 @@ class Counter:
 
     def __init__(
         self,
-        host: object,
+        host: Any,
         *,
         can_increment: bool = False,
         can_decrement: bool = False,
@@ -305,7 +305,7 @@ class Counter:
 # ---------------------------------------------------------------------------
 
 
-def pulse(field: object) -> None:
+def pulse(field: Any) -> None:
     """Issue the §12.2 singlepulse write (``write(1)``) to ``field``.
 
     Free-function form used by tests and ad-hoc callers. Generated field
@@ -329,7 +329,7 @@ def attach_pulse(field_class: type) -> bool:
     if not _is_singlepulse(field_class):
         return False
 
-    def pulse_method(self: object) -> None:
+    def pulse_method(self: Any) -> None:
         # ``write(1)`` collapses to one bus write; hardware self-clears.
         self.write(1)
 
@@ -337,7 +337,7 @@ def attach_pulse(field_class: type) -> bool:
     return True
 
 
-def _is_singlepulse(node_class_or_instance: object) -> bool:
+def _is_singlepulse(node_class_or_instance: Any) -> bool:
     """Return ``True`` if a class/instance is annotated as singlepulse."""
     direct = getattr(node_class_or_instance, "singlepulse", None)
     if direct:
@@ -355,7 +355,7 @@ def _is_singlepulse(node_class_or_instance: object) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def reset_value(reg: object) -> int:
+def reset_value(reg: Any) -> int:
     """Return the static reset value declared for ``reg`` (no bus traffic)."""
     info = _info_of(reg)
     val = getattr(info, "reset", None)
@@ -365,14 +365,14 @@ def reset_value(reg: object) -> int:
     return int(val) if val is not None else 0
 
 
-def is_at_reset(reg: object) -> bool:
+def is_at_reset(reg: Any) -> bool:
     """Return ``True`` when ``reg.read() == reg.reset_value`` (one bus read)."""
     expected = reset_value(reg)
     actual = int(reg.read())
     return actual == expected
 
 
-def reset_all_regfile(regfile: object, *, rw_only: bool = True) -> int:
+def reset_all_regfile(regfile: Any, *, rw_only: bool = True) -> int:
     """Restore every register under ``regfile`` to its reset value.
 
     Walks every child register/regfile (including arrays) and writes
@@ -396,7 +396,7 @@ def reset_all_regfile(regfile: object, *, rw_only: bool = True) -> int:
     return written
 
 
-def reset_all_soc(soc: object, *, rw_only: bool = True) -> int:
+def reset_all_soc(soc: Any, *, rw_only: bool = True) -> int:
     """Reset every register under the whole SoC tree.
 
     Emits a :class:`UserWarning` if any register being restored has an
@@ -420,14 +420,14 @@ def attach_reset_helpers(reg_class: type) -> None:
     """
     if "reset_value" not in reg_class.__dict__:
 
-        def _reset_value_getter(self: object) -> int:
+        def _reset_value_getter(self: Any) -> int:
             return reset_value(self)
 
         reg_class.reset_value = property(_reset_value_getter)  # type: ignore[attr-defined]
 
     if "is_at_reset" not in reg_class.__dict__:
 
-        def _is_at_reset_method(self: object) -> bool:
+        def _is_at_reset_method(self: Any) -> bool:
             return is_at_reset(self)
 
         reg_class.is_at_reset = _is_at_reset_method  # type: ignore[attr-defined]
@@ -438,7 +438,7 @@ def attach_regfile_reset_all(regfile_class: type) -> None:
     if "reset_all" in regfile_class.__dict__:
         return
 
-    def _reset_all_method(self: object, *, rw_only: bool = True) -> int:
+    def _reset_all_method(self: Any, *, rw_only: bool = True) -> int:
         return reset_all_regfile(self, rw_only=rw_only)
 
     regfile_class.reset_all = _reset_all_method  # type: ignore[attr-defined]
@@ -449,13 +449,13 @@ def attach_soc_reset_all(soc_class: type) -> None:
     if "reset_all" in soc_class.__dict__:
         return
 
-    def _reset_all_method(self: object, *, rw_only: bool = True) -> int:
+    def _reset_all_method(self: Any, *, rw_only: bool = True) -> int:
         return reset_all_soc(self, rw_only=rw_only)
 
     soc_class.reset_all = _reset_all_method  # type: ignore[attr-defined]
 
 
-def _is_read_only(reg: object) -> bool:
+def _is_read_only(reg: Any) -> bool:
     """Return ``True`` when the register is read-only per its access mode."""
     info = _info_of(reg)
     access = getattr(info, "access", None)
@@ -464,7 +464,7 @@ def _is_read_only(reg: object) -> bool:
     return False
 
 
-def _walk_registers(node: object) -> Iterable[object]:
+def _walk_registers(node: Any) -> Iterable[Any]:
     """Yield every register descendant of ``node``.
 
     A node is treated as a register when it exposes both ``read`` and
@@ -491,7 +491,7 @@ def _walk_registers(node: object) -> Iterable[object]:
         stack.extend(reversed(list(children)))
 
 
-def _looks_like_register(node: object) -> bool:
+def _looks_like_register(node: Any) -> bool:
     """Return ``True`` if ``node`` quacks like a register (has read & write)."""
     if not callable(getattr(node, "read", None)):
         return False
@@ -505,7 +505,7 @@ def _looks_like_register(node: object) -> bool:
     return True
 
 
-def _children_of(node: object) -> Iterable[object]:
+def _children_of(node: Any) -> Iterable[Any]:
     """Best-effort iteration of ``node``'s descendants.
 
     Looks for, in order:
@@ -518,7 +518,7 @@ def _children_of(node: object) -> Iterable[object]:
     children_fn = getattr(node, "_children", None)
     if callable(children_fn):
         try:
-            yield from children_fn()
+            yield from cast(Iterable[Any], children_fn())
             return
         except TypeError:
             pass
@@ -558,7 +558,7 @@ def _children_of(node: object) -> Iterable[object]:
             yield value
 
 
-def _looks_like_container(node: object) -> bool:
+def _looks_like_container(node: Any) -> bool:
     """Return ``True`` if ``node`` looks like a regfile/addrmap container."""
     if hasattr(node, "_children") or hasattr(node, "children"):
         return True
@@ -567,7 +567,7 @@ def _looks_like_container(node: object) -> bool:
     return False
 
 
-def _iter_rclr_rw_conflicts(soc: object) -> Iterable[str]:
+def _iter_rclr_rw_conflicts(soc: Any) -> Iterable[str]:
     """Yield register paths whose RW fields are also ``rclr``."""
     for reg in _walk_registers(soc):
         info = _info_of(reg)
@@ -640,7 +640,7 @@ class LockController:
 
     def __init__(
         self,
-        host: object,
+        host: Any,
         *,
         key_field: str | None = None,
         key_sequence: Sequence[int] = (1,),
@@ -738,7 +738,7 @@ class LockController:
 # ---------------------------------------------------------------------------
 
 
-def attach_counter(reg_or_field: object, **counter_kwargs: Any) -> Counter:
+def attach_counter(reg_or_field: Any, **counter_kwargs: Any) -> Counter:
     """Build and attach a :class:`Counter` wrapper to ``reg_or_field``.
 
     The wrapper is also stored as ``reg_or_field.counter`` for discoverability.
@@ -749,7 +749,7 @@ def attach_counter(reg_or_field: object, **counter_kwargs: Any) -> Counter:
     return counter
 
 
-def attach_lock_controller(reg: object, **lock_kwargs: Any) -> LockController:
+def attach_lock_controller(reg: Any, **lock_kwargs: Any) -> LockController:
     """Construct a :class:`LockController` and bind it onto ``reg``.
 
     Adds ``reg.lock``, ``reg.is_locked``, and ``reg.unlock_sequence`` as
@@ -784,26 +784,26 @@ def attach_specialized(cls: type, metadata: dict[str, object]) -> None:
     if counter_spec:
         # Counter is host-bound at construction; here we install a class-level
         # property that materialises a per-instance wrapper on first access.
-        _install_counter_property(cls, counter_spec)
+        _install_counter_property(cls, cast(dict[str, Any], counter_spec))
 
     lock_spec = metadata.get("lock")
     if lock_spec:
-        _install_lock_property(cls, lock_spec)
+        _install_lock_property(cls, cast(dict[str, Any], lock_spec))
 
-    pulse_fields = metadata.get("singlepulse_fields") or ()
+    pulse_fields = cast(Iterable[str], metadata.get("singlepulse_fields") or ())
     for field_name in pulse_fields:
         field_cls = getattr(cls, field_name, None)
         if isinstance(field_cls, type):
             attach_pulse(field_cls)
 
 
-def _install_counter_property(cls: type, spec: dict[str, object]) -> None:
+def _install_counter_property(cls: type, spec: dict[str, Any]) -> None:
     """Install a lazily-constructed ``counter`` property on ``cls``."""
     if "counter" in cls.__dict__:
         return
     cache_key = "_counter_wrapper"
 
-    def _getter(self: object) -> Counter:
+    def _getter(self: Any) -> Counter:
         cached = self.__dict__.get(cache_key)
         if cached is not None:
             return cached
@@ -814,13 +814,13 @@ def _install_counter_property(cls: type, spec: dict[str, object]) -> None:
     cls.counter = property(_getter)  # type: ignore[attr-defined]
 
 
-def _install_lock_property(cls: type, spec: dict[str, object]) -> None:
+def _install_lock_property(cls: type, spec: dict[str, Any]) -> None:
     """Install lock-controller methods on ``cls`` (lazy; one wrapper per instance)."""
     if "lock" in cls.__dict__:
         return
     cache_key = "_lock_controller_wrapper"
 
-    def _ensure(self: object) -> LockController:
+    def _ensure(self: Any) -> LockController:
         cached = self.__dict__.get(cache_key)
         if cached is not None:
             return cached
@@ -828,13 +828,13 @@ def _install_lock_property(cls: type, spec: dict[str, object]) -> None:
         self.__dict__[cache_key] = wrapper
         return wrapper
 
-    def _lock(self: object, names: Iterable[str]) -> None:
+    def _lock(self: Any, names: Iterable[str]) -> None:
         _ensure(self).lock(names)
 
-    def _is_locked(self: object, name: str) -> bool:
+    def _is_locked(self: Any, name: str) -> bool:
         return _ensure(self).is_locked(name)
 
-    def _unlock_sequence(self: object) -> None:
+    def _unlock_sequence(self: Any) -> None:
         _ensure(self).unlock_sequence()
 
     cls.lock = _lock  # type: ignore[attr-defined]
@@ -842,7 +842,7 @@ def _install_lock_property(cls: type, spec: dict[str, object]) -> None:
     cls.unlock_sequence = _unlock_sequence  # type: ignore[attr-defined]
 
 
-def attach_post_create(soc: object) -> None:
+def attach_post_create(soc: Any) -> None:
     """Wire SoC-level helpers (the §12.3 ``soc.reset_all()`` entry point).
 
     Idempotent. Called by Unit 1's ``register_post_create`` seam. Skips

@@ -21,6 +21,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import Any, cast
 
 # ---------------------------------------------------------------------------
 # Sibling-dep imports with local fallbacks (Units 1, 2 may not exist yet).
@@ -75,7 +76,7 @@ def _guard_active() -> bool:
 # ---------------------------------------------------------------------------
 # Helpers for inspecting the duck-typed metadata.
 # ---------------------------------------------------------------------------
-def _norm(value: object) -> str:
+def _norm(value: Any) -> str:
     """Normalize an ``on_read`` / ``on_write`` value to a lowercase string.
 
     Unit 4 may eventually use enums; today's tests pass strings. ``None`` /
@@ -91,7 +92,7 @@ def _norm(value: object) -> str:
     return "" if text in ("none", "") else text
 
 
-def _info_path(target: object) -> str:
+def _info_path(target: Any) -> str:
     """Best-effort path string for use in error messages."""
     info = getattr(target, "info", None)
     path = getattr(info, "path", None)
@@ -101,17 +102,17 @@ def _info_path(target: object) -> str:
     return str(name) if name else "<unknown>"
 
 
-def _on_read(target: object) -> str:
+def _on_read(target: Any) -> str:
     info = getattr(target, "info", None)
     return _norm(getattr(info, "on_read", None))
 
 
-def _on_write(target: object) -> str:
+def _on_write(target: Any) -> str:
     info = getattr(target, "info", None)
     return _norm(getattr(info, "on_write", None))
 
 
-def _all_ones(target: object) -> int:
+def _all_ones(target: Any) -> int:
     """Return a bitmask of all-ones for a field/register (default ``1``).
 
     Falls back to ``1`` when no width metadata is available -- bare ``write(1)``
@@ -127,7 +128,7 @@ def _all_ones(target: object) -> int:
     return 1
 
 
-def _master_can_peek(target: object) -> bool:
+def _master_can_peek(target: Any) -> bool:
     """Return True if the master serving ``target`` exposes a peek path.
 
     Resolution order:
@@ -147,7 +148,7 @@ def _master_can_peek(target: object) -> bool:
     return callable(getattr(master, "peek", None))
 
 
-def _resolve_master(target: object) -> object | None:
+def _resolve_master(target: Any) -> object | None:
     """Locate the master associated with a field/register (or ``None``)."""
     for attr in ("master", "_master"):
         master = getattr(target, attr, None)
@@ -162,7 +163,7 @@ def _resolve_master(target: object) -> object | None:
 # ---------------------------------------------------------------------------
 # Hook for the enhanced ``.read()`` to consult the no-side-effects guard.
 # ---------------------------------------------------------------------------
-def check_read_allowed(target: object) -> None:
+def check_read_allowed(target: Any) -> None:
     """Raise ``SideEffectError`` if a destructive read is forbidden right now.
 
     Generated read paths (and the enhancement seam) are expected to call this
@@ -182,7 +183,7 @@ def check_read_allowed(target: object) -> None:
 # ---------------------------------------------------------------------------
 # Public verbs.
 # ---------------------------------------------------------------------------
-def peek(target: object) -> int | bool:
+def peek(target: Any) -> int | bool:
     """Read ``target`` without triggering its read-side effect.
 
     For an ``rclr`` field the underlying master must support a non-destructive
@@ -200,7 +201,7 @@ def peek(target: object) -> int | bool:
         addr = getattr(info, "address", None)
         if addr is not None:
             width = getattr(info, "regwidth", None) or getattr(info, "width", None) or 4
-            return _slice_field(target, master.peek(addr, width))
+            return _slice_field(target, cast(Any, master).peek(addr, width))
 
     # No bus-level peek seam -- fall back to the target's own read(), which is
     # safe iff the field has no read-side effect (the early return above
@@ -210,7 +211,7 @@ def peek(target: object) -> int | bool:
     return target.read()
 
 
-def _slice_field(target: object, register_value: int) -> int | bool:
+def _slice_field(target: Any, register_value: int) -> int | bool:
     """If ``target`` is a field, slice ``register_value`` to just its bits."""
     info = getattr(target, "info", None)
     lsb = getattr(info, "lsb", None)
@@ -221,7 +222,7 @@ def _slice_field(target: object, register_value: int) -> int | bool:
     return register_value
 
 
-def clear(target: object) -> None:
+def clear(target: Any) -> None:
     """Clear ``target`` using whichever path the metadata declares.
 
     - ``onwrite = woclr``  -> write 1
@@ -247,12 +248,12 @@ def clear(target: object) -> None:
     raise NotSupportedError(f"{_info_path(target)}: no clear path on this field")
 
 
-def acknowledge(target: object) -> None:
+def acknowledge(target: Any) -> None:
     """Alias of :func:`clear` -- reads better in ISR-shaped code."""
     clear(target)
 
 
-def set_(target: object) -> None:
+def set_(target: Any) -> None:
     """Set ``target`` using whichever path the metadata declares.
 
     - ``onwrite = woset`` -> write 1
@@ -273,7 +274,7 @@ def set_(target: object) -> None:
     raise NotSupportedError(f"{_info_path(target)}: no set path on this field")
 
 
-def pulse(target: object) -> None:
+def pulse(target: Any) -> None:
     """Trigger a singlepulse field (write 1; hardware self-clears).
 
     Also accepts any field with a ``woset`` write effect for symmetry --
@@ -293,7 +294,7 @@ def pulse(target: object) -> None:
 # Context manager.
 # ---------------------------------------------------------------------------
 @contextmanager
-def no_side_effects(soc: object = None) -> Iterator[object]:
+def no_side_effects(soc: Any = None) -> Iterator[object]:
     """Forbid destructive reads (``rclr`` / ``rset``) for the calling thread.
 
     Inside the block, any ``check_read_allowed`` call on a field whose
@@ -318,7 +319,7 @@ def no_side_effects(soc: object = None) -> Iterator[object]:
 # classes so users can write ``f.clear()`` / ``r.peek()`` directly.
 # ---------------------------------------------------------------------------
 @register_register_enhancement
-def _enhance(cls: type, metadata: object = None) -> None:
+def _enhance(cls: type, metadata: Any = None) -> None:
     """Register/field enhancement that binds the verbs as methods.
 
     The signature mirrors Unit 1's seam: ``cls`` is the generated class,

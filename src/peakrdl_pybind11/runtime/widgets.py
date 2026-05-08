@@ -29,8 +29,8 @@ from __future__ import annotations
 
 import html as _html
 import threading
-from collections.abc import Callable, Sequence
-from typing import Any
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any, cast
 
 from ._registry import (
     SIDE_EFFECT_BADGES,
@@ -289,7 +289,7 @@ def _list_fields(reg: Any) -> list[Any]:
         return []
     if callable(explicit):
         try:
-            return list(explicit())
+            return list(cast(Iterable[Any], explicit()))
         except TypeError:
             return []
     if isinstance(explicit, dict):
@@ -585,7 +585,7 @@ def _diff_entries(diff: Any) -> Sequence[tuple[str, Any, Any]]:
         return []
     out: list[tuple[str, Any, Any]] = []
     try:
-        iterator = iter(raw)
+        iterator = iter(cast(Iterable[Any], raw))
     except TypeError:
         return []
     for entry in iterator:
@@ -662,7 +662,7 @@ def _irq_sources(group: Any) -> list[Any]:
     if isinstance(sources, dict):
         return list(sources.values())
     try:
-        return list(sources)
+        return list(cast(Iterable[Any], sources))
     except TypeError:
         return []
 
@@ -1000,7 +1000,7 @@ def _attach_to_class(cls: type, metadata: dict | None = None) -> None:
 
 
 @register_master_extension
-def _attach_to_soc(master: object) -> None:
+def _attach_to_soc(master: Any) -> None:
     """Hook executed by Unit 1 when a master attaches to a SoC.
 
     Widgets are attached to the master's enclosing class so the

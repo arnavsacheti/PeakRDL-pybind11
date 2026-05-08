@@ -76,7 +76,7 @@ def handle(options: argparse.Namespace) -> bool:
         # Replaying from a session is meaningless without a working
         # ReplayMaster — fail loudly so the user installs / waits for
         # Unit 20 instead of getting silent confusion.
-        from ..runtime import NotSupportedError
+        from ..errors import NotSupportedError
 
         raise NotSupportedError(
             "ReplayMaster is not available in this build. The --replay flag "

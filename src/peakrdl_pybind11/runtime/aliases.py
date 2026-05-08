@@ -30,6 +30,7 @@ isolation.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 __all__ = [
     "apply_alias_relationship",
@@ -100,7 +101,7 @@ def make_alias_repr(alt_cls: type, primary_cls: type) -> Callable[[object], str]
 
     primary_path = _node_path(primary_cls)
 
-    def __repr__(self: object) -> str:
+    def __repr__(self: Any) -> str:
         info = getattr(self, "info", None)
         kind = getattr(self, "_kind_label", "Reg")
         path = _info_lookup(info, "path", default=type(self).__name__)
@@ -164,7 +165,7 @@ def apply_alias_relationship(
     alt_cls.aliases = ()
     if kind is not None:
         _ensure_info_alias_kind(alt_cls, kind)
-    alt_cls.__repr__ = make_alias_repr(alt_cls, primary_cls)
+    alt_cls.__repr__ = make_alias_repr(alt_cls, primary_cls)  # type: ignore[method-assign]
 
     # Primary side. Canonical points at itself so ``.target`` is always valid.
     if getattr(primary_cls, "target", None) is None:
@@ -196,7 +197,7 @@ def _node_path(cls: type) -> str:
     return cls.__name__
 
 
-def _info_lookup(info: object, name: str, *, default: object) -> object:
+def _info_lookup(info: Any, name: str, *, default: Any) -> object:
     """Read an attribute from an ``info`` namespace, dict, or ``None``."""
 
     if info is None:
@@ -206,7 +207,7 @@ def _info_lookup(info: object, name: str, *, default: object) -> object:
     return getattr(info, name, default)
 
 
-def _access_label(access: object) -> str:
+def _access_label(access: Any) -> str:
     """Render an access mode into the short repr token (``rw``, ``ro``, ...)."""
 
     if access is None:

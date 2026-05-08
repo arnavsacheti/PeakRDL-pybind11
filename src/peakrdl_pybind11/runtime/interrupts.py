@@ -23,7 +23,7 @@ import asyncio
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 from .errors import WaitTimeoutError
 
@@ -61,7 +61,7 @@ class FieldLike(Protocol):
     def write(self, value: int) -> None: ...
 
 
-def _lookup_or_attr_error(obj: object, attr_name: str, mapping_name: str, kind: str) -> object:
+def _lookup_or_attr_error(obj: Any, attr_name: str, mapping_name: str, kind: str) -> object:
     """Resolve ``obj.<attr_name>`` against the mapping at ``obj.<mapping_name>``.
 
     Shared by :class:`InterruptGroup` and :class:`InterruptTree` to give a
@@ -381,7 +381,7 @@ class InterruptGroup:
     @classmethod
     def manual(
         cls,
-        state: object,
+        state: Any,
         enable: object | None = None,
         test: object | None = None,
     ) -> InterruptGroup:
@@ -416,7 +416,7 @@ class InterruptGroup:
     # -- container surface --------------------------------------------------
 
     def __getattr__(self, name: str) -> InterruptSource:
-        return _lookup_or_attr_error(self, name, "_sources", "interrupt group")
+        return cast("InterruptSource", _lookup_or_attr_error(self, name, "_sources", "interrupt group"))
 
     def __iter__(self) -> Iterator[InterruptSource]:
         return iter(self._sources.values())
@@ -424,7 +424,7 @@ class InterruptGroup:
     def __len__(self) -> int:
         return len(self._sources)
 
-    def __contains__(self, name: object) -> bool:
+    def __contains__(self, name: Any) -> bool:
         return name in self._sources
 
     def __repr__(self) -> str:
@@ -502,7 +502,7 @@ class InterruptGroup:
 # ---------------------------------------------------------------------------
 
 
-def _enumerate_fields(obj: object) -> dict[str, FieldLike]:
+def _enumerate_fields(obj: Any) -> dict[str, FieldLike]:
     """Return a ``{name: field}`` map for a register-like ``obj``.
 
     Tolerates four shapes so :meth:`InterruptGroup.manual` is forgiving:
@@ -519,10 +519,10 @@ def _enumerate_fields(obj: object) -> dict[str, FieldLike]:
     if isinstance(obj, Mapping):
         return {str(k): v for k, v in obj.items()}
 
-    out: dict[str, FieldLike] = {}
+    out: dict[str, Any] = {}
     fields_method = getattr(obj, "fields", None)
     if callable(fields_method):
-        for field in fields_method():
+        for field in cast(Iterable[Any], fields_method()):
             name = getattr(field, "inst_name", None) or getattr(field, "name", None) or ""
             if name:
                 out[str(name)] = field
@@ -564,7 +564,7 @@ class InterruptTree:
         return dict(self._groups)
 
     def __getattr__(self, name: str) -> InterruptGroup:
-        return _lookup_or_attr_error(self, name, "_groups", "interrupts")
+        return cast("InterruptGroup", _lookup_or_attr_error(self, name, "_groups", "interrupts"))
 
     def __iter__(self) -> Iterator[InterruptGroup]:
         return iter(self._groups.values())
@@ -638,7 +638,7 @@ def register_interrupt_group(path: str, group: InterruptGroup) -> None:
     _GROUP_REGISTRY[path] = group
 
 
-def register_post_create_hook(soc: object) -> InterruptTree:
+def register_post_create_hook(soc: Any) -> InterruptTree:
     """``register_post_create`` callback — attach ``soc.interrupts``.
 
     Walks the registry populated by Unit 23's auto-detection (and any
@@ -657,7 +657,7 @@ def register_post_create_hook(soc: object) -> InterruptTree:
     return tree
 
 
-def register_register_enhancement_hook(register: object, info: object) -> InterruptGroup | None:
+def register_register_enhancement_hook(register: Any, info: Any) -> InterruptGroup | None:
     """``register_register_enhancement`` callback — attach
     ``regfile.interrupts`` when this register is the ``state`` half of a
     detected trio.

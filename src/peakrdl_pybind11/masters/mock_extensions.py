@@ -27,7 +27,7 @@ and they can also be requested explicitly via :meth:`mark_rclr` /
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
-from typing import TypeAlias
+from typing import Any, TypeAlias, cast
 
 from .base import AccessOp
 from .mock import MockMaster
@@ -65,7 +65,7 @@ def _resolve_address(reg_or_addr: AddressLike) -> int:
     )
 
 
-def _info_value(info: object, name: str) -> str | None:
+def _info_value(info: Any, name: str) -> str | None:
     """Return the side-effect tag (``"rclr"``/``"woclr"``) on ``info`` or
     ``None`` if absent.  Tolerant of both string-valued metadata (as in the
     current sketch) and enum-valued metadata (the eventual long-term form
@@ -156,7 +156,7 @@ class MockMasterEx(MockMaster):
         # Prefer .tolist() when available (ndarray) — avoids per-element
         # numpy scalar overhead in the dict store.
         tolist = getattr(values, "tolist", None)
-        seq: Sequence[int] = tolist() if callable(tolist) else list(values)
+        seq: Sequence[int] = cast(Sequence[int], tolist() if callable(tolist) else list(values))
         mask = (1 << (word_size * 8)) - 1
         for i, value in enumerate(seq):
             self.memory[base + i * word_size] = int(value) & mask

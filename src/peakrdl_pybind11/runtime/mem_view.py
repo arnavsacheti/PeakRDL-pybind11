@@ -50,8 +50,8 @@ silently skipped if the registry seam is not present.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from collections.abc import Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 
@@ -154,7 +154,7 @@ def _read_block(mem: Any, start: int, count: int) -> list[int]:
         return []
     read_block = getattr(mem, "read_block", None)
     if callable(read_block):
-        return [int(v) for v in read_block(start, count)]
+        return [int(v) for v in cast(Iterable[Any], read_block(start, count))]
     return [int(_get_word(mem, start + i)) for i in range(count)]
 
 
@@ -186,7 +186,7 @@ def _unwrap_word(entry: Any) -> int:
         return int(entry)
     read = getattr(entry, "read", None)
     if callable(read):
-        return int(read())
+        return int(cast(int, read()))
     return int(entry)
 
 

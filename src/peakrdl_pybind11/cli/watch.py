@@ -54,7 +54,7 @@ def import_watchdog() -> ModuleType:
         import watchdog.events
         import watchdog.observers
     except ImportError as exc:
-        from ..runtime import NotSupportedError
+        from ..errors import NotSupportedError
 
         raise NotSupportedError(
             "--watch requires the 'watchdog' package, which is not "
@@ -81,7 +81,7 @@ def _build_handler(rdl_path: Path, on_change: Callable[[], None]) -> Any:
         def on_modified(self, event: FileSystemEvent) -> None:
             if event.is_directory:
                 return
-            if str(Path(event.src_path).resolve()) != target:
+            if str(Path(str(event.src_path)).resolve()) != target:
                 return
             on_change()
 

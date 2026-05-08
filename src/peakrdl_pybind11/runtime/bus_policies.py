@@ -40,7 +40,7 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Literal
+from typing import Any, Literal, cast
 
 from ..masters.base import MasterBase
 from ._errors import BusError, NotSupportedError, TransportError
@@ -615,7 +615,7 @@ def install(master: MasterBase) -> BusPolicies | None:
 #    side-effect hook (canonical Unit 1 surface).
 #  * ``register_named_master_extension`` — keyed by ``_EXTENSION_NAME`` so
 #    callers can grab the bundle back via ``attach_master_extension(...)``.
-register_master_extension(install)
+register_master_extension(cast(Callable[[Any], None], install))
 register_named_master_extension(_EXTENSION_NAME, install)
 
 

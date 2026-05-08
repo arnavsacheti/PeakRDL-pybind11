@@ -20,8 +20,10 @@ degrades to a defaulted :class:`Info` (useful for stubs and tests).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import Any, cast
 
 
 class TagsNamespace(SimpleNamespace):
@@ -110,7 +112,7 @@ class Info:
 # ---------------------------------------------------------------------------
 
 
-def _safe_get_property(node: object, prop: str, default: object = None) -> object:
+def _safe_get_property(node: Any, prop: str, default: Any = None) -> object:
     """Return ``node.get_property(prop)`` or ``default`` on failure.
 
     SystemRDL nodes raise :class:`LookupError` (or similar) for properties
@@ -132,7 +134,7 @@ def _safe_get_property(node: object, prop: str, default: object = None) -> objec
         return default
 
 
-def _coerce_str(value: object) -> str | None:
+def _coerce_str(value: Any) -> str | None:
     """Coerce an RDL property to a lowercase token, or ``None``."""
     if value is None:
         return None
@@ -144,7 +146,7 @@ def _coerce_str(value: object) -> str | None:
     return str(value).lower()
 
 
-def _extract_access(node: object) -> str | None:
+def _extract_access(node: Any) -> str | None:
     """Map RDL ``sw`` access mode onto our token set."""
     token = _coerce_str(_safe_get_property(node, "sw"))
     if token is None:
@@ -154,25 +156,25 @@ def _extract_access(node: object) -> str | None:
     return _ACCESS_ALIASES.get(token)
 
 
-def _extract_precedence(node: object) -> str | None:
+def _extract_precedence(node: Any) -> str | None:
     val = _safe_get_property(node, "precedence")
     token = _coerce_str(val)
     return token if token in _PRECEDENCE_VALUES else None
 
 
-def _extract_on_read(node: object) -> str | None:
+def _extract_on_read(node: Any) -> str | None:
     val = _safe_get_property(node, "onread")
     token = _coerce_str(val)
     return token if token in _ON_READ_VALUES else None
 
 
-def _extract_on_write(node: object) -> str | None:
+def _extract_on_write(node: Any) -> str | None:
     val = _safe_get_property(node, "onwrite")
     token = _coerce_str(val)
     return token if token in _ON_WRITE_VALUES else None
 
 
-def _extract_is_volatile(node: object) -> bool:
+def _extract_is_volatile(node: Any) -> bool:
     """Field is volatile if any of hwclr/hwset/sticky/stickybit/counter is set."""
     for prop in ("hwclr", "hwset", "sticky", "stickybit", "counter"):
         if bool(_safe_get_property(node, prop, False)):
@@ -180,15 +182,15 @@ def _extract_is_volatile(node: object) -> bool:
     return False
 
 
-def _extract_is_interrupt(node: object) -> bool:
+def _extract_is_interrupt(node: Any) -> bool:
     return bool(_safe_get_property(node, "intr", False))
 
 
-def _extract_paritycheck(node: object) -> bool:
+def _extract_paritycheck(node: Any) -> bool:
     return bool(_safe_get_property(node, "paritycheck", False))
 
 
-def _extract_alias_kind(node: object) -> str | None:
+def _extract_alias_kind(node: Any) -> str | None:
     """Best-effort detection of alias kind from an RDL node."""
     # SystemRDL exposes alias info via ``is_alias``/``alias_primary_inst`` on
     # AddressableNode; the kind itself is encoded in UDPs. We default to
@@ -202,7 +204,7 @@ def _extract_alias_kind(node: object) -> str | None:
     return "full"
 
 
-def _extract_address(node: object) -> int:
+def _extract_address(node: Any) -> int:
     for attr in ("absolute_address", "address"):
         v = getattr(node, attr, None)
         if isinstance(v, int):
@@ -210,7 +212,7 @@ def _extract_address(node: object) -> int:
     return 0
 
 
-def _extract_offset(node: object) -> int:
+def _extract_offset(node: Any) -> int:
     for attr in ("address_offset", "offset", "low"):
         v = getattr(node, attr, None)
         if isinstance(v, int):
@@ -218,7 +220,7 @@ def _extract_offset(node: object) -> int:
     return 0
 
 
-def _extract_regwidth(node: object) -> int | None:
+def _extract_regwidth(node: Any) -> int | None:
     val = _safe_get_property(node, "regwidth")
     if isinstance(val, int):
         return val
@@ -227,14 +229,14 @@ def _extract_regwidth(node: object) -> int | None:
     return width if isinstance(width, int) else None
 
 
-def _extract_reset(node: object) -> int | None:
+def _extract_reset(node: Any) -> int | None:
     val = _safe_get_property(node, "reset")
     if isinstance(val, int):
         return val
     return None
 
 
-def _extract_source(node: object) -> tuple[str, int] | None:
+def _extract_source(node: Any) -> tuple[str, int] | None:
     """Extract ``(file, line)`` from a node's RDL source reference."""
     ref = getattr(node, "inst_src_ref", None) or getattr(node, "def_src_ref", None)
     if ref is None:
@@ -246,7 +248,7 @@ def _extract_source(node: object) -> tuple[str, int] | None:
     return None
 
 
-def _extract_path(node: object) -> str:
+def _extract_path(node: Any) -> str:
     fn = getattr(node, "get_path", None)
     if callable(fn):
         try:
@@ -259,7 +261,7 @@ def _extract_path(node: object) -> str:
     return name if isinstance(name, str) else ""
 
 
-def _extract_name(node: object) -> str:
+def _extract_name(node: Any) -> str:
     name_prop = _safe_get_property(node, "name")
     if isinstance(name_prop, str) and name_prop:
         return name_prop
@@ -267,24 +269,24 @@ def _extract_name(node: object) -> str:
     return inst if isinstance(inst, str) else ""
 
 
-def _extract_desc(node: object) -> str | None:
+def _extract_desc(node: Any) -> str | None:
     val = _safe_get_property(node, "desc")
     if isinstance(val, str):
         return val
     return None
 
 
-def _extract_tags(node: object) -> SimpleNamespace:
+def _extract_tags(node: Any) -> SimpleNamespace:
     """Pull user-defined properties (UDPs) into a permissive namespace."""
     ns = TagsNamespace()
     list_props = getattr(node, "list_properties", None)
     if not callable(list_props):
         return ns
     try:
-        names = list(list_props(include_native=False, include_udp=True))
+        names = list(cast(Iterable[str], list_props(include_native=False, include_udp=True)))
     except TypeError:
         try:
-            names = list(list_props())
+            names = list(cast(Iterable[str], list_props()))
         except Exception:
             names = []
     except Exception:
@@ -298,14 +300,14 @@ def _extract_tags(node: object) -> SimpleNamespace:
     return ns
 
 
-def _extract_fields(node: object) -> dict[str, Info]:
+def _extract_fields(node: Any) -> dict[str, Info]:
     """Build a mapping of child field name -> ``Info`` for register nodes."""
     children: dict[str, Info] = {}
     fn = getattr(node, "fields", None)
     if not callable(fn):
         return children
     try:
-        for child in fn():
+        for child in cast(Iterable[Any], fn()):
             child_name = getattr(child, "inst_name", None)
             if isinstance(child_name, str) and child_name:
                 children[child_name] = from_rdl_node(child)
@@ -374,7 +376,7 @@ except ImportError:  # pragma: no cover - sibling unit may not exist yet
     pass
 else:
 
-    @register_node_attribute("info")
+    @register_node_attribute("info")  # type: ignore[arg-type]
     def _info_factory(node_class: type, metadata: dict[str, object]) -> Info:  # pragma: no cover
         """Registry hook: build an :class:`Info` from collected metadata."""
         return from_rdl_node(metadata.get("rdl_node"))

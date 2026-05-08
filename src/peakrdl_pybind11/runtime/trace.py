@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from ..masters.recording_replay import Event, RecordingMaster
 
@@ -101,7 +101,7 @@ class Trace:
 
 
 def _trace_context_manager(
-    soc: object,
+    soc: Any,
     file: str | Path | None = None,
 ) -> Callable[..., AbstractContextManager[Trace]]:
     """Build the context-manager callable that becomes ``soc.trace``.
@@ -136,7 +136,7 @@ def _trace_context_manager(
     return trace
 
 
-def attach_trace(soc: object) -> None:
+def attach_trace(soc: Any) -> None:
     """Attach the ``trace()`` helper to ``soc``.
 
     This is the integration seam used by :func:`register_post_create`
@@ -158,7 +158,7 @@ def attach_trace(soc: object) -> None:
     soc.trace = cm  # type: ignore[attr-defined]
 
 
-def _get_master(soc: object) -> MasterBase | None:
+def _get_master(soc: Any) -> MasterBase | None:
     """Pull the active master out of ``soc``.
 
     Generated SoC objects expose the master through different shapes
@@ -173,11 +173,11 @@ def _get_master(soc: object) -> MasterBase | None:
             return m
     getter = getattr(soc, "get_master", None)
     if callable(getter):
-        return getter()
+        return cast(Any, getter())
     return None
 
 
-def _set_master(soc: object, master: MasterBase | None) -> None:
+def _set_master(soc: Any, master: MasterBase | None) -> None:
     """Inverse of :func:`_get_master`. Probe in the same order."""
     setter = getattr(soc, "attach_master", None)
     if callable(setter):
