@@ -20,11 +20,17 @@ Auto-import contract:
   package continues — one bad sibling must not break the whole runtime
   surface for downstream users.
 
-The package also re-exports ``RegisterValue`` / ``FieldValue`` as aliases
-for ``RegisterInt`` / ``FieldInt`` so the new API vocabulary is available
-from a stable import path::
+The package re-exports ``RegisterValue`` / ``FieldValue`` from
+:mod:`peakrdl_pybind11.runtime.values` so the new API vocabulary is
+available from a stable import path::
 
     from peakrdl_pybind11.runtime import RegisterValue, FieldValue
+
+These are the immutable, hashable ``int`` subclasses that the default
+shim (see :mod:`peakrdl_pybind11.runtime._default_shims`) emits from
+``register.read()`` / ``field.read()``. The legacy
+``peakrdl_pybind11.int_types.RegisterInt`` / ``FieldInt`` types remain
+importable for code that constructs them directly.
 """
 
 from __future__ import annotations
@@ -33,9 +39,8 @@ import importlib
 import logging
 import pkgutil
 
-from ..int_types import FieldInt as FieldValue
-from ..int_types import RegisterInt as RegisterValue
 from . import _registry
+from .values import FieldValue, RegisterValue
 
 logger = logging.getLogger("peakrdl_pybind11.runtime")
 
