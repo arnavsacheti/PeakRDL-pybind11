@@ -41,7 +41,7 @@ import fnmatch
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from ..masters.base import AccessOp
@@ -481,3 +481,83 @@ def attach_master(
 
     router.attach_master(master, where=where, soc=soc)
     return router
+
+
+# ----------------------------------------------------------------------
+# Post-create hook — wires ``soc.attach_master(master, where=...)`` into
+# every generated SoC. The C++ binding's ``attach_master`` signature is
+# ``(Master*) -> None`` and rejects unknown kwargs, so we wrap it: with
+# ``where=None`` the call goes straight through; with any ``where=`` the
+# wrapper installs a :class:`Router` (creating it on first use), adds
+# the rule, and re-attaches the router as the C++ master.
+# ----------------------------------------------------------------------
+def attach_router(soc: Any) -> None:
+    """Wrap ``soc.attach_master`` to accept ``where=`` routing kwargs.
+
+    Captures the original C++ ``attach_master(master)`` and replaces it
+    with a Python wrapper that:
+
+    * calls the original directly when ``where`` is ``None`` (or when
+      no kwargs were passed), preserving the existing fast path; and
+    * for any non-``None`` ``where``, lazily creates a :class:`Router`,
+      registers ``(master, where)`` as a rule, and re-installs the
+      router as the SoC's C++ master via the captured original.
+
+    The router itself satisfies ``MasterLike`` so the C++ side keeps
+    seeing one master object even though Python may have layered
+    several rules on top of it.
+
+    Idempotent: a second call is a no-op so post-create hooks can fire
+    repeatedly (e.g. across reloads) without double-wrapping.
+    """
+
+    existing = getattr(soc, "attach_master", None)
+    if existing is None:
+        return
+    if getattr(existing, "__peakrdl_router_wrapper__", False):
+        return
+
+    orig_attach: Callable[[MasterLike], None] = existing
+    # Closure state — one Router per wrapped SoC. We only construct it
+    # the first time a ``where=`` rule arrives so SoCs that never use
+    # routing pay nothing.
+    router_box: list[Router | None] = [None]
+
+    def attach_master_wrapper(master: MasterLike, where: Where = None) -> None:
+        """Wrapper around the C++ ``attach_master`` that honours ``where=``."""
+        if where is None:
+            orig_attach(master)
+            return
+
+        router = router_box[0]
+        if router is None:
+            router = Router()
+            router_box[0] = router
+        router.attach_master(master, where=where, soc=soc)
+        # Re-install the router each time so the C++ side propagates the
+        # current router to every child node. Cheap — ``attach_master``
+        # on the SoC just calls ``set_master`` + ``propagate_master``.
+        orig_attach(router)
+
+    attach_master_wrapper.__peakrdl_router_wrapper__ = True  # type: ignore[attr-defined]
+    soc.attach_master = attach_master_wrapper  # type: ignore[attr-defined]
+
+
+# ----------------------------------------------------------------------
+# Registry wiring (sibling-dep: Unit 1's runtime/_registry).
+#
+# When the registry seam is present we register :func:`attach_router`
+# as a post-create hook so every ``MySoc.create()`` automatically gains
+# the ``soc.attach_master(master, where=...)`` overload. When it isn't
+# (this unit can land before Unit 1), the import quietly fails and
+# callers can still use :func:`attach_router` or the free
+# :func:`attach_master` helper above explicitly.
+# ----------------------------------------------------------------------
+
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry  # type: ignore[attr-defined]
+except ImportError:
+    _registry = None  # type: ignore[assignment]
+
+if _registry is not None and hasattr(_registry, "register_post_create"):
+    _registry.register_post_create(attach_router)
