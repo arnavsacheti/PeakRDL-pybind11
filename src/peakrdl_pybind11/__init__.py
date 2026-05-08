@@ -12,13 +12,7 @@ if TYPE_CHECKING:
     from .exporter import Pybind11Exporter
     from .int_types import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
     from .runtime.transactions import Burst, Read, Write
-
-    # Forward-compat aliases (see ``IDEAL_API_SKETCH.md`` §3): RegisterValue
-    # and FieldValue are the names used in the new API surface; they alias
-    # the existing ``RegisterInt`` / ``FieldInt`` types so user code can be
-    # ported to the new vocabulary without behavioural change.
-    RegisterValue = RegisterInt
-    FieldValue = FieldInt
+    from .runtime.values import FieldValue, RegisterValue
 
 try:
     __version__ = version("peakrdl-pybind11")
