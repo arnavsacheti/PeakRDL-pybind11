@@ -20,11 +20,9 @@ from typing import Any, Protocol, runtime_checkable
 class ReadWritable(Protocol):
     """Minimum register/field shape: ``read()`` returns int-compatible, ``write(value)`` accepts an int."""
 
-    def read(self) -> Any:
-        ...
+    def read(self) -> Any: ...
 
-    def write(self, value: Any) -> Any:
-        ...
+    def write(self, value: Any) -> Any: ...
 
 
 @runtime_checkable

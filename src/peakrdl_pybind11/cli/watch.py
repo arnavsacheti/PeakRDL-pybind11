@@ -50,9 +50,9 @@ def import_watchdog() -> ModuleType:
     branch without actually uninstalling the package.
     """
     try:
-        import watchdog
-        import watchdog.events
-        import watchdog.observers
+        import watchdog  # pyrefly: ignore [missing-import]
+        import watchdog.events  # pyrefly: ignore [missing-import]
+        import watchdog.observers  # pyrefly: ignore [missing-import]
     except ImportError as exc:
         from ..errors import NotSupportedError
 
@@ -73,7 +73,10 @@ def _build_handler(rdl_path: Path, on_change: Callable[[], None]) -> Any:
     against ``watchdog.events.FileSystemEventHandler``, which is only
     importable once :func:`import_watchdog` has succeeded.
     """
-    from watchdog.events import FileSystemEvent, FileSystemEventHandler
+    from watchdog.events import (  # pyrefly: ignore [missing-import]
+        FileSystemEvent,
+        FileSystemEventHandler,
+    )
 
     target = str(rdl_path.resolve())
 
@@ -137,7 +140,7 @@ def handle(options: argparse.Namespace) -> bool:
     # Force the watchdog import up-front so the missing-dep error fires
     # before we wire any observers.
     import_watchdog()
-    from watchdog.observers import Observer
+    from watchdog.observers import Observer  # pyrefly: ignore [missing-import]
 
     handler = _build_handler(rdl_path, _default_on_change(rdl_path))
     observer = Observer()
