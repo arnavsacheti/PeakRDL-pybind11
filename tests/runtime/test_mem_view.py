@@ -11,7 +11,9 @@ import pytest
 from peakrdl_pybind11.runtime.mem_view import (
     MemView,
     MemWindow,
+    attach_mem_view,
     enhance_mem_class,
+    is_mem_class,
 )
 
 
@@ -565,3 +567,70 @@ class TestEntryStyleMem:
             mem_entry[i] = i + 1
         for i in range(20):
             assert mem_entry[i] == i + 1
+
+
+# ---------------------------------------------------------------------------
+# Auto-attach hook: ``attach_mem_view`` registered with Unit 1's
+# ``register_register_enhancement`` seam fires for every generated
+# *register* class but only enhances mem-shaped ones.
+# ---------------------------------------------------------------------------
+
+
+class TestAutoAttachHook:
+    def test_hook_registered_on_registry(self) -> None:
+        """``attach_mem_view`` is visible from the registry's snapshot getters."""
+        from peakrdl_pybind11.runtime._registry import get_register_enhancers
+
+        assert attach_mem_view in get_register_enhancers()
+
+    def test_is_mem_class_structural(self) -> None:
+        """Mem-shape detection works on classes carrying ``mementries`` / ``memwidth``."""
+        cls = type("Mem", (FakeMem,), {"mementries": 64, "memwidth": 32})
+        assert is_mem_class(cls)
+
+    def test_is_mem_class_metadata_flag(self) -> None:
+        """An explicit ``metadata={'is_mem': True}`` overrides structural probe."""
+
+        class _NotAMem:
+            pass
+
+        assert is_mem_class(_NotAMem, {"is_mem": True})
+        assert not is_mem_class(_NotAMem, {"is_mem": False})
+        assert not is_mem_class(_NotAMem)
+
+    def test_attach_hook_skips_plain_register_classes(self) -> None:
+        """The hook leaves register-only classes alone (no MemView wrapping)."""
+
+        class _PlainReg:
+            def __getitem__(self, idx: int) -> int:
+                return 0
+
+        before = _PlainReg.__getitem__
+        attach_mem_view(_PlainReg, {"fields": {"x": (0, 1)}})
+        assert _PlainReg.__getitem__ is before
+
+    def test_attach_hook_wraps_mem_class_slice_returns_memview(self) -> None:
+        """Calling the hook on a mem class makes ``mem[1:5]`` return a ``MemView``."""
+        cls = type("MemForHook", (FakeMem,), {"mementries": 16, "memwidth": 32})
+        attach_mem_view(cls, {})
+        mem = cls(depth=16)
+        view = mem[1:5]
+        assert isinstance(view, MemView)
+        assert len(view) == 4
+
+    def test_attach_hook_is_idempotent(self) -> None:
+        """Running the hook twice on the same class doesn't double-wrap."""
+        cls = type("MemTwice", (FakeMem,), {"mementries": 16, "memwidth": 32})
+        attach_mem_view(cls, {})
+        first = cls.__getitem__
+        attach_mem_view(cls, {})
+        assert cls.__getitem__ is first
+
+    def test_attach_hook_via_apply_register_enhancements(self) -> None:
+        """Driving the registry seam end-to-end wraps a mem-shaped class."""
+        from peakrdl_pybind11.runtime._registry import apply_register_enhancements
+
+        cls = type("MemViaSeam", (FakeMem,), {"mementries": 16, "memwidth": 32})
+        apply_register_enhancements(cls, {"fields": {}, "is_mem": True})
+        mem = cls(depth=16)
+        assert isinstance(mem[0:8], MemView)
