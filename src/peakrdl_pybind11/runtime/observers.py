@@ -30,7 +30,7 @@ from collections import Counter
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -405,3 +405,41 @@ def attach_observers(soc: object, chain: ObserverChain | None = None) -> Observe
     soc.observers = chain  # type: ignore[attr-defined]
     soc.observe = chain.observe  # type: ignore[attr-defined,method-assign]
     return chain
+
+
+# ---------------------------------------------------------------------------
+# Registry wiring (sibling-dep: Unit 1's runtime/_registry).
+#
+# When the registry seam is present we register a post-create hook so every
+# ``MySoc.create()`` automatically gains ``soc.observers`` and
+# ``soc.observe()`` without callers having to invoke
+# ``attach_observers(soc)`` by hand. When the seam isn't yet available
+# (this unit can land before Unit 1), the import quietly fails and callers
+# can still wire the chain explicitly.
+#
+# A thin adapter is registered (rather than ``attach_observers`` directly)
+# so the post-create signature ``(soc) -> None`` is matched exactly: the
+# underlying helper takes an optional ``chain=`` kwarg and returns the
+# chain.
+# ---------------------------------------------------------------------------
+
+
+def _post_create_attach_observers(soc: Any) -> None:
+    """Post-create adapter for :func:`attach_observers`.
+
+    The registry's ``PostCreateHook`` protocol is ``(soc) -> None``;
+    :func:`attach_observers` carries a ``chain=`` kwarg and returns the
+    chain. This shim discards both so the registered callable matches the
+    seam's signature exactly.
+    """
+
+    attach_observers(soc)
+
+
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry  # type: ignore[attr-defined]
+except ImportError:
+    _registry = None  # type: ignore[assignment]
+
+if _registry is not None and hasattr(_registry, "register_post_create"):
+    _registry.register_post_create(_post_create_attach_observers)
