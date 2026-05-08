@@ -380,3 +380,39 @@ class TestRegistrationHelpers:
         wired_soc.master.read(0x00, 4)
         wired_soc.master.write(0x00, 1, 4)
         assert sentinel == [], "Event constructed despite an empty chain"
+
+
+# ---------------------------------------------------------------------------
+# Auto-attach via the post-create registry seam (Unit 1)
+# ---------------------------------------------------------------------------
+
+
+class TestPostCreateAutoAttach:
+    """``attach_observers`` is registered as a post-create hook so a freshly
+    built ``MySoc.create()`` already exposes ``soc.observers`` / ``soc.observe``
+    without callers having to invoke :func:`attach_observers` themselves.
+    """
+
+    def test_attach_observers_registered_as_post_create_hook(self) -> None:
+        # Importing the runtime package auto-imports ``observers`` which in
+        # turn registers the hook against the ``_registry`` seam.
+        from peakrdl_pybind11.runtime import _registry
+
+        hooks = _registry.get_post_create_hooks()
+        assert any(
+            "observers" in fn.__name__ or "observers" in fn.__qualname__
+            for fn in hooks
+        ), [fn.__qualname__ for fn in hooks]
+
+    def test_post_create_hook_makes_soc_observe_usable(self) -> None:
+        # Build a minimal fake SoC, fire the registry's post-create chain,
+        # and confirm ``soc.observers`` / ``soc.observe()`` work afterwards.
+        from peakrdl_pybind11.runtime import _registry
+
+        soc: Any = type("FakeSoC", (), {})()
+        _registry.fire_post_create_hooks(soc)
+
+        assert isinstance(soc.observers, ObserverChain)
+        with soc.observe() as obs:
+            pass
+        assert isinstance(obs, ObserverScope)
