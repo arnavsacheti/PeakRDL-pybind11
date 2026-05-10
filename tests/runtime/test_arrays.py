@@ -13,9 +13,12 @@ from typing import Any
 import numpy as np
 import pytest
 
+from peakrdl_pybind11.runtime import _registry as enhancement_registry
 from peakrdl_pybind11.runtime.arrays import (
+    _ARRAY_VIEW_CLS_ATTR,
     ArrayView,
     FieldArray,
+    auto_attach_array_view,
     register_register_enhancement,
     reset_enhancements,
     wrap_array,
@@ -522,3 +525,71 @@ class TestConstructor:
         rep = repr(arr)
         assert "ArrayView" in rep
         assert "shape" in rep
+
+
+# ---------------------------------------------------------------------------
+# Seam wiring (Unit 1 ``_registry`` integration)
+#
+# The arrays module registers :func:`auto_attach_array_view` on Unit 1's
+# canonical seam at import time; the generated runtime fires this hook for
+# every register class so that ``soc.dma.channel[:].read()`` and the
+# ``arr[2, 5]`` multi-dim index path documented in IDEAL_API_SKETCH.md §7
+# work without per-SoC wiring code.
+# ---------------------------------------------------------------------------
+
+
+class TestSeamWiring:
+    def test_auto_attach_in_register_enhancers(self) -> None:
+        """The seam-level hook should be registered at import time."""
+        enhancers = enhancement_registry.get_register_enhancers()
+        assert auto_attach_array_view in enhancers
+
+    def test_seam_hook_stamps_class(self) -> None:
+        """Driving the hook on a class stamps the canonical view class."""
+
+        class _FakeReg:
+            pass
+
+        assert getattr(_FakeReg, _ARRAY_VIEW_CLS_ATTR, None) is None
+        auto_attach_array_view(_FakeReg, {"fields": {}})
+        assert getattr(_FakeReg, _ARRAY_VIEW_CLS_ATTR) is ArrayView
+
+    def test_seam_hook_is_idempotent(self) -> None:
+        """Re-driving the hook on a stamped class is a no-op."""
+
+        class _FakeReg:
+            pass
+
+        auto_attach_array_view(_FakeReg, {})
+        auto_attach_array_view(_FakeReg, {})
+        # Single stamp; attribute lookup walks the class once, so the
+        # second call should not have produced a different view class.
+        assert getattr(_FakeReg, _ARRAY_VIEW_CLS_ATTR) is ArrayView
+
+    def test_wrap_array_returns_array_view_for_stamped_class(self) -> None:
+        """Build a fake array-of-registers, drive the hook, slice → ``ArrayView``."""
+        # Build a fake array-of-registers (the C++ pybind11 sequence shape).
+        elements = [_MockRegister(address=0x4000 + 4 * i) for i in range(4)]
+        # Drive the seam hook on the element class.
+        auto_attach_array_view(_MockRegister, {"fields": {}})
+
+        try:
+            arr = wrap_array(_MockRegister, "channel", elements, (4,))
+            assert isinstance(arr, ArrayView)
+            sliced = arr[:]
+            assert isinstance(sliced, ArrayView)
+            assert sliced.shape == (4,)
+        finally:
+            # Tidy up the class-level stamp so other tests see a clean state.
+            if hasattr(_MockRegister, _ARRAY_VIEW_CLS_ATTR):
+                delattr(_MockRegister, _ARRAY_VIEW_CLS_ATTR)
+
+    def test_seam_hook_accepts_metadata_kwarg(self) -> None:
+        """Hook tolerates ``None`` metadata (some unit tests omit it)."""
+
+        class _FakeReg:
+            pass
+
+        # Should not raise even though ``metadata`` is ``None``.
+        auto_attach_array_view(_FakeReg, None)
+        assert getattr(_FakeReg, _ARRAY_VIEW_CLS_ATTR) is ArrayView

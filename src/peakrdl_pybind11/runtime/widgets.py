@@ -885,7 +885,7 @@ class Watcher:
     def _ipython_display_(self) -> None:
         """Show the live widget when the watcher is evaluated in a notebook."""
         try:  # pragma: no cover - IPython-only path
-            from IPython.display import display  # pyrefly: ignore [missing-import]
+            from IPython.display import display
 
             display(self._widget)
         except ImportError:

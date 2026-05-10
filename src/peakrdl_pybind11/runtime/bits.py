@@ -226,22 +226,25 @@ _BITS_ATTR_FLAG = "__peakrdl_bits_installed__"
 
 
 def attach_bits_accessor(field_cls: type) -> None:
-    """Attach a ``bits`` property to ``field_cls`` if its width > 1.
+    """Attach a ``bits`` property to ``field_cls``.
 
-    Idempotent: classes already enhanced are skipped. Width is taken from
-    ``field_cls.info.width`` if present (Unit 4 contract), falling back to a
-    bare ``width`` attribute on the class so the helper is usable before
-    Unit 4 lands.
+    Width is checked at instance-access time, not class-attach time:
+    generated pybind11 field classes don't carry ``width`` on the class,
+    only on the instance, and ``info`` isn't built until first access.
+    The property raises ``AttributeError`` for single-bit fields where
+    ``bits`` doesn't make semantic sense, mirroring "no such attribute"
+    rather than silently returning a useless accessor.
     """
     if getattr(field_cls, _BITS_ATTR_FLAG, False):
         return
-    width = _lookup_width(field_cls)
-    if width is None or width <= 1:
-        # Single-bit fields don't get a ``bits`` namespace — ``field.read()``
-        # already returns a bool there.
-        return
 
     def _bits_property(self: _FieldLike) -> BitsAccessor:
+        width = _lookup_width(self)
+        if width is not None and width <= 1:
+            raise AttributeError(
+                f"{type(self).__name__!r} has width 1; the .bits accessor is "
+                "only meaningful on multi-bit fields."
+            )
         return BitsAccessor(self)
 
     field_cls.bits = property(_bits_property)

@@ -8,9 +8,14 @@ and they will compose: defaults run first (they wrap the bare C++
 ``read``/``write`` into Python shims), then sibling-unit enhancements
 layer on additional behaviour.
 
-The semantics of the default shims are intentionally identical to the
-pre-overhaul template, so the existing ``tests/test_*`` integration suite
-continues to pass.
+This module is the **seam where the new API takes effect**: register
+reads return :class:`peakrdl_pybind11.runtime.values.RegisterValue` and
+field reads return :class:`peakrdl_pybind11.runtime.values.FieldValue`
+(both immutable, hashable ``int`` subclasses with ``.hex()``, ``.bin()``,
+``.replace(**fields)``, ``.table()`` etc.). The legacy
+``RegisterInt`` / ``FieldInt`` types in :mod:`peakrdl_pybind11.int_types`
+remain importable for code that constructs them directly, but the shim
+no longer emits them. See ``docs/IDEAL_API_SKETCH.md`` §3.2.
 """
 
 from __future__ import annotations
@@ -19,8 +24,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from ..int_types import FieldInt, RegisterInt
 from . import _registry
+from .values import FieldValue, RegisterValue
 
 logger = logging.getLogger("peakrdl_pybind11.runtime.default_shims")
 
@@ -42,7 +47,16 @@ def _enhanced_register_read(
             return flag_type(value)
         if enum_type is not None:
             return enum_type(value)
-        return RegisterInt(value, self.offset, self.width, fields_spec)
+        # ``self.width`` from the C++ ``RegisterBase`` is in bytes; the
+        # ``RegisterValue`` constructor masks against ``(1 << width) - 1``
+        # which expects bits. Multiply once at the seam.
+        return RegisterValue(
+            value,
+            address=self.offset,
+            width=self.width * 8,
+            fields=fields_spec,
+            name=getattr(self, "name", None),
+        )
 
     setattr(read, _ENHANCED, True)
     return read
@@ -53,7 +67,7 @@ def _enhanced_register_write(
     original_modify: Callable[[Any, int, int], None],
 ) -> Callable[[Any, Any], None]:
     def write(self: Any, value: Any) -> None:
-        if isinstance(value, FieldInt):
+        if isinstance(value, FieldValue):
             shifted = (int(value) << value.lsb) & value.mask
             original_modify(self, shifted, value.mask)
         else:
@@ -63,9 +77,17 @@ def _enhanced_register_write(
     return write
 
 
-def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[[Any], FieldInt]:
-    def read(self: Any) -> FieldInt:
-        return FieldInt(original_read(self), self.lsb, self.width, self.offset)
+def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[[Any], FieldValue]:
+    def read(self: Any) -> FieldValue:
+        # Field ``width`` from C++ ``FieldBase`` is in bits — feed it to
+        # ``FieldValue`` directly. ``offset`` is the parent register's
+        # address; we surface it as ``register_path`` for diagnostics.
+        return FieldValue(
+            original_read(self),
+            lsb=self.lsb,
+            width=self.width,
+            name=getattr(self, "name", None),
+        )
 
     setattr(read, _ENHANCED, True)
     return read
@@ -144,9 +166,16 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
     raw_write = getattr(cls, "write", None)
     if raw_write is None:
         return
+    # Stash the full metadata on the class so the ``.info`` factory and
+    # other sibling units can access fields like ``address`` / ``path`` /
+    # ``regwidth`` without re-parsing the RDL.
+    cls.__peakrdl_meta__ = dict(metadata)  # type: ignore[attr-defined]
     cls.read = _enhanced_register_read(raw_read, flag_type, enum_type, fields_spec)  # type: ignore[method-assign]
     cls.write = _enhanced_register_write(raw_write, cls.modify)  # type: ignore[method-assign]
-    # Fast-path scalar accessors: bypass RegisterInt wrapping / FieldInt
+    # ``poke(v)`` is the explicit "I know what I'm doing" alias for write —
+    # documented in sketch §3.1. Symmetric to write but signals user intent.
+    cls.poke = cls.write  # type: ignore[attr-defined]
+    # Fast-path scalar accessors: bypass RegisterValue wrapping / FieldValue
     # handling. ``read_raw`` returns a plain ``int``; ``write_raw`` accepts
     # a plain ``int`` and writes it directly via the underlying C++ method.
     cls.read_raw = raw_read  # type: ignore[attr-defined]
@@ -155,7 +184,29 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
     # shim with validation under the public name.
     if hasattr(cls, "write_fields"):
         cls._native_write_fields = cls.write_fields  # type: ignore[attr-defined]
-        cls.write_fields = _make_write_fields(fields_spec, writable_spec)  # type: ignore[method-assign]
+        write_fields_shim = _make_write_fields(fields_spec, writable_spec)
+        cls.write_fields = write_fields_shim  # type: ignore[method-assign]
+        # ``reg.modify(**fields)`` is the canonical aspirational API
+        # (sketch §3.3). The C++ ``modify(value, mask)`` is preserved
+        # under ``_native_modify`` for the RMW machinery; the Python
+        # ``modify`` accepts EITHER ``(value, mask)`` positional args
+        # (legacy) OR ``**fields`` kwargs (the canonical surface).
+        native_modify = cls.modify  # type: ignore[attr-defined]
+        cls._native_modify = native_modify  # type: ignore[attr-defined]
+
+        def modify(self: Any, *args: Any, **kwargs: Any) -> None:
+            if kwargs and not args:
+                write_fields_shim(self, **kwargs)
+                return
+            if args and not kwargs:
+                native_modify(self, *args)
+                return
+            raise TypeError(
+                "modify() takes either (value, mask) positional args or **fields kwargs, "
+                f"not both. Got args={args!r}, kwargs={kwargs!r}"
+            )
+
+        cls.modify = modify  # type: ignore[method-assign]
 
 
 @_registry.register_field_enhancement
@@ -178,7 +229,7 @@ def _default_field_shim(cls: type) -> None:
     cls.write = _enhanced_field_write(raw_write)  # type: ignore[method-assign]
     # Fast-path scalar accessors: ``read_raw`` returns a plain ``int`` (the
     # field-space value, identical to what the C++ getter returns -- no
-    # ``FieldInt`` allocation). ``write_raw`` takes a plain ``int`` in
+    # ``FieldValue`` allocation). ``write_raw`` takes a plain ``int`` in
     # field-space and forwards directly to the C++ setter (which performs
     # the shift+mask+modify on the underlying register).
     cls.read_raw = raw_read  # type: ignore[attr-defined]

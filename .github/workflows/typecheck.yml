@@ -20,7 +20,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
       
       - name: Install package
-        run: uv sync --extra cli
-      
+        # ``--extra notebook`` pulls in watchdog / ipywidgets so the soft
+        # imports in cli/watch.py and runtime/widgets.py resolve at
+        # typecheck time. Without this pyrefly reports them as missing.
+        run: uv sync --extra cli --extra notebook
+
       - name: Run pyrefly type check
         run: uvx pyrefly check src/

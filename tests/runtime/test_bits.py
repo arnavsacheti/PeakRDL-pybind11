@@ -371,14 +371,24 @@ def test_attach_bits_accessor_attaches_property() -> None:
 
 
 def test_attach_bits_accessor_skips_single_bit_fields() -> None:
-    """Single-bit fields don't get a ``bits`` namespace."""
+    """Single-bit fields raise on ``.bits`` access at runtime.
+
+    The property attaches unconditionally at class-attach time (since
+    width is an instance-level attribute on generated pybind11 fields),
+    but it raises ``AttributeError`` when the underlying field is 1-bit
+    so users get a clear "this isn't meaningful" signal rather than a
+    silently-useless accessor.
+    """
+    import pytest
 
     class FakeBitField:
         info = FieldInfo(width=1)
         lsb = 0
 
     attach_bits_accessor(FakeBitField)
-    assert not hasattr(FakeBitField, "bits")
+    instance = FakeBitField()
+    with pytest.raises(AttributeError, match="width 1"):
+        _ = instance.bits
 
 
 def test_attach_bits_accessor_idempotent() -> None:

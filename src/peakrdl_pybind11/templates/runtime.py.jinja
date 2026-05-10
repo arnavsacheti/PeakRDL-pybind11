@@ -197,6 +197,21 @@ _FIELD_CLASSES: tuple = (
 # extension surface so sibling units can read additional keys.
 # Wrapping is idempotent: each enhancement checks for ``__peakrdl_enhanced__``
 # (set by ``runtime/_default_shims.py``) and bails out on the second pass.
+# Per-register metadata extending the base spec with address / path /
+# name / regwidth so the default ``.info`` factory can build a proper
+# ``Info`` without an RDL node attached.
+_REGISTER_INFO: dict[type, dict] = {
+{% for reg in nodes.regs %}
+    {{ reg | pybind_name }}_t: {
+        "name": "{{ reg.inst_name }}",
+        "path": "{{ reg.get_path() }}",
+        "address": {{ reg.absolute_address }},
+        "regwidth": {{ reg.get_property('regwidth') }},
+        "desc": {% if reg.get_property('desc') %}"{{ reg.get_property('desc') | replace('"', '\\"') | replace('\n', ' ') }}"{% else %}None{% endif %},
+    },
+{% endfor %}
+}
+
 for _reg_cls, _spec in _REGISTER_FIELDS.items():
     _peakrdl_registry.apply_register_enhancements(
         _reg_cls,
@@ -205,14 +220,24 @@ for _reg_cls, _spec in _REGISTER_FIELDS.items():
             "writable": _REGISTER_FIELD_WRITABLE.get(_reg_cls, {}),
             "flag_type": _FLAG_REG_TYPES.get(_reg_cls),
             "enum_type": _ENUM_REG_TYPES.get(_reg_cls),
+            **_REGISTER_INFO.get(_reg_cls, {}),
         },
     )
 
 for _field_cls in _FIELD_CLASSES:
     _peakrdl_registry.apply_field_enhancements(_field_cls)
 
-# Wire any registered lazy node attributes onto the shared node base, if
-# one exists in this generated module. Sibling units that introduce a
-# base class will export it as ``_PEAKRDL_NODE_BASE``; until then we
-# pass ``None`` and the registry no-ops.
-_peakrdl_registry.attach_node_attributes(globals().get("_PEAKRDL_NODE_BASE"))
+# Wire any registered lazy node attributes (e.g. ``.info``) onto every
+# generated register and field class. The shared base (``NodeBase``,
+# ``RegisterBase``, ``FieldBase``) is a C++-extension base that doesn't
+# carry Python attributes, so we attach to each concrete generated
+# class instead. Sibling units that introduce a Python-level base can
+# export it as ``_PEAKRDL_NODE_BASE`` and we'll prefer that.
+_node_base = globals().get("_PEAKRDL_NODE_BASE")
+if _node_base is not None:
+    _peakrdl_registry.attach_node_attributes(_node_base)
+else:
+    for _reg_cls in _REGISTER_FIELDS:
+        _peakrdl_registry.attach_node_attributes(_reg_cls)
+    for _field_cls in _FIELD_CLASSES:
+        _peakrdl_registry.attach_node_attributes(_field_cls)

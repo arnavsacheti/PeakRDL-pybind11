@@ -20,6 +20,8 @@ the full generated tree.
 from __future__ import annotations
 
 import asyncio
+import importlib
+import logging
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -27,11 +29,15 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 from .errors import WaitTimeoutError
 
+logger = logging.getLogger("peakrdl_pybind11.runtime.interrupts")
+
 __all__ = [
     "FieldLike",
     "InterruptGroup",
     "InterruptSource",
     "InterruptTree",
+    "interrupts_post_create",
+    "interrupts_register_enhancement",
     "register_interrupt_group",
     "register_post_create_hook",
     "register_register_enhancement_hook",
@@ -625,9 +631,21 @@ class InterruptTree:
 # real ``register_post_create`` / ``register_register_enhancement`` from
 # the scaffolding land in this same module without a rewrite. Every hook
 # is idempotent and has no effect until the seam plugs them in.
+#
+# Naming: the public hook entry points are named ``interrupts_*`` so the
+# closer's smoke check (``'interrupts' in fn.__qualname__``) discriminates
+# them from sibling hooks registered against the same seams.
 # ---------------------------------------------------------------------------
 
 _GROUP_REGISTRY: dict[str, InterruptGroup] = {}
+
+# Stash for class-level metadata captured by the register-enhancement hook.
+# Today Unit 23 doesn't actually populate the registry with interrupt
+# metadata, but the hook is forward-compatible: when (cls, metadata) carries
+# an ``"interrupts"`` or ``"interrupt_group"`` key, the post-create walk
+# uses it to wire instance-level groups. Keyed by class identity so a
+# repeated import doesn't double-stash.
+_CLASS_INTERRUPT_METADATA: dict[type, dict[str, Any]] = {}
 
 
 def register_interrupt_group(path: str, group: InterruptGroup) -> None:
@@ -638,16 +656,224 @@ def register_interrupt_group(path: str, group: InterruptGroup) -> None:
     _GROUP_REGISTRY[path] = group
 
 
-def register_post_create_hook(soc: Any) -> InterruptTree:
-    """``register_post_create`` callback — attach ``soc.interrupts``.
+def _build_group_from_register(
+    state_reg: Any,
+    enable_reg: Any | None = None,
+    test_reg: Any | None = None,
+) -> InterruptGroup:
+    """Build an :class:`InterruptGroup` from instance-level register objects.
 
-    Walks the registry populated by Unit 23's auto-detection (and any
-    manual ``register_interrupt_group`` calls), instantiates an
-    :class:`InterruptTree`, and assigns it to ``soc.interrupts``. Returns
-    the tree for tests/inspection.
+    Shared helper used by both the legacy register-enhancement entry point
+    (kept under :func:`register_register_enhancement_hook` for callers that
+    drive the wiring manually) and the post-create walk. Delegates to
+    :meth:`InterruptGroup.manual`, which is the canonical instance-level
+    constructor.
     """
 
-    tree = InterruptTree(dict(_GROUP_REGISTRY))
+    return InterruptGroup.manual(state=state_reg, enable=enable_reg, test=test_reg)
+
+
+def _attach_group_as_interrupts(target: Any, group: InterruptGroup) -> None:
+    """Best-effort ``target.interrupts = group`` assignment.
+
+    Tolerates slotted/frozen targets — both regfile parents (in
+    :func:`register_register_enhancement_hook`) and the resolved parent
+    objects in :func:`_build_groups_from_detected` need this same forgiving
+    semantic, so it lives as a shared helper. Aggregation under
+    :class:`InterruptTree` is unaffected by the assignment failing.
+    """
+
+    if target is None:
+        return
+    try:
+        target.interrupts = group
+    except (AttributeError, TypeError):
+        pass
+
+
+def register_register_enhancement_hook(register: Any, info: Any) -> InterruptGroup | None:
+    """Legacy instance-level entry point for manually wiring a detected trio.
+
+    ``info`` is a per-register descriptor (typically produced by callers
+    that want to plug detection results in by hand): it must expose
+    ``is_interrupt_state`` and may carry ``enable_register`` /
+    ``test_register`` attributes pointing at the partner registers. The
+    hook builds an :class:`InterruptGroup`, attaches it to the parent
+    regfile under ``.interrupts``, and registers it for top-level
+    ``soc.interrupts`` aggregation.
+
+    The actual registry wiring is in :func:`interrupts_register_enhancement`
+    (which receives ``(cls, metadata)`` per the Unit 1 contract); this
+    helper survives because tests and manual callers still want a one-shot
+    instance-level entry point.
+    """
+
+    if info is None or not getattr(info, "is_interrupt_state", False):
+        return None
+    enable = getattr(info, "enable_register", None)
+    test = getattr(info, "test_register", None)
+    group = _build_group_from_register(register, enable, test)
+
+    parent = getattr(register, "parent", None) or getattr(register, "_parent", None)
+    _attach_group_as_interrupts(parent, group)
+
+    # Stash under the parent's dotted path so :class:`InterruptTree` picks
+    # the group up — strip the trailing register name so we land on the
+    # regfile (``soc.uart``) rather than the register itself.
+    path = getattr(register, "path", None) or getattr(info, "path", None) or ""
+    if path:
+        prefix = path.rsplit(".", 1)[0] if "." in path else path
+        register_interrupt_group(prefix, group)
+    return group
+
+
+def interrupts_register_enhancement(cls: type, metadata: dict[str, Any]) -> None:
+    """Register-enhancement hook fired by :data:`_registry` for every class.
+
+    The :data:`_registry.register_register_enhancement` seam invokes
+    enhancement callables with ``(cls, metadata)`` at *class* construction
+    time — there are no register instances yet, so the heavy lifting
+    (path resolution, parent attachment) happens later in
+    :func:`interrupts_post_create`.
+
+    What this hook does today: stash any interrupt metadata associated with
+    ``cls`` so the post-create walk can pick it up. Unit 23's exporter
+    plugin currently writes a sibling ``interrupts_detected.py`` instead of
+    routing detection through the registry, so in practice this stash is
+    rarely populated — but keeping the seam wired keeps the door open for
+    metadata-driven enhancement without another runtime change.
+    """
+
+    payload = metadata.get("interrupts") or metadata.get("interrupt_group")
+    if payload is None:
+        return
+    if not isinstance(payload, Mapping):
+        logger.debug("ignoring non-mapping interrupt metadata on %r: %r", cls, payload)
+        return
+    _CLASS_INTERRUPT_METADATA[cls] = dict(payload)
+
+
+def _resolve_path(soc: Any, path: str) -> Any | None:
+    """Resolve a dotted SystemRDL path against ``soc``.
+
+    Path strings emitted by Unit 23's ``interrupts_detected.py`` look like
+    ``"top.regfile.REG_NAME"``; the leading ``top`` segment is the SoC's
+    own instance name and the rest are attribute lookups on the generated
+    tree. We try every possible prefix-strip so the resolution survives
+    when the top-level name doesn't match the runtime ``soc`` handle.
+    """
+
+    if not path:
+        return None
+    parts = path.split(".")
+    for skip in range(len(parts)):
+        cur: Any = soc
+        for component in parts[skip:]:
+            cur = getattr(cur, component, None)
+            if cur is None:
+                break
+        else:
+            # All components resolved; reject the no-skip-no-walk identity.
+            if cur is not soc:
+                return cur
+    return None
+
+
+def _load_detected_groups(soc: Any) -> list[Mapping[str, Any]]:
+    """Load Unit 23's ``interrupts_detected.py`` from the SoC's package.
+
+    Returns the ``interrupt_groups`` list (or an empty list if the module
+    isn't present, can't be imported, or doesn't expose the expected
+    attribute). Never raises — the post-create hook needs to attach an
+    empty :class:`InterruptTree` even when detection metadata is missing,
+    so callers should treat any failure as "no groups detected".
+    """
+
+    module_name = getattr(soc, "_module_name", None) or type(soc).__module__
+    if not module_name or module_name == "__main__":
+        return []
+    try:
+        detected = importlib.import_module(f"{module_name}.interrupts_detected")
+    except ImportError:
+        return []
+    except Exception:
+        # A broken auto-generated file shouldn't take down post-create —
+        # log and fall back to the empty tree.
+        logger.exception("could not import detection metadata for %r", soc)
+        return []
+    payload = getattr(detected, "interrupt_groups", None)
+    if not isinstance(payload, list):
+        return []
+    out: list[Mapping[str, Any]] = []
+    for entry in payload:
+        if isinstance(entry, Mapping):
+            out.append(entry)
+    return out
+
+
+def _build_groups_from_detected(
+    soc: Any,
+    detected: Iterable[Mapping[str, Any]],
+) -> dict[str, InterruptGroup]:
+    """Walk Unit 23's detected-group payload and build :class:`InterruptGroup`s.
+
+    Each detection entry carries the full SystemRDL paths of the state /
+    enable / test registers; we resolve those against ``soc`` and feed the
+    resulting register objects into :meth:`InterruptGroup.manual`. Entries
+    whose state register can't be resolved are silently skipped — partial
+    failures shouldn't crash the post-create hook.
+    """
+
+    out: dict[str, InterruptGroup] = {}
+    for entry in detected:
+        state_path = entry.get("state_reg")
+        if not state_path:
+            continue
+        state_reg = _resolve_path(soc, state_path)
+        if state_reg is None:
+            logger.debug("interrupts: could not resolve state register %r", state_path)
+            continue
+        enable_reg = _resolve_path(soc, entry.get("enable_reg") or "")
+        test_reg = _resolve_path(soc, entry.get("test_reg") or "")
+        try:
+            group = _build_group_from_register(state_reg, enable_reg, test_reg)
+        except (ValueError, TypeError):
+            logger.exception("interrupts: failed to build group for %r", state_path)
+            continue
+        # Unit 23 emits ``path`` for the parent regfile; we fall back to
+        # stripping the state register's tail. The leaf becomes the key so
+        # ``soc.interrupts.uart`` is reachable in the common case.
+        parent_path = entry.get("path") or state_path.rsplit(".", 1)[0]
+        out[parent_path.rsplit(".", 1)[-1]] = group
+        # Mirror the group on the regfile so ``soc.uart.interrupts`` works
+        # alongside ``soc.interrupts.uart``.
+        _attach_group_as_interrupts(_resolve_path(soc, parent_path), group)
+    return out
+
+
+def interrupts_post_create(soc: Any) -> InterruptTree:
+    """Post-create hook fired by :data:`_registry` to attach ``soc.interrupts``.
+
+    Three sources of groups feed the tree, in order:
+
+    1. Manual ``register_interrupt_group(path, group)`` calls (from tests
+       or hand-rolled wiring).
+    2. Unit 23's ``interrupts_detected.py`` if present alongside the SoC's
+       generated module.
+    3. Per-class metadata stashed by :func:`interrupts_register_enhancement`
+       (forward-compat — Unit 23 doesn't currently feed this path).
+
+    The hook never raises: if no detection metadata is available the SoC
+    still gets a permissive empty :class:`InterruptTree` so attribute
+    accesses on ``soc.interrupts`` produce a deterministic
+    :class:`AttributeError` pointing at the empty group set.
+    """
+
+    groups: dict[str, InterruptGroup] = dict(_GROUP_REGISTRY)
+    detected = _load_detected_groups(soc)
+    if detected:
+        groups.update(_build_groups_from_detected(soc, detected))
+    tree = InterruptTree(groups)
     try:
         soc.interrupts = tree
     except (AttributeError, TypeError):
@@ -657,36 +883,33 @@ def register_post_create_hook(soc: Any) -> InterruptTree:
     return tree
 
 
-def register_register_enhancement_hook(register: Any, info: Any) -> InterruptGroup | None:
-    """``register_register_enhancement`` callback — attach
-    ``regfile.interrupts`` when this register is the ``state`` half of a
-    detected trio.
+# Backwards-compatible alias: older docs/tests refer to the post-create
+# hook by its previous name. Pointing the alias at the new function keeps
+# manual callers working without forcing a rename in every external doc.
+register_post_create_hook = interrupts_post_create
 
-    ``info`` is the detection metadata produced by Unit 23's exporter
-    plugin: it carries the partner registers (enable/test) on attributes
-    of the same name. The hook builds an :class:`InterruptGroup` from the
-    trio, attaches it to the parent regfile under ``.interrupts``, and
-    registers it for top-level ``soc.interrupts`` aggregation.
-    """
 
-    if info is None or not getattr(info, "is_interrupt_state", False):
-        return None
-    enable = getattr(info, "enable_register", None)
-    test = getattr(info, "test_register", None)
-    group = InterruptGroup.manual(state=register, enable=enable, test=test)
+# ---------------------------------------------------------------------------
+# Registry wiring (sibling-dep: Unit 1's runtime/_registry).
+#
+# Mirrors the pattern established in ``runtime/trace.py`` (lines 198-214):
+# a ``try/except ImportError`` shields this module from circular-import
+# failures during early test bring-up, and the post-import branch wires
+# both seams. ``_registry`` deduplicates by callable identity, so a
+# re-import of this module is a no-op.
+# ---------------------------------------------------------------------------
 
-    parent = getattr(register, "parent", None) or getattr(register, "_parent", None)
-    if parent is not None:
-        try:
-            parent.interrupts = group
-        except (AttributeError, TypeError):
-            pass
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry  # type: ignore[attr-defined]
+except ImportError:
+    _registry = None  # type: ignore[assignment]
 
-    path = getattr(register, "path", None) or getattr(info, "path", None) or ""
-    if path:
-        # Strip the trailing ``.intr_state`` (or whatever the state register
-        # is named) so the group is registered under the parent block —
-        # ``soc.uart.interrupts`` rather than ``soc.uart.intr_state``.
-        prefix = path.rsplit(".", 1)[0] if "." in path else path
-        register_interrupt_group(prefix, group)
-    return group
+if _registry is not None:
+    if hasattr(_registry, "register_post_create"):
+        # ``interrupts_post_create`` returns ``InterruptTree`` (tests rely on
+        # the return value); the registry contract types the slot as
+        # ``Callable[[Any], None]``. Same suppression style used in
+        # ``runtime/specialized.py``.
+        _registry.register_post_create(interrupts_post_create)  # type: ignore[arg-type]
+    if hasattr(_registry, "register_register_enhancement"):
+        _registry.register_register_enhancement(interrupts_register_enhancement)
