@@ -18,6 +18,13 @@
 #include <iomanip>
 #include <unordered_map>
 #include <utility>
+// POSIX mmap support — used by MmapMaster
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstring>
+#include <cerrno>
 
 namespace {{ soc_name }} {
 

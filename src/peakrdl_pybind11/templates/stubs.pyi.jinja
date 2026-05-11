@@ -51,6 +51,35 @@ class MockMaster(Master):
     def read_many(self, ops: Sequence[AccessOp]) -> list[int]: ...
     def write_many(self, ops: Sequence[AccessOp]) -> None: ...
 
+class MmapMaster(Master):
+    """Native mmap-backed master.
+
+    No Python in the read/write hot path — each access is a single pointer
+    deref into the mapped region. ``base_address`` is subtracted from
+    incoming addresses before the deref, so peripherals at a non-zero SoC
+    base address (e.g. ``0x4000_0000``) work directly. Width must be
+    1/2/4/8 bytes.
+    """
+
+    @overload
+    def __init__(self, path: str, size: int = 0,
+                 base_address: int = 0, read_only: bool = False) -> None: ...
+    @overload
+    def __init__(self, fd: int, size: int, offset: int = 0,
+                 base_address: int = 0, read_only: bool = False) -> None: ...
+
+    def close(self) -> None: ...
+
+    @property
+    def size(self) -> int: ...
+
+    @property
+    def base_address(self) -> int: ...
+
+    @property
+    def is_read_only(self) -> bool: ...
+
+
 class CallbackMaster(Master):
     """Native master that dispatches to user-supplied Python callables.
 

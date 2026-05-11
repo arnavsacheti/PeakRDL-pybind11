@@ -27,6 +27,9 @@ from __future__ import annotations
 
 import time
 
+import os
+import tempfile
+
 import top_earlgrey
 from peakrdl_pybind11.masters import MockMaster as PyMockMaster
 
@@ -37,6 +40,25 @@ def _attach_native(soc):
 
 def _attach_wrapped(soc):
     soc.attach_master(top_earlgrey.wrap_master(PyMockMaster()))
+
+
+# Module-level temp file so MmapMaster lives as long as the bench. Cleaned up
+# via atexit. Sized to comfortably hold top_earlgrey's address space (~64 MB);
+# we only ever touch a handful of registers in the bench so the backing file
+# is sparse and cheap on macOS / Linux.
+_mmap_path = tempfile.NamedTemporaryFile(suffix=".bin", delete=False).name
+import atexit  # noqa: E402
+atexit.register(lambda: os.path.exists(_mmap_path) and os.unlink(_mmap_path))
+
+
+def _attach_mmap(soc):
+    # top_earlgrey peripheral base addresses live in [0x4000_0000, 0x4140_0000)
+    # roughly. Map exactly that window via ``base_address`` so absolute
+    # addresses translate cleanly to file offsets. 64 MiB covers all bench
+    # targets and stays page-aligned.
+    m = top_earlgrey.MmapMaster(_mmap_path, size=64 * 1024 * 1024,
+                                base_address=0x4000_0000, read_only=False)
+    soc.attach_master(m)
 
 
 def _format(label: str, dt: float, ops: int, unit: str = "op") -> None:
@@ -225,6 +247,12 @@ def main() -> None:
     bench_multi_field("native MockMaster", _attach_native)
     bench_write_only("native MockMaster", _attach_native)
     bench_transaction("native MockMaster", _attach_native)
+
+    print("\n" + "-" * 78)
+    print("Native MmapMaster (file-backed; no Python in hot path)")
+    print("-" * 78)
+    bench_scalar_roundtrip("MmapMaster", _attach_mmap)
+    bench_transaction("MmapMaster", _attach_mmap)
 
     print("\n" + "-" * 78)
     print("With wrap_master(PyMockMaster()) — Python master, trampolined")

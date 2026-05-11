@@ -107,6 +107,28 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("set_write", &CallbackMaster::set_write, py::arg("write"))
         .def("__repr__", &CallbackMaster::__repr__);
 
+    // MmapMaster: native mmap-backed master. No Python in the hot path.
+    py::class_<MmapMaster, Master>(m, "MmapMaster", py::dynamic_attr())
+        .def(py::init<const std::string&, size_t, uint64_t, bool>(),
+             py::arg("path"), py::arg("size") = 0,
+             py::arg("base_address") = 0, py::arg("read_only") = false,
+             "Mmap a file at ``path``. ``size = 0`` uses the file's current "
+             "length; writable mode grows the file to ``size`` if shorter. "
+             "``base_address`` is subtracted from incoming addresses before "
+             "the deref — use it to map a peripheral window at its SoC base.")
+        .def(py::init<int, size_t, uint64_t, uint64_t, bool>(),
+             py::arg("fd"), py::arg("size"), py::arg("offset") = 0,
+             py::arg("base_address") = 0, py::arg("read_only") = false,
+             "Wrap an existing fd (typical for /dev/mem). The caller retains "
+             "ownership of the fd. ``offset`` is the file offset to mmap; "
+             "``base_address`` is the SoC base for address translation.")
+        .def("close", &MmapMaster::close,
+             "Unmap and (for path-based instances) close the fd.")
+        .def_property_readonly("size", &MmapMaster::size)
+        .def_property_readonly("base_address", &MmapMaster::base_address)
+        .def_property_readonly("is_read_only", &MmapMaster::is_read_only)
+        .def("__repr__", &MmapMaster::__repr__);
+
     // Transaction: cross-register write batching context manager.
     py::class_<Transaction>(m, "Transaction")
         .def("__enter__", &Transaction::enter,

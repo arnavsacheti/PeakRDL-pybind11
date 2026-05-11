@@ -191,6 +191,202 @@ private:
 };
 
 /**
+ * MmapMaster: mmap-backed master for hosted register access.
+ *
+ * Each read/write is a single pointer deref into the mapped region — no
+ * Python in the hot path, no virtual dispatch back through CallbackMaster.
+ * Real targets are ``/dev/mem`` on Linux (open with O_RDWR | O_SYNC, pass
+ * the fd to ``MmapMaster(fd, size)``) and plain backing files for tests.
+ *
+ * Two constructors:
+ *
+ * * ``MmapMaster(path, size=0, base_address=0, read_only=False)`` — opens
+ *   the file. If ``size > 0`` and the file is shorter, it's grown to
+ *   ``size`` (writable mode only). ``size = 0`` uses the file's current
+ *   length.
+ * * ``MmapMaster(fd, size, offset=0, base_address=0, read_only=False)`` —
+ *   wraps an existing fd (typical for ``/dev/mem``). The caller retains
+ *   ownership of the fd.
+ *
+ * ``base_address`` is subtracted from every incoming address before the
+ * deref. Use it when peripherals live at a non-zero absolute address
+ * (e.g. an SoC base at ``0x4000_0000``): mmap a window that covers
+ * exactly that range, then pass ``base_address=0x4000_0000`` so
+ * ``read(0x4000_0010, 4)`` translates to the underlying offset 0x10.
+ *
+ * Width must be 1/2/4/8. Access must fit within ``[base_address,
+ * base_address + size)`` (bounds-checked). The mapped region is
+ * ``volatile`` so the compiler doesn't elide repeated reads/writes —
+ * important for memory-mapped peripherals.
+ */
+class MmapMaster : public Master {
+public:
+    MmapMaster(const std::string& path, size_t size, uint64_t base_address,
+               bool read_only)
+        : base_address_(base_address), read_only_(read_only) {
+        int flags = read_only ? O_RDONLY : O_RDWR;
+        fd_ = ::open(path.c_str(), flags);
+        if (fd_ < 0) {
+            throw std::runtime_error(
+                "MmapMaster: open(" + path + ") failed: "
+                + std::string(::strerror(errno)));
+        }
+        owns_fd_ = true;
+
+        if (size == 0) {
+            struct stat st {};
+            if (::fstat(fd_, &st) != 0) {
+                int err = errno;
+                ::close(fd_); fd_ = -1;
+                throw std::runtime_error(
+                    "MmapMaster: fstat failed: " + std::string(::strerror(err)));
+            }
+            size_ = static_cast<size_t>(st.st_size);
+        } else {
+            size_ = size;
+            // Grow the file to ``size`` if we're writable and it's shorter.
+            // No-op if it's already big enough; never shrinks.
+            if (!read_only) {
+                struct stat st {};
+                if (::fstat(fd_, &st) == 0
+                    && static_cast<size_t>(st.st_size) < size) {
+                    if (::ftruncate(fd_, static_cast<off_t>(size)) != 0) {
+                        int err = errno;
+                        ::close(fd_); fd_ = -1;
+                        throw std::runtime_error(
+                            "MmapMaster: ftruncate failed: "
+                            + std::string(::strerror(err)));
+                    }
+                }
+            }
+        }
+        map_();
+    }
+
+    MmapMaster(int fd, size_t size, uint64_t offset, uint64_t base_address,
+               bool read_only)
+        : fd_(fd), owns_fd_(false), size_(size), offset_(offset),
+          base_address_(base_address), read_only_(read_only) {
+        map_();
+    }
+
+    ~MmapMaster() {
+        // Best-effort cleanup; destructor must not throw.
+        try { close(); } catch (...) {}
+    }
+
+    MmapMaster(const MmapMaster&) = delete;
+    MmapMaster& operator=(const MmapMaster&) = delete;
+
+    void close() {
+        if (base_ != nullptr) {
+            ::munmap(base_, size_);
+            base_ = nullptr;
+        }
+        if (owns_fd_ && fd_ >= 0) {
+            ::close(fd_);
+            fd_ = -1;
+        }
+    }
+
+    uint64_t read(uint64_t address, size_t width) override {
+        uint64_t local = translate_(address, width);
+        volatile uint8_t* p = base_ + local;
+        switch (width) {
+            case 1: return *reinterpret_cast<volatile uint8_t*>(p);
+            case 2: return *reinterpret_cast<volatile uint16_t*>(p);
+            case 4: return *reinterpret_cast<volatile uint32_t*>(p);
+            case 8: return *reinterpret_cast<volatile uint64_t*>(p);
+            default:
+                throw std::invalid_argument(
+                    "MmapMaster: width must be 1/2/4/8");
+        }
+    }
+
+    void write(uint64_t address, uint64_t value, size_t width) override {
+        if (read_only_) {
+            throw std::runtime_error("MmapMaster: instance is read-only");
+        }
+        uint64_t local = translate_(address, width);
+        volatile uint8_t* p = base_ + local;
+        switch (width) {
+            case 1:
+                *reinterpret_cast<volatile uint8_t*>(p)
+                    = static_cast<uint8_t>(value);
+                break;
+            case 2:
+                *reinterpret_cast<volatile uint16_t*>(p)
+                    = static_cast<uint16_t>(value);
+                break;
+            case 4:
+                *reinterpret_cast<volatile uint32_t*>(p)
+                    = static_cast<uint32_t>(value);
+                break;
+            case 8:
+                *reinterpret_cast<volatile uint64_t*>(p)
+                    = static_cast<uint64_t>(value);
+                break;
+            default:
+                throw std::invalid_argument(
+                    "MmapMaster: width must be 1/2/4/8");
+        }
+    }
+
+    size_t size() const { return size_; }
+    uint64_t base_address() const { return base_address_; }
+    bool is_read_only() const { return read_only_; }
+
+    std::string __repr__() const override {
+        std::ostringstream oss;
+        oss << "<MmapMaster (" << size_ << " bytes";
+        if (base_address_ != 0) {
+            oss << " @ 0x" << std::hex << base_address_;
+        }
+        if (read_only_) {
+            oss << ", read-only";
+        }
+        oss << ")>";
+        return oss.str();
+    }
+
+private:
+    void map_() {
+        int prot = read_only_ ? PROT_READ : (PROT_READ | PROT_WRITE);
+        void* p = ::mmap(nullptr, size_, prot, MAP_SHARED, fd_,
+                         static_cast<off_t>(offset_));
+        if (p == MAP_FAILED) {
+            int err = errno;
+            if (owns_fd_ && fd_ >= 0) { ::close(fd_); fd_ = -1; }
+            throw std::runtime_error(
+                "MmapMaster: mmap failed: " + std::string(::strerror(err)));
+        }
+        base_ = static_cast<uint8_t*>(p);
+    }
+
+    // Translate an incoming (absolute) address to a local offset and
+    // bounds-check it. Returns the offset into ``base_``.
+    uint64_t translate_(uint64_t address, size_t width) const {
+        if (address < base_address_ || address + width > base_address_ + size_) {
+            std::ostringstream oss;
+            oss << "MmapMaster: access at 0x" << std::hex << address
+                << " (width " << std::dec << width
+                << ") outside [0x" << std::hex << base_address_
+                << ", 0x" << (base_address_ + size_) << ")";
+            throw std::out_of_range(oss.str());
+        }
+        return address - base_address_;
+    }
+
+    uint8_t* base_ = nullptr;
+    size_t size_ = 0;
+    uint64_t offset_ = 0;
+    uint64_t base_address_ = 0;
+    int fd_ = -1;
+    bool owns_fd_ = false;
+    bool read_only_ = false;
+};
+
+/**
  * Cross-register transaction context.
  *
  * While a Transaction is active on a Master, RegisterBase::write queues the
