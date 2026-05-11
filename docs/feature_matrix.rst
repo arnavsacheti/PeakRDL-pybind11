@@ -25,22 +25,20 @@ Structural Components
      - Notes
    * - ``addrmap``
      - ``AddrMap`` node; ``soc.peripherals.uart``; ``.info.address``
-     - partial
-     - Hierarchy works; ``.info`` namespace and uniform metadata are planned. See :doc:`concepts/hierarchy`.
+     - implemented
+     - Hierarchy works and the uniform ``.info`` namespace (``info.address``, ``info.regwidth``, ``info.path``, ``info.fields``, ``info.tags``) ships via ``runtime/info.py``. See :doc:`concepts/hierarchy`.
    * - ``regfile``
      - ``RegFile`` node; ``soc.dma.channel`` (when arrayed)
-     - partial
-     - Grouping works; array indexing semantics per :doc:`concepts/arrays` are planned.
+     - implemented
+     - Grouping and array indexing both ship via the ``ArrayView`` surface in ``runtime/arrays.py`` (int/slice/tuple indexing, field projection, bulk read/write). See :doc:`concepts/arrays`.
    * - ``reg``
      - ``Reg`` node; ``reg.read()``, ``reg.write(value)``, ``reg.modify(**fields)``, ``reg.poke(value)``
-     - partial
-     - Primitive ops exist; typed ``RegisterValue`` returns and the
-       ``modify`` semantics from §3 of the sketch are planned.
+     - implemented
+     - Typed ``RegisterValue`` returns and the ``modify(**fields)`` kwargs surface ship via ``runtime/_default_shims.py`` (reads return ``RegisterValue``; ``modify`` accepts both ``(value, mask)`` and ``**fields``).
    * - ``field``
      - ``Field`` node; ``field.read()``, ``field.write(v)``, ``field.bits[i]``
-     - partial
-     - Field read/write exists; bit-slice access (``field.bits[5]``) and
-       typed ``FieldValue`` returns are planned.
+     - implemented
+     - Bit-slice access (``field.bits[i]`` / ``field.bits[a:b]``) ships via ``runtime/bits.py`` and ``field.read()`` returns a typed ``FieldValue`` from ``runtime/values.py``.
    * - ``mem``
      - ``Mem`` node; ``mem[i]``, ``mem[i:j]``, ``MemView``, ``.copy()``, ``.read()``,
        ``read_into``, buffer-protocol/``np.asarray``
@@ -473,8 +471,8 @@ Bit ordering & widths
        traces preserve them.
    * - ``regwidth``
      - ``info.regwidth``
-     - partial
-     - Available today; uniform ``.info`` namespace is planned.
+     - implemented
+     - ``info.regwidth`` ships today via the uniform ``Info`` namespace in ``runtime/info.py``.
    * - ``accesswidth``
      - hidden by default; available via ``.info.accesswidth``
      - planned
@@ -493,12 +491,12 @@ Memory regions
      - Notes
    * - ``mementries``
      - ``mem.depth``
-     - partial
-     - Sizing works; uniform attribute name (``depth``) is planned.
+     - implemented
+     - ``mem.depth`` ships as a property on the generated mem class via ``runtime/mem_view.py``.
    * - ``memwidth``
      - ``mem.word_width``
-     - partial
-     - Width works; uniform attribute name is planned.
+     - implemented
+     - ``mem.word_width`` ships as a property on the generated mem class via ``runtime/mem_view.py``.
    * - ``mem`` slicing / NumPy
      - ``mem[i:j]`` returns ``MemView``; ``np.asarray(mem)``;
        ``mem.read_into(buf)``; ``mem.window(...)``
