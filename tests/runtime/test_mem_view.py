@@ -309,6 +309,95 @@ class TestNumpyInterop:
         assert arr.dtype == np.int64
         assert arr.tolist() == [1, 2, 3, 4]
 
+    # -- Strict dtype mapping for ``np.asarray(mem)`` (single master crossing) ---
+
+    def test_np_asarray_default_dtype_uint32(self, mem: Any) -> None:
+        """The default mem (memwidth=32) yields a ``uint32`` ndarray."""
+        for i in range(4):
+            mem[i] = i + 1
+        arr = np.asarray(mem)
+        assert isinstance(arr, np.ndarray)
+        assert arr.dtype == np.uint32
+        assert arr.shape == (mem.depth,)
+
+    def test_np_asarray_dtype_8bit(self) -> None:
+        """An 8-bit-wide mem maps to ``np.uint8``."""
+        cls = type("Mem8", (FakeMem,), {})
+        enhance_mem_class(cls)
+        mem8 = cls(depth=16, memwidth=8)
+        for i in range(16):
+            mem8[i] = i + 0x10
+        arr = np.asarray(mem8)
+        assert arr.dtype == np.uint8
+        assert arr.shape == (16,)
+        assert arr.tolist() == [i + 0x10 for i in range(16)]
+
+    def test_np_asarray_dtype_16bit(self) -> None:
+        """A 16-bit-wide mem maps to ``np.uint16``."""
+        cls = type("Mem16", (FakeMem,), {})
+        enhance_mem_class(cls)
+        mem16 = cls(depth=8, memwidth=16)
+        for i in range(8):
+            mem16[i] = 0x1000 + i
+        arr = np.asarray(mem16)
+        assert arr.dtype == np.uint16
+        assert arr.tolist() == [0x1000 + i for i in range(8)]
+
+    def test_np_asarray_dtype_64bit(self) -> None:
+        """A 64-bit-wide mem maps to ``np.uint64``."""
+        cls = type("Mem64", (FakeMem,), {})
+        enhance_mem_class(cls)
+        mem64 = cls(depth=4, memwidth=64)
+        for i in range(4):
+            mem64[i] = (1 << 33) + i  # value won't fit in uint32
+        arr = np.asarray(mem64)
+        assert arr.dtype == np.uint64
+        assert arr.tolist() == [(1 << 33) + i for i in range(4)]
+
+    def test_np_asarray_unsupported_width_raises(self) -> None:
+        """A non-canonical word width raises ``NotImplementedError``."""
+        cls = type("Mem24", (FakeMem,), {})
+        enhance_mem_class(cls)
+        mem24 = cls(depth=8, memwidth=24)
+        with pytest.raises(NotImplementedError, match="24"):
+            np.asarray(mem24)
+        # And on the slice path too -- both go through ``_np_dtype_for``.
+        with pytest.raises(NotImplementedError, match="24"):
+            np.asarray(mem24[0:4])
+
+    def test_np_asarray_with_explicit_uint64_upcasts(self, mem: Any) -> None:
+        """An explicit ``dtype=np.uint64`` upcasts a 32-bit-wide mem."""
+        for i in range(4):
+            mem[i] = 0xDEADBEEF - i
+        arr = np.asarray(mem[0:4], dtype=np.uint64)
+        assert arr.dtype == np.uint64
+        assert arr.tolist() == [0xDEADBEEF - i for i in range(4)]
+        # Same for the whole mem (uses ``mem.__array__``).
+        arr_full = np.asarray(mem, dtype=np.uint64)
+        assert arr_full.dtype == np.uint64
+        assert arr_full[:4].tolist() == [0xDEADBEEF - i for i in range(4)]
+
+    def test_np_asarray_uses_single_burst(self, mem: Any) -> None:
+        """``np.asarray(mem)`` is one ``read_block`` call, not N word reads."""
+        for i in range(8):
+            mem[i] = i
+        before_block = mem.read_block_calls
+        before_word = mem.read_calls
+        np.asarray(mem)
+        assert mem.read_block_calls == before_block + 1
+        assert mem.read_calls == before_word  # no per-word fallback
+
+    def test_memview_copy_is_ndarray_alias(self, mem: Any) -> None:
+        """``MemView.copy()`` is an explicit alias of ``np.asarray(view)``."""
+        for i in range(8):
+            mem[i] = i + 100
+        view = mem[0:8]
+        via_copy = view.copy()
+        via_asarray = np.asarray(view)
+        assert isinstance(via_copy, np.ndarray)
+        assert via_copy.dtype == via_asarray.dtype
+        assert via_copy.tolist() == via_asarray.tolist()
+
 
 # ---------------------------------------------------------------------------
 # Byte-level escape hatch.

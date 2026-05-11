@@ -137,16 +137,29 @@ def _base_address(mem: Any) -> int:
     return 0
 
 
+_CANONICAL_WORD_DTYPES: dict[int, np.dtype] = {
+    8: np.dtype(np.uint8),
+    16: np.dtype(np.uint16),
+    32: np.dtype(np.uint32),
+    64: np.dtype(np.uint64),
+}
+
+
 def _np_dtype_for(mem: Any) -> np.dtype:
-    """Pick an unsigned NumPy dtype that fits one word."""
+    """Pick an unsigned NumPy dtype that fits one word.
+
+    Only the canonical widths {8, 16, 32, 64} are supported because
+    NumPy has no native dtype for odd word sizes (e.g. 12, 24, 48 bit).
+    Other widths raise :class:`NotImplementedError`.
+    """
     bits = _word_width_bits(mem)
-    if bits <= 8:
-        return np.dtype(np.uint8)
-    if bits <= 16:
-        return np.dtype(np.uint16)
-    if bits <= 32:
-        return np.dtype(np.uint32)
-    return np.dtype(np.uint64)
+    try:
+        return _CANONICAL_WORD_DTYPES[bits]
+    except KeyError:
+        raise NotImplementedError(
+            f"MemView NumPy interop only supports word widths of 8, 16, 32, or 64 bits; "
+            f"got memwidth={bits}. Use mem.read_bytes() for unusual widths."
+        ) from None
 
 
 def _read_block(mem: Any, start: int, count: int) -> list[int]:
