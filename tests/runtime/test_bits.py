@@ -2,14 +2,14 @@
 
 The tests use hand-rolled mock register/field/master classes so the runtime
 module can be exercised without compiling any C++. The mocks model the
-shape Unit 1 will produce for generated classes:
+shape the generated classes expose after the ``raw=`` overhaul:
 
 * ``MockMaster`` records every ``read``/``write`` against an in-memory dict.
-* ``MockRegister`` exposes ``read_raw`` / ``write_raw`` exactly as the
-  generated registers do (raw int in, raw int out — no readback on write).
+* ``MockRegister`` exposes ``read(raw=True)`` / ``write(value, raw=True)``
+  exactly as the generated registers do (raw int in, raw int out).
 * ``MockField`` exposes ``lsb`` / ``info.width`` and forwards
-  ``read_raw`` / ``write_raw`` through the parent register so the proxies'
-  cost accounting matches the production binding.
+  ``read(raw=True)`` through the parent register so the proxies' cost
+  accounting matches the production binding.
 """
 
 from __future__ import annotations
@@ -51,17 +51,20 @@ class MockMaster:
 
 
 class MockRegister:
-    """Fake register matching the post-Unit 1 surface."""
+    """Fake register matching the post-``raw=`` surface."""
 
     def __init__(self, master: MockMaster, address: int, width: int = 4) -> None:
         self.master = master
         self.address = address
         self.width = width  # bytes
 
-    def read_raw(self) -> int:
+    def read(self, *, raw: bool = False) -> int:
+        # Mocks always return a plain int; ``raw`` is accepted for parity
+        # with the generated surface. Real generated registers would wrap
+        # in a RegisterValue when raw=False.
         return self.master.read(self.address, self.width)
 
-    def write_raw(self, value: int) -> None:
+    def write(self, value: int, *, raw: bool = False) -> None:
         self.master.write(self.address, int(value), self.width)
 
 
@@ -87,8 +90,8 @@ class MockField:
         self.info = FieldInfo(width=width)
         self.name = name
 
-    def read_raw(self) -> int:
-        register_value = self.parent.read_raw()
+    def read(self, *, raw: bool = False) -> int:
+        register_value = self.parent.read(raw=True)
         return (register_value >> self.lsb) & ((1 << self.info.width) - 1)
 
 
@@ -356,8 +359,8 @@ def test_attach_bits_accessor_attaches_property() -> None:
         def __init__(self, parent: MockRegister) -> None:
             self.parent = parent
 
-        def read_raw(self) -> int:
-            value = self.parent.read_raw()
+        def read(self, *, raw: bool = False) -> int:
+            value = self.parent.read(raw=True)
             return (value >> self.lsb) & ((1 << self.info.width) - 1)
 
     attach_bits_accessor(FakeField)

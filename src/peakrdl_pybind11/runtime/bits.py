@@ -10,7 +10,7 @@ Adds a ``bits`` namespace on every multi-bit field instance::
 Costs in bus transactions:
 
 * ``bits[i].read()`` and ``bits[a:b].read()`` reuse the field's existing
-  ``read_raw`` (or ``read``) which already costs 1 register read.
+  ``read(raw=True)`` which already costs 1 register read.
 * ``bits[i].write(v)`` and ``bits[a:b].write(v)`` cost 1 read + 1 write on
   the *register* (not the field). Going through the parent register lets a
   single-bit flip cost the same as an explicit RMW; routing through
@@ -37,10 +37,15 @@ from ._registry import register_field_enhancement
 
 @runtime_checkable
 class _RegisterLike(Protocol):
-    """Minimal protocol for the parent register of a multi-bit field."""
+    """Minimal protocol for the parent register of a multi-bit field.
 
-    def read_raw(self) -> int: ...
-    def write_raw(self, value: int) -> None: ...
+    Must accept the keyword-only ``raw`` form: ``read(raw=True)`` returns
+    a plain ``int`` and ``write(value, raw=True)`` writes a plain ``int``
+    without FieldValue dispatch. The proxies always pass ``raw=True``.
+    """
+
+    def read(self, *, raw: bool = ...) -> int: ...
+    def write(self, value: int, *, raw: bool = ...) -> None: ...
 
 
 @runtime_checkable
@@ -49,7 +54,7 @@ class _FieldLike(Protocol):
 
     lsb: int
 
-    def read_raw(self) -> int: ...
+    def read(self, *, raw: bool = ...) -> int: ...
 
 
 # ``int | bool | ndarray | sequence`` covers everything bits[].write accepts.
@@ -272,22 +277,19 @@ def _rmw_field_slice(field: _FieldLike, *, start: int, length: int, bits: int) -
     register_mask = ((1 << length) - 1) << register_shift
     register_value = (bits << register_shift) & register_mask
 
-    current = int(reg.read_raw())
+    current = int(reg.read(raw=True))
     new_value = (current & ~register_mask) | register_value
-    reg.write_raw(new_value)
+    reg.write(new_value, raw=True)
     return new_value
 
 
 def _read_field_value(field: _FieldLike) -> int:
     """Return the field's current value as a plain ``int``.
 
-    Prefers ``read_raw`` (Unit 6 of the API overhaul work, already merged)
-    so we never accidentally pay for a ``FieldInt`` allocation here.
+    Uses ``read(raw=True)`` so we never accidentally pay for a
+    ``FieldValue`` allocation here.
     """
-    raw = getattr(field, "read_raw", None)
-    if raw is not None:
-        return int(raw())
-    return int(field.read())  # type: ignore[attr-defined]
+    return int(field.read(raw=True))
 
 
 def _parent_register(field: _FieldLike) -> _RegisterLike:

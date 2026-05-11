@@ -120,6 +120,19 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("pending", &Transaction::pending,
                                "Number of writes currently queued");
 
+    // RegisterWriteOnlyContext: returned by RegisterBase::write_only(), used
+    // as a context manager that skips the initial readback and flushes
+    // accumulated field writes on exit.
+    py::class_<RegisterWriteOnlyContext>(m, "RegisterWriteOnlyContext")
+        .def("__enter__", &RegisterWriteOnlyContext::__enter__,
+             py::return_value_policy::reference_internal,
+             "Seed the register cache to 0 (no master read) and accumulate writes")
+        .def("__exit__",
+             [](RegisterWriteOnlyContext& self, py::object, py::object, py::object) {
+                 self.exit_context();
+             },
+             "Flush the accumulated value with a single master write");
+
     // FieldBase
     py::class_<FieldBase>(m, "FieldBase")
         .def_property_readonly("name", &FieldBase::name)
@@ -141,6 +154,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("read", &RegisterBase::read, "Read register value")
         .def("write", &RegisterBase::write, "Write register value")
         .def("modify", &RegisterBase::modify, "Read-modify-write operation")
+        .def("write_only", &RegisterBase::write_only,
+             "Skip-readback context manager: seed cache to 0, accumulate field "
+             "writes, flush in one master write on exit.")
         .def("__enter__", &RegisterBase::__enter__, "Enter context manager")
         .def("__exit__", [](RegisterBase& self, py::object exc_type, py::object exc_value, py::object traceback) {
             self.exit_context();

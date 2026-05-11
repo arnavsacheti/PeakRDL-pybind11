@@ -40,9 +40,20 @@ def _enhanced_register_read(
     flag_type: type | None,
     enum_type: type | None,
     fields_spec: dict[str, tuple[int, int]],
-) -> Callable[[Any], Any]:
-    def read(self: Any) -> Any:
+) -> Callable[..., Any]:
+    """Wrap the C++ register read with the typed/raw kwarg dispatch.
+
+    ``reg.read()``         → ``RegisterValue`` (or flag/enum subclass)
+    ``reg.read(raw=True)`` → plain ``int`` from the C++ binding
+
+    ``raw`` is keyword-only so the call site reads as ``read(raw=True)`` and
+    can never collide with a positional argument in the future.
+    """
+
+    def read(self: Any, *, raw: bool = False) -> Any:
         value = original_read(self)
+        if raw:
+            return value
         if flag_type is not None:
             return flag_type(value)
         if enum_type is not None:
@@ -65,8 +76,18 @@ def _enhanced_register_read(
 def _enhanced_register_write(
     original_write: Callable[[Any, int], None],
     original_modify: Callable[[Any, int, int], None],
-) -> Callable[[Any, Any], None]:
-    def write(self: Any, value: Any) -> None:
+) -> Callable[..., None]:
+    """Wrap the C++ register write with the FieldValue/raw kwarg dispatch.
+
+    ``reg.write(int)``                       → C++ write (plain value)
+    ``reg.write(FieldValue)``                → C++ modify (shifted + masked)
+    ``reg.write(int, raw=True)``             → C++ write, no FieldValue check
+    """
+
+    def write(self: Any, value: Any, *, raw: bool = False) -> None:
+        if raw:
+            original_write(self, int(value))
+            return
         if isinstance(value, FieldValue):
             shifted = (int(value) << value.lsb) & value.mask
             original_modify(self, shifted, value.mask)
@@ -77,13 +98,22 @@ def _enhanced_register_write(
     return write
 
 
-def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[[Any], FieldValue]:
-    def read(self: Any) -> FieldValue:
+def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[..., Any]:
+    """Wrap the C++ field read with the typed/raw kwarg dispatch.
+
+    ``field.read()``         → ``FieldValue``
+    ``field.read(raw=True)`` → plain ``int`` from the C++ binding
+    """
+
+    def read(self: Any, *, raw: bool = False) -> Any:
+        value = original_read(self)
+        if raw:
+            return value
         # Field ``width`` from C++ ``FieldBase`` is in bits — feed it to
         # ``FieldValue`` directly. ``offset`` is the parent register's
         # address; we surface it as ``register_path`` for diagnostics.
         return FieldValue(
-            original_read(self),
+            value,
             lsb=self.lsb,
             width=self.width,
             name=getattr(self, "name", None),
@@ -93,8 +123,12 @@ def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[[Any], F
     return read
 
 
-def _enhanced_field_write(original_write: Callable[[Any, int], None]) -> Callable[[Any, Any], None]:
-    def write(self: Any, value: Any) -> None:
+def _enhanced_field_write(original_write: Callable[[Any, int], None]) -> Callable[..., None]:
+    """Field write only has one shape; ``raw`` is accepted for parity."""
+
+    def write(self: Any, value: Any, *, raw: bool = False) -> None:
+        # ``raw`` is signature parity with the register write — for fields
+        # the path is identical either way (no FieldValue dispatch).
         original_write(self, int(value))
 
     setattr(write, _ENHANCED, True)
@@ -175,11 +209,6 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
     # ``poke(v)`` is the explicit "I know what I'm doing" alias for write —
     # documented in sketch §3.1. Symmetric to write but signals user intent.
     cls.poke = cls.write  # type: ignore[attr-defined]
-    # Fast-path scalar accessors: bypass RegisterValue wrapping / FieldValue
-    # handling. ``read_raw`` returns a plain ``int``; ``write_raw`` accepts
-    # a plain ``int`` and writes it directly via the underlying C++ method.
-    cls.read_raw = raw_read  # type: ignore[attr-defined]
-    cls.write_raw = raw_write  # type: ignore[attr-defined]
     # Preserve the native binding under a private name; expose the Python
     # shim with validation under the public name.
     if hasattr(cls, "write_fields"):
@@ -227,10 +256,3 @@ def _default_field_shim(cls: type) -> None:
         return
     cls.read = _enhanced_field_read(raw_read)  # type: ignore[method-assign]
     cls.write = _enhanced_field_write(raw_write)  # type: ignore[method-assign]
-    # Fast-path scalar accessors: ``read_raw`` returns a plain ``int`` (the
-    # field-space value, identical to what the C++ getter returns -- no
-    # ``FieldValue`` allocation). ``write_raw`` takes a plain ``int`` in
-    # field-space and forwards directly to the C++ setter (which performs
-    # the shift+mask+modify on the underlying register).
-    cls.read_raw = raw_read  # type: ignore[attr-defined]
-    cls.write_raw = raw_write  # type: ignore[attr-defined]

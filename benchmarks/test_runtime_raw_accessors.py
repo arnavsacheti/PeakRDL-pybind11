@@ -1,8 +1,8 @@
-"""Microbench: read()/write() vs read_raw()/write_raw() on hot paths.
+"""Microbench: ``read()`` vs ``read(raw=True)`` on hot paths.
 
 Compares 10000 calls of each, exercising MockMaster (no Python in the C++
-read/write path). The win for ``read_raw`` is from skipping FieldInt /
-RegisterInt allocation per call.
+read/write path). The win for ``raw=True`` is from skipping
+``FieldValue`` / ``RegisterValue`` allocation per call.
 """
 
 import time
@@ -43,7 +43,7 @@ def test_field_read_vs_read_raw(soc: Any) -> None:  # noqa: ANN401
 
     def loop_read_raw() -> None:
         for _ in range(N):
-            field.read_raw()
+            field.read(raw=True)
 
     # Warmup
     loop_read()
@@ -54,7 +54,7 @@ def test_field_read_vs_read_raw(soc: Any) -> None:  # noqa: ANN401
 
     print(
         f"\n[field] read(): {t_read * 1e6 / N:.3f} us/call  "
-        f"read_raw(): {t_raw * 1e6 / N:.3f} us/call  "
+        f"read(raw=True): {t_raw * 1e6 / N:.3f} us/call  "
         f"speedup: {t_read / t_raw:.2f}x"
     )
     # Sanity: raw should not be slower than wrapped (allow noise margin).
@@ -70,7 +70,7 @@ def test_register_read_vs_read_raw(soc: Any) -> None:  # noqa: ANN401
 
     def loop_read_raw() -> None:
         for _ in range(N):
-            reg.read_raw()
+            reg.read(raw=True)
 
     loop_read()
     loop_read_raw()
@@ -80,7 +80,7 @@ def test_register_read_vs_read_raw(soc: Any) -> None:  # noqa: ANN401
 
     print(
         f"\n[reg] read(): {t_read * 1e6 / N:.3f} us/call  "
-        f"read_raw(): {t_raw * 1e6 / N:.3f} us/call  "
+        f"read(raw=True): {t_raw * 1e6 / N:.3f} us/call  "
         f"speedup: {t_read / t_raw:.2f}x"
     )
     assert t_raw <= t_read * 1.5
@@ -95,7 +95,7 @@ def test_field_write_vs_write_raw(soc: Any) -> None:  # noqa: ANN401
 
     def loop_write_raw() -> None:
         for i in range(N):
-            field.write_raw(i & 0xFFFFFFFF)
+            field.write(i & 0xFFFFFFFF, raw=True)
 
     loop_write()
     loop_write_raw()
@@ -105,6 +105,6 @@ def test_field_write_vs_write_raw(soc: Any) -> None:  # noqa: ANN401
 
     print(
         f"\n[field] write(): {t_w * 1e6 / N:.3f} us/call  "
-        f"write_raw(): {t_raw * 1e6 / N:.3f} us/call  "
+        f"write(raw=True): {t_raw * 1e6 / N:.3f} us/call  "
         f"speedup: {t_w / t_raw:.2f}x"
     )
