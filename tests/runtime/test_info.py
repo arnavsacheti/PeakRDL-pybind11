@@ -7,6 +7,7 @@ from dataclasses import FrozenInstanceError, fields, is_dataclass
 import pytest
 
 from peakrdl_pybind11.runtime.info import (
+    AccessMode,
     Info,
     TagsNamespace,
     attach_info,
@@ -212,3 +213,88 @@ def test_info_repr_handles_anonymous() -> None:
     text = repr(Info())
     assert "Info(" in text
     assert "anon" in text or "''" in text
+
+
+# ---------------------------------------------------------------------------
+# AccessMode enum
+# ---------------------------------------------------------------------------
+
+
+def test_access_mode_rw_returned_from_metadata_string() -> None:
+    """Spec: ``Info(access="rw").access == AccessMode.RW``."""
+    info = Info(access="rw")
+    assert info.access is AccessMode.RW
+    assert isinstance(info.access, AccessMode)
+
+
+def test_access_mode_string_equality_still_works() -> None:
+    """Backward compat: legacy ``info.access == "rw"`` keeps returning True."""
+    info = Info(access="rw")
+    assert info.access == "rw"
+    assert info.access == AccessMode.RW
+    # And both directions of the comparison.
+    assert "rw" == info.access
+    assert AccessMode.RW == info.access
+
+
+def test_access_mode_unknown_string_passes_through() -> None:
+    """Unknown values must not crash — they round-trip as plain strings."""
+    info = Info(access="bogus-mode-not-real")
+    assert info.access == "bogus-mode-not-real"
+    assert not isinstance(info.access, AccessMode)
+
+
+def test_access_mode_none_stays_none() -> None:
+    """``None`` is the canonical "no access metadata" sentinel."""
+    info = Info()
+    assert info.access is None
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("rw", AccessMode.RW),
+        ("r", AccessMode.R),
+        ("w", AccessMode.W),
+        ("na", AccessMode.NA),
+        ("rclr", AccessMode.RCLR),
+        ("rset", AccessMode.RSET),
+        ("wclr", AccessMode.WCLR),
+        ("wset", AccessMode.WSET),
+        ("woclr", AccessMode.WOCLR),
+        ("woset", AccessMode.WOSET),
+        ("w1", AccessMode.W1),
+    ],
+)
+def test_access_mode_covers_documented_tokens(raw: str, expected: AccessMode) -> None:
+    info = Info(access=raw)
+    assert info.access is expected
+
+
+def test_access_mode_case_insensitive() -> None:
+    """Uppercase RDL property values still map to the typed form."""
+    info = Info(access="RW")
+    assert info.access is AccessMode.RW
+
+
+def test_access_mode_member_is_a_str_subclass() -> None:
+    """``str``-derived Enum so direct string ops keep working."""
+    assert isinstance(AccessMode.RW, str)
+    assert AccessMode.RW.upper() == "RW"
+
+
+def test_info_repr_renders_access_as_lowercase_token() -> None:
+    """Guard: the existing repr substring assertion (``"rw" in repr``)
+    must still hold after the AccessMode upgrade — Python's default
+    str-Enum ``__str__`` would otherwise produce ``"AccessMode.RW"``.
+    """
+    info = Info(access="rw")
+    text = repr(info)
+    assert "access=rw" in text
+
+
+def test_access_mode_importable_from_runtime_package() -> None:
+    """Spec: ``from peakrdl_pybind11.runtime import AccessMode`` works."""
+    import peakrdl_pybind11.runtime as runtime
+
+    assert getattr(runtime, "AccessMode", None) is AccessMode

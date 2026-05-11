@@ -22,8 +22,42 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from enum import Enum
 from types import SimpleNamespace
 from typing import Any, cast
+
+
+class AccessMode(str, Enum):
+    """Typed access mode for ``Info.access``.
+
+    Subclasses :class:`str` so legacy comparisons like
+    ``info.access == "rw"`` keep working alongside the typed form
+    ``info.access == AccessMode.RW``.
+
+    The members cover the canonical ``sw`` access tokens (``RW``, ``R``,
+    ``W``, ``NA``) plus the access-policy variants users encounter when
+    building ``Info`` directly with the literal strings emitted by
+    systemrdl's ``AccessType``/``OnReadType``/``OnWriteType`` enums
+    (``RCLR``, ``RSET``, ``WCLR``, ``WSET``, ``WOCLR``, ``WOSET``, ``W1``).
+    """
+
+    RW = "rw"
+    R = "r"
+    W = "w"
+    NA = "na"
+    RCLR = "rclr"
+    RSET = "rset"
+    WCLR = "wclr"
+    WSET = "wset"
+    WOCLR = "woclr"
+    WOSET = "woset"
+    W1 = "w1"
+
+    def __str__(self) -> str:
+        # Preserve the lowercase string form so existing string-formatting
+        # consumers (e.g. ``f"access={info.access}"``) keep producing
+        # ``"rw"`` rather than ``"AccessMode.RW"``.
+        return self.value
 
 
 class TagsNamespace(SimpleNamespace):
@@ -78,7 +112,9 @@ class Info:
     address: int = 0
     offset: int = 0
     regwidth: int | None = None
-    access: str | None = None  # "rw" | "r" | "w" | "na"
+    # Coerced to :class:`AccessMode` in ``__post_init__`` when the input
+    # is a recognized token; unknown strings pass through unchanged.
+    access: AccessMode | str | None = None
     reset: int | None = None
     fields: dict[str, Info] = field(default_factory=dict)
     path: str = ""
@@ -94,6 +130,17 @@ class Info:
     on_read: str | None = None  # "rclr" | "rset" | "ruser" | None
     on_write: str | None = None  # "woclr" | "woset" | "wzc" | "wzs" | "wclr" | "wset" | "wuser" | None
     alias_kind: str | None = None  # "full" | "sw_view" | "hw_view" | "scrambled" | None
+
+    def __post_init__(self) -> None:
+        # Upgrade a known raw-string ``access`` into the typed
+        # :class:`AccessMode` enum while keeping unknown strings untouched.
+        # ``str`` Enum equality means downstream string comparisons keep
+        # working, but type checkers and ``isinstance`` checks see the
+        # structured form.
+        if isinstance(self.access, str) and not isinstance(self.access, AccessMode):
+            mapped = AccessMode._value2member_map_.get(self.access.lower())
+            if mapped is not None:
+                object.__setattr__(self, "access", mapped)
 
     def __repr__(self) -> str:  # pragma: no cover - trivial formatting
         addr = f"0x{self.address:x}" if self.address else "0x0"
