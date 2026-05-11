@@ -77,7 +77,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_readwrite("width", &AccessOp::width);
 
     // Master interface with trampoline for Python inheritance
-    py::class_<Master, PyMaster>(m, "Master")
+    py::class_<Master, PyMaster>(m, "Master", py::dynamic_attr())
         .def(py::init<>())
         .def("read", &Master::read, "Read from address")
         .def("write", &Master::write, "Write to address")
@@ -89,7 +89,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     // Native C++ MockMaster: no Python in the read/write hot path. Fastest
     // option for tests, fixtures, and benchmarks where the storage is just
     // an in-memory dict.
-    py::class_<MockMaster, Master>(m, "MockMaster")
+    py::class_<MockMaster, Master>(m, "MockMaster", py::dynamic_attr())
         .def(py::init<>())
         .def("reset", &MockMaster::reset, "Clear all stored values")
         .def_property_readonly("size", &MockMaster::size,
@@ -99,7 +99,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     // Native C++ CallbackMaster: stores Python callables as std::function so
     // dispatch goes through one C++ -> Python jump per access (vs two for a
     // Python subclass of Master via the trampoline).
-    py::class_<CallbackMaster, Master>(m, "CallbackMaster")
+    py::class_<CallbackMaster, Master>(m, "CallbackMaster", py::dynamic_attr())
         .def(py::init<>())
         .def(py::init<CallbackMaster::ReadFn, CallbackMaster::WriteFn>(),
              py::arg("read"), py::arg("write"))
@@ -162,7 +162,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
 
     {% for regfile in nodes.regfiles %}
     // Regfile class: {{ regfile.get_path() }}
-    py::class_<{{ regfile | pybind_name }}_t, NodeBase>(m, "{{ regfile | pybind_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() | cpp_string }}"{% endif %})
+    py::class_<{{ regfile | pybind_name }}_t, NodeBase>(m, "{{ regfile | pybind_name }}_t"{% if regfile.get_property('desc') %}, "{{ regfile.get_html_desc() | cpp_string }}"{% endif %}, py::dynamic_attr())
         .def(py::init<uint64_t>())
         {% for child in regfile.children() %}
         {% if child.inst_name %}
@@ -175,7 +175,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     {% for addrmap in nodes.addrmaps %}
     {% if addrmap != top_node %}
     // Addrmap class: {{ addrmap.get_path() }}
-    py::class_<{{ addrmap | pybind_name }}_t, NodeBase>(m, "{{ addrmap | pybind_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() | cpp_string }}"{% endif %})
+    py::class_<{{ addrmap | pybind_name }}_t, NodeBase>(m, "{{ addrmap | pybind_name }}_t"{% if addrmap.get_property('desc') %}, "{{ addrmap.get_html_desc() | cpp_string }}"{% endif %}, py::dynamic_attr())
         .def(py::init<uint64_t>())
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
@@ -189,7 +189,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     {% for mem in nodes.mems %}
     {%- set entry_reg = mem.children()|list|first %}
     // Memory class: {{ mem.get_path() }}
-    py::class_<{{ mem | pybind_name }}_t, NodeBase>(m, "{{ mem | pybind_name }}_t"{% if mem.get_property('desc') %}, "{{ mem.get_html_desc() | cpp_string }}"{% endif %})
+    py::class_<{{ mem | pybind_name }}_t, NodeBase>(m, "{{ mem | pybind_name }}_t"{% if mem.get_property('desc') %}, "{{ mem.get_html_desc() | cpp_string }}"{% endif %}, py::dynamic_attr())
         .def(py::init<uint64_t>())
         .def("__len__", &{{ mem | pybind_name }}_t::size, "Get number of entries")
         .def("__getitem__",
@@ -224,7 +224,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     {% endfor %}
 
     // Top-level SoC class
-    py::class_<{{ soc_name }}_t, NodeBase>(m, "{{ soc_name }}_t")
+    py::class_<{{ soc_name }}_t, NodeBase>(m, "{{ soc_name }}_t", py::dynamic_attr())
         .def(py::init<>())
         .def("attach_master", &{{ soc_name }}_t::attach_master,
              // keep_alive<1, 2>: tie the Master object's Python lifetime to

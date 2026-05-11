@@ -10,11 +10,14 @@ from typing import Any
 
 import pytest
 
+from peakrdl_pybind11.runtime import _registry
 from peakrdl_pybind11.runtime.errors import WaitTimeoutError
 from peakrdl_pybind11.runtime.interrupts import (
     InterruptGroup,
     InterruptSource,
     InterruptTree,
+    interrupts_post_create,
+    interrupts_register_enhancement,
     register_interrupt_group,
     register_post_create_hook,
     register_register_enhancement_hook,
@@ -732,3 +735,200 @@ def test_register_register_enhancement_hook_skips_non_interrupt() -> None:
     info = SimpleNamespace(is_interrupt_state=False)
 
     assert register_register_enhancement_hook(reg, info) is None
+
+
+# ---------------------------------------------------------------------------
+# Registry-fired hooks (auto-attach via Unit 1's _registry seams)
+# ---------------------------------------------------------------------------
+
+
+def test_interrupt_hooks_are_registered_with_registry() -> None:
+    """Module import should wire both hooks into Unit 1's registry seams.
+
+    The closer's smoke check verifies the same property by scanning
+    ``__qualname__`` for the substring ``"interrupts"``; we assert the
+    stronger identity match here so a future rename catches the test
+    instead of breaking the smoke check.
+    """
+
+    post_create_hooks = _registry.get_post_create_hooks()
+    register_enhancers = _registry.get_register_enhancers()
+
+    assert interrupts_post_create in post_create_hooks
+    assert interrupts_register_enhancement in register_enhancers
+    # The smoke-check property the closer relies on.
+    assert any("interrupts" in fn.__qualname__ for fn in post_create_hooks)
+    assert any("interrupts" in fn.__qualname__ for fn in register_enhancers)
+
+
+class _FakeSoc:
+    """Hand-rolled SoC stand-in.
+
+    Plain ``SimpleNamespace`` won't do here: the module-resolution path in
+    :func:`interrupts._load_detected_groups` calls ``type(soc).__module__``
+    and we need to make that point at our fake package without polluting
+    every other test that uses ``SimpleNamespace``.
+    """
+
+
+def test_post_create_attaches_empty_tree_when_no_groups() -> None:
+    """With no detection metadata and no manual groups, ``soc.interrupts``
+    is still attached as an empty :class:`InterruptTree` rather than
+    raising.
+
+    The contract — laid out in the unit task — is that
+    :func:`interrupts_post_create` is permissive: a SoC without detected
+    interrupts must still expose ``soc.interrupts`` so callers can write
+    ``len(soc.interrupts) == 0`` instead of probing for the attribute.
+    """
+
+    from peakrdl_pybind11.runtime import interrupts
+
+    interrupts._GROUP_REGISTRY.clear()
+    soc: Any = _FakeSoc()
+    soc._module_name = "peakrdl_pybind11_no_such_module_xyzzy"
+
+    tree = interrupts_post_create(soc)
+    assert isinstance(tree, InterruptTree)
+    assert soc.interrupts is tree
+    assert len(tree) == 0
+    # Pretty-printer survives an empty tree.
+    rendered = tree.tree()
+    assert "interrupts" in rendered
+
+
+def test_post_create_attaches_tree_via_registry_fire() -> None:
+    """End-to-end: pre-register a group, fire post-create through the
+    registry, and walk ``soc.interrupts.tree()``.
+
+    This exercises the same path the generated ``runtime.py.jinja``
+    triggers from ``create()`` — a clean integration smoke test that
+    ensures the module-level :func:`_registry.register_post_create` call
+    actually wires the hook into the seam.
+    """
+
+    from peakrdl_pybind11.runtime import interrupts
+
+    interrupts._GROUP_REGISTRY.clear()
+
+    state = MockField(value=1, name="tx_done")
+    enable = MockField(value=1, on_write="rw", name="tx_done")
+    group = InterruptGroup(
+        {"tx_done": InterruptSource(state, enable_field=enable, name="tx_done")}
+    )
+    register_interrupt_group("uart", group)
+
+    soc: Any = _FakeSoc()
+    soc._module_name = "peakrdl_pybind11_no_such_module_xyzzy"
+
+    _registry.fire_post_create_hooks(soc)
+
+    assert isinstance(soc.interrupts, InterruptTree)
+    rendered = soc.interrupts.tree()
+    assert "uart:" in rendered
+    assert "tx_done" in rendered
+    assert "state=1" in rendered
+
+    interrupts._GROUP_REGISTRY.clear()
+
+
+def test_register_enhancement_stashes_interrupt_metadata() -> None:
+    """``interrupts_register_enhancement`` records interrupt metadata for
+    later use by the post-create walk.
+
+    Forward-compat: today Unit 23's exporter plugin emits
+    ``interrupts_detected.py`` rather than threading metadata through the
+    registry, so this stash sits idle. But the seam needs to work so a
+    future Unit 23 revision can switch routes without another runtime
+    change.
+    """
+
+    from peakrdl_pybind11.runtime import interrupts
+
+    class _DummyReg:
+        pass
+
+    interrupts._CLASS_INTERRUPT_METADATA.pop(_DummyReg, None)
+    payload = {"sources": ["tx_done"], "state_reg": "soc.uart.INTR_STATE"}
+    interrupts_register_enhancement(_DummyReg, {"interrupts": payload})
+
+    assert interrupts._CLASS_INTERRUPT_METADATA[_DummyReg] == payload
+
+    # Non-interrupt classes are a no-op — the stash stays untouched.
+    class _OtherReg:
+        pass
+
+    interrupts_register_enhancement(_OtherReg, {"writable": {"a": True}})
+    assert _OtherReg not in interrupts._CLASS_INTERRUPT_METADATA
+
+    interrupts._CLASS_INTERRUPT_METADATA.pop(_DummyReg, None)
+
+
+def test_post_create_loads_detected_groups_from_module(monkeypatch: Any) -> None:
+    """``interrupts_post_create`` imports ``<soc_pkg>.interrupts_detected``
+    and builds groups from the detected-trio payload.
+
+    The fake module mirrors the shape Unit 23 emits: a module-level
+    ``interrupt_groups`` list of dicts with ``state_reg`` / ``enable_reg``
+    / ``test_reg`` paths.
+    """
+
+    import sys
+    from peakrdl_pybind11.runtime import interrupts
+
+    interrupts._GROUP_REGISTRY.clear()
+
+    # Build a fake SoC tree: ``soc.uart.INTR_STATE`` and friends, each
+    # carrying mock fields the runtime can read/write.
+    intr_state = MockRegister(
+        tx_done=MockField(value=1),
+        rx_overflow=MockField(value=0),
+    )
+    intr_enable = MockRegister(
+        tx_done=MockField(value=1, on_write="rw"),
+        rx_overflow=MockField(value=0, on_write="rw"),
+    )
+    intr_test = MockRegister(
+        tx_done=MockField(value=0, on_write="rw"),
+        rx_overflow=MockField(value=0, on_write="rw"),
+    )
+    uart = SimpleNamespace(
+        INTR_STATE=intr_state,
+        INTR_ENABLE=intr_enable,
+        INTR_TEST=intr_test,
+    )
+    soc: Any = _FakeSoc()
+    soc.uart = uart
+
+    # Plant a fake module exposing the detection payload.
+    fake_pkg_name = "peakrdl_pybind11_test_fake_soc_pkg"
+    detected_module_name = f"{fake_pkg_name}.interrupts_detected"
+    import types as _types
+
+    pkg = _types.ModuleType(fake_pkg_name)
+    pkg.__path__ = []  # type: ignore[attr-defined]  # pretend it's a package
+    detected = _types.ModuleType(detected_module_name)
+    detected.interrupt_groups = [  # type: ignore[attr-defined]
+        {
+            "path": "soc.uart",
+            "state_reg": "soc.uart.INTR_STATE",
+            "enable_reg": "soc.uart.INTR_ENABLE",
+            "test_reg": "soc.uart.INTR_TEST",
+            "sources": ["tx_done", "rx_overflow"],
+        }
+    ]
+    monkeypatch.setitem(sys.modules, fake_pkg_name, pkg)
+    monkeypatch.setitem(sys.modules, detected_module_name, detected)
+    soc._module_name = fake_pkg_name
+
+    tree = interrupts_post_create(soc)
+
+    assert isinstance(tree, InterruptTree)
+    # Group registered under leaf-of-parent-path: ``soc.uart`` -> ``"uart"``.
+    assert "uart" in {g for g in tree.groups}
+    rendered = tree.tree()
+    assert "tx_done" in rendered
+    # ``soc.uart.interrupts`` got the per-regfile attachment too.
+    assert isinstance(uart.interrupts, InterruptGroup)
+
+    interrupts._GROUP_REGISTRY.clear()

@@ -34,8 +34,17 @@ import numpy as np
 __all__ = [
     "ArrayView",
     "FieldArray",
+    "auto_attach_array_view",
     "register_register_enhancement",
 ]
+
+# Class-level marker key. The seam-level enhancement (registered against
+# Unit 1's ``_registry``) stamps each generated register class with the
+# preferred :class:`ArrayView` subclass. ``wrap_array`` looks the marker
+# up so a sibling unit can swap in a custom view (e.g. a tracing-aware
+# subclass) by registering a different seam hook before the generated
+# runtime fires ``apply_register_enhancements``.
+_ARRAY_VIEW_CLS_ATTR = "_PEAKRDL_ARRAY_VIEW_CLS"
 
 
 # ---------------------------------------------------------------------------
@@ -634,8 +643,14 @@ def wrap_array(
 ) -> ArrayView:
     """Apply registered hooks to wrap a sequence of descriptors.
 
-    The first hook to return a non-``None`` value wins. If no hook is
-    registered we fall back to a vanilla :class:`ArrayView`.
+    Resolution order:
+
+    1. Local hooks registered via :func:`register_register_enhancement`
+       (custom four-arg signature). The first hook to return a non-``None``
+       value wins.
+    2. The element class's :data:`_ARRAY_VIEW_CLS_ATTR` stamp, set by the
+       seam-level enhancement when generated registers are processed.
+    3. A vanilla :class:`ArrayView`.
     """
     elements_list = list(elements)
     eff_shape: tuple[int, ...] = tuple(shape) if shape is not None else (len(elements_list),)
@@ -643,9 +658,70 @@ def wrap_array(
         result = hook(parent_cls, member_name, elements_list, eff_shape)
         if result is not None:
             return result
-    return ArrayView(elements_list, eff_shape)
+    view_cls = _resolve_view_class(elements_list)
+    return view_cls(elements_list, eff_shape)
+
+
+def _resolve_view_class(elements: Sequence[Any]) -> type[ArrayView]:
+    """Pick the :class:`ArrayView` subclass stamped on the element class.
+
+    Generated register classes carry :data:`_ARRAY_VIEW_CLS_ATTR` (set by
+    :func:`_auto_attach_array_view`). Unstamped element types fall back
+    to the plain :class:`ArrayView`.
+    """
+    if not elements:
+        return ArrayView
+    cls = type(elements[0])
+    stamp = getattr(cls, _ARRAY_VIEW_CLS_ATTR, None)
+    if isinstance(stamp, type) and issubclass(stamp, ArrayView):
+        return stamp
+    return ArrayView
 
 
 def reset_enhancements() -> None:
     """Clear all registered enhancement hooks. Intended for tests."""
     _REGISTERED_HOOKS.clear()
+
+
+# ---------------------------------------------------------------------------
+# Seam-level integration with Unit 1's ``_registry``.
+#
+# The generated runtime fires ``apply_register_enhancements(cls, metadata)``
+# for every generated register class at import time. We register
+# :func:`_auto_attach_array_view` on that seam so each register class gets
+# stamped with the canonical :class:`ArrayView` subclass; ``wrap_array``
+# (and any auto-wrap walker generated code emits) then consults the stamp.
+#
+# When ``_registry`` is not present (this module can land standalone), the
+# import fails quietly and ``_auto_attach_array_view`` remains callable
+# directly so tests and downstream callers can still drive the wiring.
+# Pattern mirrors ``runtime/trace.py:198-214``.
+# ---------------------------------------------------------------------------
+
+
+def auto_attach_array_view(cls: type, metadata: dict[str, Any] | None = None) -> None:
+    """Stamp a generated register class with the canonical view class.
+
+    Idempotent: re-running on a class that already has the stamp is a no-op.
+    The optional ``metadata`` argument is accepted (and ignored) so the
+    function fits Unit 1's ``RegisterEnhancement`` signature.
+    """
+    del metadata  # unused; kept for seam-signature compatibility.
+    if getattr(cls, _ARRAY_VIEW_CLS_ATTR, None) is ArrayView:
+        return
+    try:
+        setattr(cls, _ARRAY_VIEW_CLS_ATTR, ArrayView)
+    except (AttributeError, TypeError):  # pragma: no cover - slotted/builtin classes
+        # pybind11 classes occasionally reject monkey-patching. The wrap
+        # path remains correct (``_resolve_view_class`` falls through to
+        # ``ArrayView``); we just lose the swap-in customization.
+        return
+
+
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry as _seam_registry
+except ImportError:
+    _seam_registry = None  # type: ignore[assignment]
+
+if _seam_registry is not None and hasattr(_seam_registry, "register_register_enhancement"):
+    _seam_registry.register_register_enhancement(auto_attach_array_view)

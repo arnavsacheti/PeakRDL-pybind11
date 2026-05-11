@@ -549,3 +549,37 @@ class TestHTMLRepr:
         diff = SnapshotDiff(changed={}, added={}, removed={})
         html = diff._repr_html_()
         assert "no differences" in html.lower()
+
+
+# ---------------------------------------------------------------------------
+# Auto-attach via post-create hook
+# ---------------------------------------------------------------------------
+
+
+class TestAutoAttach:
+    """``attach_snapshot`` must be wired as a registry post-create hook so
+    every ``MySoc.create()`` automatically gains ``soc.snapshot()`` /
+    ``soc.restore()`` without callers having to invoke ``attach_snapshot``
+    by hand."""
+
+    def test_attach_snapshot_is_registered_post_create_hook(self) -> None:
+        from peakrdl_pybind11.runtime import _registry
+
+        names = [fn.__name__ for fn in _registry.get_post_create_hooks()]
+        assert "attach_snapshot" in names, names
+
+    def test_fire_post_create_hooks_binds_snapshot_methods(self) -> None:
+        from peakrdl_pybind11.runtime import _registry
+
+        soc = _Soc()
+        soc.add(_Reg("uart.control", value=0x22, access="rw"))
+        # Sanity: no explicit attach_snapshot(soc) — the registry must do it.
+        assert not hasattr(soc, "snapshot")
+
+        _registry.fire_post_create_hooks(soc)
+
+        assert callable(getattr(soc, "snapshot", None))
+        assert callable(getattr(soc, "restore", None))
+        # Snapshot bound on this fake soc captures the register value.
+        snap = soc.snapshot()
+        assert snap["uart.control"] == 0x22

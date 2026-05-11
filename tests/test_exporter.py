@@ -381,8 +381,8 @@ addrmap hierarchical_soc {
 
             with open(os.path.join(tmpdir, 'test_soc_bindings.cpp')) as f:
                 bindings = f.read()
-            assert 'py::class_<MockMaster, Master>(m, "MockMaster")' in bindings
-            assert 'py::class_<CallbackMaster, Master>(m, "CallbackMaster")' in bindings
+            assert 'py::class_<MockMaster, Master>(m, "MockMaster"' in bindings
+            assert 'py::class_<CallbackMaster, Master>(m, "CallbackMaster"' in bindings
             assert 'set_read' in bindings
             assert 'set_write' in bindings
 

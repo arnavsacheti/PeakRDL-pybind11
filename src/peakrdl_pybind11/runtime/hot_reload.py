@@ -325,13 +325,16 @@ def attach_reload(soc: _Soc) -> None:
 # :func:`attach_reload` directly (e.g. inside the generated runtime).
 def _install_post_create_hook() -> None:
     try:
-        from peakrdl_pybind11 import _registry
+        from . import _registry
     except ImportError:
         return
     register_post_create = getattr(_registry, "register_post_create", None)
     if not callable(register_post_create):
         return
     register_post_create(attach_reload)
+
+
+_install_post_create_hook()
 
 
 _install_post_create_hook()

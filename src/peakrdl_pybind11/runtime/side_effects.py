@@ -38,11 +38,15 @@ except ImportError:  # pragma: no cover - fallback shim
 
 
 try:  # pragma: no cover - prefer the real Unit 1 registry when present
-    from .._registry import register_register_enhancement  # type: ignore[no-redef]
+    from ._registry import register_field_enhancement, register_register_enhancement  # type: ignore[no-redef]
 except ImportError:  # pragma: no cover - fallback shim (no-op decorator)
 
     def register_register_enhancement(fn: Callable[..., object]) -> Callable[..., object]:
         """No-op fallback for the enhancement registry seam."""
+        return fn
+
+    def register_field_enhancement(fn: Callable[..., object]) -> Callable[..., object]:
+        """No-op fallback for the field enhancement registry seam."""
         return fn
 
 
@@ -318,16 +322,37 @@ def no_side_effects(soc: Any = None) -> Iterator[object]:
 # Enhancement seam -- attach the verbs as methods to generated reg/field
 # classes so users can write ``f.clear()`` / ``r.peek()`` directly.
 # ---------------------------------------------------------------------------
-@register_register_enhancement
-def _enhance(cls: type, metadata: Any = None) -> None:
-    """Register/field enhancement that binds the verbs as methods.
+def _bind_verbs(cls: type) -> None:
+    """Bind peek/clear/set/pulse/acknowledge as methods on a class.
 
-    The signature mirrors Unit 1's seam: ``cls`` is the generated class,
-    ``metadata`` the per-class info bundle (unused here -- the verbs read
-    metadata off ``self.info`` at call time).
+    The verbs read metadata off ``self.info`` at call time, so they
+    work uniformly across registers and fields.
     """
     cls.peek = lambda self: peek(self)  # type: ignore[attr-defined]
     cls.clear = lambda self: clear(self)  # type: ignore[attr-defined]
     cls.set = lambda self: set_(self)  # type: ignore[attr-defined]
     cls.pulse = lambda self: pulse(self)  # type: ignore[attr-defined]
     cls.acknowledge = lambda self: acknowledge(self)  # type: ignore[attr-defined]
+
+
+@register_register_enhancement
+def _enhance(cls: type, metadata: Any = None) -> None:
+    """Register enhancement that binds the side-effect verbs.
+
+    The signature mirrors Unit 1's seam: ``cls`` is the generated
+    register class, ``metadata`` the per-class info bundle (unused here
+    -- the verbs read metadata off ``self.info`` at call time).
+    """
+    _bind_verbs(cls)
+
+
+@register_field_enhancement
+def _enhance_field(cls: type) -> None:
+    """Field enhancement that binds the side-effect verbs.
+
+    Generated field classes get the same ``peek``/``clear``/``set``/``pulse``/
+    ``acknowledge`` surface as registers; the dispatch is identical because
+    side-effect dispatch reads ``info.on_read``/``info.on_write`` from the
+    target instance.
+    """
+    _bind_verbs(cls)

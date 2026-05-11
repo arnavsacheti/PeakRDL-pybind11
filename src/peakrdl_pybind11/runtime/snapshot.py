@@ -706,3 +706,22 @@ def _is_jsonable(value: Any) -> bool:
     if isinstance(value, dict):
         return all(isinstance(k, str) and _is_jsonable(v) for k, v in value.items())
     return False
+
+
+# ---------------------------------------------------------------------------
+# Registry wiring (sibling-dep: Unit 1's runtime/_registry).
+#
+# When the registry seam is present we register ``attach_snapshot`` as a
+# post-create hook so every ``MySoc.create()`` automatically gains the
+# ``soc.snapshot()`` and ``soc.restore()`` helpers. When it isn't (this
+# unit can land before Unit 1), the import quietly fails and callers can
+# still use ``attach_snapshot(soc)`` explicitly.
+# ---------------------------------------------------------------------------
+
+try:  # pragma: no cover - depends on Unit 1 landing order
+    from . import _registry  # type: ignore[attr-defined]
+except ImportError:
+    _registry = None  # type: ignore[assignment]
+
+if _registry is not None and hasattr(_registry, "register_post_create"):
+    _registry.register_post_create(attach_snapshot)

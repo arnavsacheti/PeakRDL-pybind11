@@ -376,7 +376,41 @@ except ImportError:  # pragma: no cover - sibling unit may not exist yet
     pass
 else:
 
-    @register_node_attribute("info")  # type: ignore[arg-type]
-    def _info_factory(node_class: type, metadata: dict[str, object]) -> Info:  # pragma: no cover
-        """Registry hook: build an :class:`Info` from collected metadata."""
-        return from_rdl_node(metadata.get("rdl_node"))
+    @register_node_attribute("info")
+    def _info_factory(node_instance: object) -> Info:  # pragma: no cover
+        """Registry hook: build an :class:`Info` for a node instance.
+
+        Called once per instance on first ``.info`` access, then cached.
+        Build order:
+
+        1. If the class has ``__peakrdl_meta__`` (stashed by the default
+           register shim from the metadata the runtime template passes in),
+           build ``Info`` from that.
+        2. Else if the instance has ``_rdl_node`` / ``rdl_node``, use
+           :func:`from_rdl_node`.
+        3. Else fall back to a default ``Info``.
+        """
+        meta = getattr(type(node_instance), "__peakrdl_meta__", None)
+        if isinstance(meta, dict):
+            fields = {}
+            spec = meta.get("fields", {})
+            if isinstance(spec, dict):
+                for fname, fspec in spec.items():
+                    if isinstance(fspec, tuple) and len(fspec) == 2:
+                        lsb, width = fspec
+                        fields[fname] = Info(
+                            name=fname,
+                            path=f"{meta.get('path', '')}.{fname}",
+                            offset=lsb,
+                            regwidth=width,
+                        )
+            return Info(
+                name=meta.get("name", ""),
+                desc=meta.get("desc"),
+                address=meta.get("address", 0),
+                regwidth=meta.get("regwidth"),
+                path=meta.get("path", ""),
+                fields=fields,
+            )
+        rdl_node = getattr(node_instance, "_rdl_node", None) or getattr(node_instance, "rdl_node", None)
+        return from_rdl_node(rdl_node)
