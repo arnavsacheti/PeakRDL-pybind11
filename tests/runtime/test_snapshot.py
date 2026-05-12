@@ -11,9 +11,10 @@ implementation relies on:
 
 from __future__ import annotations
 
+import builtins
 import json
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -32,12 +33,22 @@ from peakrdl_pybind11.runtime import (
 
 
 @dataclass
+class _FieldInfo:
+    """Minimal field-info: an ``offset`` (lsb in bits) and ``regwidth`` (bits)."""
+
+    offset: int = 0
+    regwidth: int = 1
+
+
+@dataclass
 class _Info:
     path: str
     access: str = "rw"  # "ro" / "wo" / "rw" / "rwclr" / etc.
     on_read: str | None = None  # None | "rclr" | "rset"
     address: int = 0
     reset: int = 0
+    regwidth: int | None = None  # bits — width of the register
+    fields: dict[str, _FieldInfo] = field(default_factory=dict)
 
 
 class _Reg:
@@ -51,8 +62,17 @@ class _Reg:
         on_read: str | None = None,
         peekable: bool = True,
         address: int = 0,
+        regwidth: int | None = None,
+        fields: dict[str, _FieldInfo] | None = None,
     ) -> None:
-        self.info = _Info(path=path, access=access, on_read=on_read, address=address)
+        self.info = _Info(
+            path=path,
+            access=access,
+            on_read=on_read,
+            address=address,
+            regwidth=regwidth,
+            fields=fields or {},
+        )
         self._value = value
         self.peekable = peekable
         self.read_count = 0
@@ -583,3 +603,126 @@ class TestAutoAttach:
         # Snapshot bound on this fake soc captures the register value.
         snap = soc.snapshot()
         assert snap["uart.control"] == 0x22
+
+
+# ---------------------------------------------------------------------------
+# DataFrame export
+# ---------------------------------------------------------------------------
+
+
+def _make_soc_for_df() -> _Soc:
+    """Build a soc whose registers carry width/field metadata for ``to_dataframe``."""
+    soc = _Soc()
+    # uart.control: 8 bits of "tx_enable" (lsb=0) + 8 bits of "baud" (lsb=8).
+    soc.add(
+        _Reg(
+            "uart.control",
+            value=0x33_22,  # baud=0x33, tx_enable=0x22
+            access="rw",
+            address=0x4000_1000,
+            regwidth=32,
+            fields={
+                "tx_enable": _FieldInfo(offset=0, regwidth=8),
+                "baud": _FieldInfo(offset=8, regwidth=8),
+            },
+        )
+    )
+    soc.add(
+        _Reg(
+            "uart.data",
+            value=0x55,
+            access="rw",
+            address=0x4000_1004,
+            regwidth=32,
+        )
+    )
+    attach_snapshot(soc)
+    return soc
+
+
+class TestDataFrame:
+    def test_to_dataframe_returns_pandas_dataframe(self) -> None:
+        pd = pytest.importorskip("pandas")
+        soc = _make_soc_for_df()
+        snap = soc.snapshot()
+
+        df = snap.to_dataframe()
+        assert isinstance(df, pd.DataFrame)
+
+    def test_to_dataframe_has_expected_columns(self) -> None:
+        pytest.importorskip("pandas")
+        soc = _make_soc_for_df()
+        snap = soc.snapshot()
+
+        df = snap.to_dataframe()
+        for column in ("address", "width", "value", "fields"):
+            assert column in df.columns, f"missing column {column!r}; got {list(df.columns)}"
+        # ``path`` is the index, not a column.
+        assert df.index.name == "path"
+
+    def test_to_dataframe_row_count_matches_snapshot(self) -> None:
+        pytest.importorskip("pandas")
+        soc = _make_soc_for_df()
+        snap = soc.snapshot()
+
+        df = snap.to_dataframe()
+        assert len(df) == len(snap)
+
+    def test_to_dataframe_addresses_are_absolute(self) -> None:
+        pytest.importorskip("pandas")
+        soc = _make_soc_for_df()
+        snap = soc.snapshot()
+
+        df = snap.to_dataframe()
+        assert int(df.loc["uart.control", "address"]) == 0x4000_1000
+        assert int(df.loc["uart.data", "address"]) == 0x4000_1004
+
+    def test_to_dataframe_loc_returns_expected_row(self) -> None:
+        pytest.importorskip("pandas")
+        soc = _make_soc_for_df()
+        snap = soc.snapshot()
+
+        df = snap.to_dataframe()
+        row = df.loc["uart.control"]
+        assert int(row["address"]) == 0x4000_1000
+        assert int(row["width"]) == 4  # 32 bits / 8 = 4 bytes
+        assert int(row["value"]) == 0x33_22
+
+        # ``fields`` round-trips through JSON.
+        decoded = json.loads(row["fields"])
+        assert decoded == {"tx_enable": 0x22, "baud": 0x33}
+
+    def test_to_dataframe_default_width_for_no_metadata(self) -> None:
+        pytest.importorskip("pandas")
+        # No regwidth on the info — width column should default to 4 bytes.
+        snap = Snapshot({"reg": 0x1}, metadata={"reg": None})
+        df = snap.to_dataframe()
+        assert int(df.loc["reg", "width"]) == 4
+        assert int(df.loc["reg", "value"]) == 0x1
+        # No field metadata available — ``fields`` is the JSON for an empty dict.
+        assert json.loads(df.loc["reg", "fields"]) == {}
+
+    def test_to_dataframe_raises_clear_import_error_without_pandas(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If pandas isn't installed, ``to_dataframe()`` must raise a helpful ImportError."""
+        import sys as _sys
+
+        # Force any ``import pandas`` (including cached) to fail.
+        monkeypatch.setitem(_sys.modules, "pandas", None)
+
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "pandas" or name.startswith("pandas."):
+                raise ImportError("No module named 'pandas'")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        snap = Snapshot({"reg": 0x1}, metadata={"reg": None})
+        with pytest.raises(ImportError) as exc:
+            snap.to_dataframe()
+        msg = str(exc.value)
+        assert "pandas" in msg
+        assert "pip install pandas" in msg

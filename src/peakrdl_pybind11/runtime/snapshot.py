@@ -323,6 +323,109 @@ class Snapshot:
                 f.write(text)
         return text
 
+    def _decode_fields(self, info: Info, value: int) -> dict[str, int]:
+        """Decode ``value`` into a ``{field_name: int}`` mapping using ``info``.
+
+        Uses ``info.fields`` if present (each entry exposes ``.offset`` /
+        ``.regwidth``; fall back to ``.lsb`` / ``.width`` for older info
+        shapes). Returns ``{}`` when no field metadata is available.
+        """
+        if info is None:
+            return {}
+        fields_meta = getattr(info, "fields", None)
+        if not isinstance(fields_meta, dict) or not fields_meta:
+            return {}
+
+        decoded: dict[str, int] = {}
+        for fname, finfo in fields_meta.items():
+            if finfo is None:
+                continue
+            # ``offset`` is the canonical Info lsb; ``lsb`` is accepted for
+            # legacy/test shapes. Likewise for width.
+            lsb = getattr(finfo, "offset", None)
+            if lsb is None:
+                lsb = getattr(finfo, "lsb", None)
+            width = getattr(finfo, "regwidth", None)
+            if width is None:
+                width = getattr(finfo, "width", None)
+            if not isinstance(lsb, int) or not isinstance(width, int) or width <= 0:
+                continue
+            mask = (1 << width) - 1
+            decoded[str(fname)] = int((int(value) >> lsb) & mask)
+        return decoded
+
+    def _row_width_bytes(self, info: Info) -> int:
+        """Best-effort register width in bytes from ``info`` (defaults to 4)."""
+        if info is not None:
+            regwidth = getattr(info, "regwidth", None)
+            if isinstance(regwidth, int) and regwidth > 0:
+                return regwidth // 8
+            width = getattr(info, "width", None)
+            # Some test/legacy info shapes carry a byte-width directly.
+            if isinstance(width, int) and width > 0:
+                return width
+        return 4
+
+    def _row_address(self, info: Info, path: PathStr) -> int:
+        """Best-effort absolute byte address from ``info`` (defaults to 0)."""
+        if info is None:
+            return 0
+        addr = getattr(info, "address", None)
+        if isinstance(addr, int):
+            return addr
+        offset = getattr(info, "offset", None)
+        if isinstance(offset, int):
+            return offset
+        return 0
+
+    def to_dataframe(self) -> Any:
+        """Return a ``pandas.DataFrame`` row-per-register view of this snapshot.
+
+        Columns (index is ``path``):
+
+        * ``address`` — absolute byte address (``int``).
+        * ``width``   — register width in bytes (``int``).
+        * ``value``   — raw register value (``int``); callers format as needed.
+        * ``fields``  — JSON-encoded dict of decoded ``{field_name: int}``.
+
+        Pandas is *not* a hard dependency of this package. If it isn't
+        installed, this method raises :class:`ImportError`.
+        """
+        try:
+            import pandas as pd
+        except ImportError as e:  # pragma: no cover - exercised by tests via monkeypatch
+            raise ImportError(
+                "Snapshot.to_dataframe() requires pandas; install with 'pip install pandas'"
+            ) from e
+
+        values = self.values
+        metadata = self.metadata
+
+        paths: list[PathStr] = sorted(values.keys())
+        addresses: list[int] = []
+        widths: list[int] = []
+        raw_values: list[int] = []
+        field_blobs: list[str] = []
+        for path in paths:
+            info = metadata.get(path)
+            value = int(values[path])
+            addresses.append(self._row_address(info, path))
+            widths.append(self._row_width_bytes(info))
+            raw_values.append(value)
+            decoded = self._decode_fields(info, value)
+            field_blobs.append(json.dumps(decoded, sort_keys=True))
+
+        df = pd.DataFrame(
+            {
+                "path": paths,
+                "address": addresses,
+                "width": widths,
+                "value": raw_values,
+                "fields": field_blobs,
+            }
+        )
+        return df.set_index("path")
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Snapshot:
         version = data.get("version", 1)
