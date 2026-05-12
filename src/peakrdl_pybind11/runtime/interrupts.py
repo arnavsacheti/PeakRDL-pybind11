@@ -247,15 +247,34 @@ class InterruptSource:
         self._wait_for(False, timeout=timeout, period=period)
 
     async def aiowait(self, timeout: float = 1.0, period: float = 0.001) -> None:
-        """Async variant of :meth:`wait`. Sleeps via :func:`asyncio.sleep`."""
+        """Async variant of :meth:`wait`. Sleeps via :func:`asyncio.sleep`.
 
-        deadline = time.monotonic() + timeout
-        last_seen = self.is_pending()
-        while not last_seen:
-            if time.monotonic() >= deadline:
-                raise WaitTimeoutError(f"interrupts.{self._name}", True, last_seen)
+        Uses :func:`asyncio.wait_for` for the timeout shape; the inner
+        coroutine polls :meth:`is_pending` with ``asyncio.sleep(period)``
+        between checks so cancellation propagates cleanly.
+
+        Raises :class:`WaitTimeoutError` on timeout — matches the synchronous
+        :meth:`wait` for consistency with the rest of the wait family. The
+        underlying ``asyncio.TimeoutError`` is translated so callers don't
+        have to special-case the async path.
+        """
+
+        try:
+            await asyncio.wait_for(self._aio_poll_until_pending(period), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise WaitTimeoutError(f"interrupts.{self._name}", True, self.is_pending()) from None
+
+    async def _aio_poll_until_pending(self, period: float) -> None:
+        """Poll :meth:`is_pending` with async sleeps until the bit is set.
+
+        Pulled out as a helper so :meth:`aiowait` can wrap it with
+        :func:`asyncio.wait_for` for the timeout shape. Cancellation
+        propagates through :func:`asyncio.sleep`, which is the standard
+        asyncio cancellation point.
+        """
+
+        while not self.is_pending():
             await asyncio.sleep(period)
-            last_seen = self.is_pending()
 
     def poll(self, period: float = 0.001, timeout: float = 1.0) -> None:
         """Explicit-period poll; alias for :meth:`wait` with both knobs.

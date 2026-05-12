@@ -530,6 +530,107 @@ def test_aiowait_timeout() -> None:
         asyncio.run(_runner())
 
 
+class TestAiowait:
+    """Extra coverage for the asyncio dual of :meth:`InterruptSource.wait`.
+
+    Complements the two function-level tests above (``async_path`` /
+    ``timeout``) with the cases called out by §9.1: immediate-pending
+    fast path, mid-wait flip via a sibling task, and cancellation
+    cleanup so a dropped ``aiowait`` doesn't leak the poll loop.
+    """
+
+    def test_aiowait_returns_immediately_when_already_pending(self) -> None:
+        """No polling delay when the source is already pending at call time."""
+
+        state = MockField(value=1)
+        src = InterruptSource(state, name="tx_done")
+
+        async def _runner() -> None:
+            # Use a non-trivial poll period so a buggy implementation that
+            # waits before checking would visibly slow this down.
+            await src.aiowait(timeout=1.0, period=0.5)
+
+        start = time.monotonic()
+        asyncio.run(_runner())
+        elapsed = time.monotonic() - start
+        # Allow generous slack for CI jitter; a non-fast-path implementation
+        # would have to wait ~0.5s before returning.
+        assert elapsed < 0.1, f"aiowait took {elapsed:.3f}s when source already pending"
+
+    def test_aiowait_resolves_when_flipped_mid_wait(self) -> None:
+        """A sibling task flipping the bit mid-wait wakes ``aiowait`` up."""
+
+        state = MockField(value=0)
+        src = InterruptSource(state, name="tx_done")
+
+        async def _runner() -> None:
+            async def _flipper() -> None:
+                # Sleep a few poll periods so the wait actually polls before
+                # the flip — exercises the rising-edge path, not the fast
+                # path of test_aiowait_returns_immediately_when_already_pending.
+                await asyncio.sleep(0.01)
+                state.set_hw(1)
+
+            flipper_task = asyncio.create_task(_flipper())
+            await src.aiowait(timeout=1.0, period=0.001)
+            await flipper_task  # ensure clean shutdown
+
+        asyncio.run(_runner())
+        assert state._value == 1
+
+    def test_aiowait_timeout_raises_wait_timeout_error(self) -> None:
+        """The 50 ms timeout case from §9.1: never asserts → ``WaitTimeoutError``."""
+
+        state = MockField(value=0)
+        src = InterruptSource(state, name="tx_done")
+
+        async def _runner() -> None:
+            await src.aiowait(timeout=0.05, period=0.001)
+
+        with pytest.raises(WaitTimeoutError) as exc:
+            asyncio.run(_runner())
+        # Same fields as the sync ``wait()`` timeout — the async path
+        # should carry the same diagnostics.
+        assert exc.value.expected is True
+        assert exc.value.last_seen is False
+        assert "tx_done" in str(exc.value)
+
+    def test_aiowait_cancellation_propagates_and_leaves_no_leak(self) -> None:
+        """Cancelling the awaiting task is clean: ``CancelledError`` propagates
+        and the source/event loop are left in a usable state.
+
+        The poll loop lives inside the cancelled task — cancelling the task
+        is enough to tear it down. We assert (1) the task is marked cancelled
+        and (2) a subsequent ``aiowait`` on the *same* source still works,
+        which would fail if any module-level state had been wedged by the
+        cancellation.
+        """
+
+        state = MockField(value=0)
+        src = InterruptSource(state, name="tx_done")
+
+        async def _runner() -> bool:
+            task = asyncio.create_task(src.aiowait(timeout=1.0, period=0.001))
+            # Let the poll loop spin at least one iteration.
+            await asyncio.sleep(0.01)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            return task.cancelled()
+
+        was_cancelled = asyncio.run(_runner())
+        assert was_cancelled
+
+        # State integrity check: a fresh aiowait on the same source still
+        # works, proving the cancellation didn't wedge any shared state.
+        state.set_hw(1)
+
+        async def _post_cancel() -> None:
+            await src.aiowait(timeout=1.0, period=0.001)
+
+        asyncio.run(_post_cancel())
+
+
 # ---------------------------------------------------------------------------
 # on_fire subscription
 # ---------------------------------------------------------------------------
