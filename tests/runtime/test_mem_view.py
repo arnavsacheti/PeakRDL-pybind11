@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from peakrdl_pybind11.runtime.errors import AccessError
 from peakrdl_pybind11.runtime.mem_view import (
     MemView,
     MemWindow,
@@ -723,3 +724,208 @@ class TestAutoAttachHook:
         apply_register_enhancements(cls, {"fields": {}, "is_mem": True})
         mem = cls(depth=16)
         assert isinstance(mem[0:8], MemView)
+
+
+# ---------------------------------------------------------------------------
+# Access-mode enforcement (§6 of IDEAL_API_SKETCH.md).
+#
+# Mirrors the field-side enforcement that shipped in commit 8ddca6c:
+# reads on a write-only mem and writes on a read-only mem raise
+# :class:`AccessError`. The runtime probes ``mem.info.access`` (or, when
+# present, the ``is_readable`` / ``is_writable`` boolean flags) and
+# defaults to "allowed" when no metadata is attached.
+# ---------------------------------------------------------------------------
+
+
+class _FakeInfo:
+    """Tiny stand-in for an ``Info`` namespace used in the access-mode tests."""
+
+    __slots__ = ("access", "path")
+
+    def __init__(self, access: str | None, path: str = "") -> None:
+        self.access = access
+        self.path = path
+
+
+def _make_mem(access: str | None, *, path: str = "soc.mem", depth: int = 16) -> Any:
+    """Build a fresh enhanced mem instance with the given ``info.access`` token.
+
+    Each call gets a new subclass so the per-class enhancement flag does
+    not leak metadata between tests.
+    """
+    cls = type("MemAccess", (FakeMem,), {})
+    enhance_mem_class(cls)
+    mem = cls(depth=depth)
+    mem.info = _FakeInfo(access=access, path=path)
+    return mem
+
+
+class TestMemAccessEnforcement:
+    # -- read-only mem: writes blocked --------------------------------------
+
+    def test_write_int_on_read_only_raises(self) -> None:
+        mem = _make_mem("r", path="soc.rom")
+        with pytest.raises(AccessError) as excinfo:
+            mem[0] = 0xDEAD
+        assert "soc.rom" in str(excinfo.value)
+        assert "sw=r" in str(excinfo.value)
+        assert excinfo.value.access_mode == "r"
+
+    def test_write_slice_on_read_only_raises(self) -> None:
+        mem = _make_mem("r", path="soc.rom")
+        with pytest.raises(AccessError, match="soc.rom"):
+            mem[0:4] = [1, 2, 3, 4]
+
+    def test_write_view_setitem_on_read_only_raises(self) -> None:
+        mem = _make_mem("r", path="soc.rom")
+        view = mem[0:4]  # taking the slice itself does NOT touch the bus
+        with pytest.raises(AccessError):
+            view[0] = 0xAB
+        with pytest.raises(AccessError):
+            view[:] = 0
+
+    def test_write_bytes_on_read_only_raises(self) -> None:
+        mem = _make_mem("r", path="soc.rom")
+        payload = (0xCAFEBABE).to_bytes(4, "little")
+        with pytest.raises(AccessError, match="soc.rom"):
+            mem.write_bytes(0, payload)
+
+    def test_write_from_on_read_only_raises(self) -> None:
+        mem = _make_mem("r", path="soc.rom")
+        buf = np.arange(4, dtype=np.uint32)
+        with pytest.raises(AccessError, match="soc.rom"):
+            mem.write_from(buf, offset=0)
+
+    def test_window_flush_on_read_only_raises(self) -> None:
+        """A buffered write through ``mem.window(...)`` still trips the gate
+        when the buffer flushes on context exit.
+        """
+        mem = _make_mem("r", path="soc.rom")
+        with pytest.raises(AccessError, match="soc.rom"):
+            with mem.window(0, 4) as w:
+                w[0] = 0xAB
+
+    # -- write-only mem: reads blocked --------------------------------------
+
+    def test_read_int_on_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        with pytest.raises(AccessError) as excinfo:
+            _ = mem[0]
+        assert "soc.wo_mem" in str(excinfo.value)
+        assert "sw=w" in str(excinfo.value)
+        assert excinfo.value.access_mode == "w"
+
+    def test_read_view_on_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        view = mem[0:4]  # slice itself is allowed
+        with pytest.raises(AccessError):
+            _ = view[0]
+        with pytest.raises(AccessError):
+            view.copy()
+        with pytest.raises(AccessError):
+            view.read()
+
+    def test_np_asarray_on_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        with pytest.raises(AccessError, match="soc.wo_mem"):
+            np.asarray(mem)
+
+    def test_np_asarray_on_view_of_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        with pytest.raises(AccessError, match="soc.wo_mem"):
+            np.asarray(mem[0:4])
+
+    def test_read_bytes_on_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        with pytest.raises(AccessError, match="soc.wo_mem"):
+            mem.read_bytes(0, 4)
+
+    def test_read_into_on_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        buf = np.empty(4, dtype=np.uint32)
+        with pytest.raises(AccessError, match="soc.wo_mem"):
+            mem.read_into(buf, offset=0)
+
+    def test_iter_chunks_on_write_only_raises(self) -> None:
+        mem = _make_mem("w", path="soc.wo_mem")
+        with pytest.raises(AccessError, match="soc.wo_mem"):
+            next(mem.iter_chunks(size=4))
+
+    def test_window_enter_on_write_only_raises(self) -> None:
+        """Entering a buffered window primes the buffer via a bulk read; that
+        read must trip the access gate on a write-only mem.
+        """
+        mem = _make_mem("w", path="soc.wo_mem")
+        with pytest.raises(AccessError, match="soc.wo_mem"):
+            with mem.window(0, 4):
+                pass
+
+    # -- rw mem: both ops still work normally -------------------------------
+
+    def test_read_write_mem_round_trips(self) -> None:
+        mem = _make_mem("rw")
+        mem[0] = 0xAA
+        assert mem[0] == 0xAA
+        mem[0:4] = [1, 2, 3, 4]
+        assert mem[0:4].copy().tolist() == [1, 2, 3, 4]
+        arr = np.asarray(mem)
+        assert arr.shape == (mem.depth,)
+
+    # -- back-compat: no metadata defaults to "allowed" ---------------------
+
+    def test_no_info_defaults_allow(self) -> None:
+        """Mems without an ``info`` attribute behave as if ``sw=rw``."""
+        cls = type("MemBare", (FakeMem,), {})
+        enhance_mem_class(cls)
+        mem = cls(depth=8)
+        # No ``mem.info`` attached.
+        assert not hasattr(mem, "info")
+        mem[0] = 0xAB
+        assert mem[0] == 0xAB
+        assert np.asarray(mem).shape == (8,)
+
+    def test_info_without_access_defaults_allow(self) -> None:
+        """``mem.info`` present but ``info.access is None`` is treated as allow."""
+        mem = _make_mem(None, path="soc.default_mem")
+        mem[0] = 0xCAFE
+        assert mem[0] == 0xCAFE
+
+    def test_unknown_access_token_defaults_allow(self) -> None:
+        """An unrecognized access token is treated permissively (back-compat)."""
+        mem = _make_mem("???", path="soc.weird_mem")
+        # Neither read nor write should raise on an unknown token.
+        mem[0] = 0x11
+        assert mem[0] == 0x11
+
+    def test_is_readable_flag_overrides_info(self) -> None:
+        """A direct ``is_readable=False`` attribute takes precedence over info."""
+        cls = type("MemFlagged", (FakeMem,), {})
+        enhance_mem_class(cls)
+        mem = cls(depth=8)
+        mem.is_readable = False
+        mem.is_writable = True
+        mem.info = _FakeInfo(access="rw", path="soc.flagged_mem")
+        with pytest.raises(AccessError, match="soc.flagged_mem"):
+            _ = mem[0]
+        # Writes still work because is_writable is True.
+        mem[0] = 0x42
+
+    # -- write_block/read_block as the gated primitives ---------------------
+
+    def test_write_block_burst_gated_on_read_only(self) -> None:
+        """The burst write path is gated symmetrically with per-word writes."""
+        mem = _make_mem("r", path="soc.rom")
+        before = mem.write_block_calls
+        with pytest.raises(AccessError):
+            mem[0:8] = list(range(8))  # triggers the burst path
+        # The bus never saw the write -- counters unchanged.
+        assert mem.write_block_calls == before
+
+    def test_read_block_burst_gated_on_write_only(self) -> None:
+        """The burst read path is gated symmetrically with per-word reads."""
+        mem = _make_mem("w", path="soc.wo_mem")
+        before = mem.read_block_calls
+        with pytest.raises(AccessError):
+            mem[0:8].copy()
+        # No bus traffic on a blocked read.
+        assert mem.read_block_calls == before

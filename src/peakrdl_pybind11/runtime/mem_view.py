@@ -59,6 +59,8 @@ from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 
+from .errors import AccessError
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -92,6 +94,109 @@ class MemLike(Protocol):
     def __getitem__(self, index: Any) -> Any: ...
 
     def __setitem__(self, index: Any, value: Any) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# Access-mode enforcement (§6 of IDEAL_API_SKETCH.md).
+#
+# Memory regions carry the same ``sw = {rw, r, w, na}`` access tokens as
+# fields, surfaced via ``mem.info.access``. We mirror the field-side
+# enforcement that shipped in commit 8ddca6c: reads on a write-only mem
+# and writes on a read-only mem raise :class:`AccessError` with the mem's
+# path in the message. Missing metadata defaults to "allowed" so plain
+# fixtures without an ``info`` attribute keep working.
+# ---------------------------------------------------------------------------
+
+
+def _mem_is_readable(mem: Any) -> bool:
+    """Return ``True`` if the mem permits software reads.
+
+    Probes (in order): explicit ``is_readable`` attribute, ``info.is_readable``,
+    or the string ``info.access`` token (``"r"``, ``"rw"`` → readable).
+    Falls back to ``True`` when no metadata is present — a missing
+    ``info`` (test fixtures, legacy generated classes) means we cannot
+    prove the mem is *not* readable, so we permit the access.
+    """
+    direct = getattr(mem, "is_readable", None)
+    if isinstance(direct, bool):
+        return direct
+    info = getattr(mem, "info", None)
+    if info is not None:
+        info_flag = getattr(info, "is_readable", None)
+        if isinstance(info_flag, bool):
+            return info_flag
+        access = getattr(info, "access", None)
+        if access is not None:
+            token = str(access).lower()
+            if token in ("r", "rw"):
+                return True
+            if token in ("w", "na"):
+                return False
+    return True
+
+
+def _mem_is_writable(mem: Any) -> bool:
+    """Symmetric counterpart of :func:`_mem_is_readable` for write access."""
+    direct = getattr(mem, "is_writable", None)
+    if isinstance(direct, bool):
+        return direct
+    info = getattr(mem, "info", None)
+    if info is not None:
+        info_flag = getattr(info, "is_writable", None)
+        if isinstance(info_flag, bool):
+            return info_flag
+        access = getattr(info, "access", None)
+        if access is not None:
+            token = str(access).lower()
+            if token in ("w", "rw"):
+                return True
+            if token in ("r", "na"):
+                return False
+    return True
+
+
+def _mem_access_mode(readable: bool, writable: bool) -> str:
+    """Map a (readable, writable) pair onto the canonical ``sw=`` token."""
+    if readable and writable:
+        return "rw"
+    if readable:
+        return "r"
+    if writable:
+        return "w"
+    return "na"
+
+
+def _mem_node_path(mem: Any) -> str:
+    """Best-effort path for a mem instance, used in error messages.
+
+    Mirrors ``_field_node_path`` in ``_default_shims.py``: prefer
+    ``info.path``, fall back to ``info.name`` or the bare class name.
+    """
+    info = getattr(mem, "info", None)
+    if info is not None:
+        path = getattr(info, "path", None)
+        if isinstance(path, str) and path:
+            return path
+        name = getattr(info, "name", None)
+        if isinstance(name, str) and name:
+            return name
+    return type(mem).__name__
+
+
+def _check_mem_readable(mem: Any) -> None:
+    """Raise :class:`AccessError` when reads on ``mem`` are disallowed."""
+    if _mem_is_readable(mem):
+        return
+    writable = _mem_is_writable(mem)
+    raise AccessError(_mem_node_path(mem), _mem_access_mode(False, writable))
+
+
+def _check_mem_writable(mem: Any) -> None:
+    """Raise :class:`AccessError` when writes on ``mem`` are disallowed."""
+    if _mem_is_writable(mem):
+        return
+    readable = _mem_is_readable(mem)
+    raise AccessError(_mem_node_path(mem), _mem_access_mode(readable, False))
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +273,14 @@ def _read_block(mem: Any, start: int, count: int) -> list[int]:
     Prefers ``mem.read_block`` (one master round-trip), then any
     available ``read_many`` on the attached master, and finally falls
     back to a per-word ``mem[i]`` loop.
+
+    Gated on ``mem.info`` access mode: a write-only mem raises
+    :class:`AccessError` BEFORE the bus call (otherwise the side effect
+    of the read would leak past the check).
     """
     if count <= 0:
         return []
+    _check_mem_readable(mem)
     read_block = getattr(mem, "read_block", None)
     if callable(read_block):
         return [int(v) for v in cast(Iterable[Any], read_block(start, count))]
@@ -183,9 +293,13 @@ def _write_block(mem: Any, start: int, values: Sequence[int]) -> None:
     ``values`` must already be a Python ``list[int]`` -- the generated
     C++ ``write_block`` expects ``std::vector<uint64_t>`` and pybind11
     is strict about the element type.
+
+    Gated on ``mem.info`` access mode: a read-only mem raises
+    :class:`AccessError` BEFORE the bus call.
     """
     if len(values) == 0:
         return
+    _check_mem_writable(mem)
     write_block = getattr(mem, "write_block", None)
     if callable(write_block):
         write_block(start, values)
@@ -210,7 +324,12 @@ def _unwrap_word(entry: Any) -> int:
 
 
 def _get_word(mem: Any, index: int) -> int:
-    """Read a single word from ``mem[index]`` and unwrap to int."""
+    """Read a single word from ``mem[index]`` and unwrap to int.
+
+    Gated on ``mem.info`` access mode: a write-only mem raises
+    :class:`AccessError` BEFORE the bus call.
+    """
+    _check_mem_readable(mem)
     return _unwrap_word(mem[index])
 
 
@@ -232,7 +351,11 @@ def _set_word(mem: Any, index: int, value: int) -> None:
 
     Must not call ``mem[index] = ...`` directly on an *enhanced* class:
     that would re-enter the wrapper and recurse infinitely.
+
+    Gated on ``mem.info`` access mode: a read-only mem raises
+    :class:`AccessError` BEFORE the bus call.
     """
+    _check_mem_writable(mem)
     cls = type(mem)
     cls_setitem = cls.__dict__.get("__setitem__")
     if cls_setitem is not None and hasattr(cls_setitem, "__peakrdl_orig_setitem__"):
@@ -671,12 +794,19 @@ def _mem_array(self: Any, dtype: Any = None, copy: bool | None = None) -> NDArra
 def _mem_getitem(orig_getitem: Any) -> Any:
     """Wrap an existing ``__getitem__`` so slices return ``MemView`` and
     int access returns a plain word value (not the underlying entry).
+
+    The int-access path is gated on ``mem.info.access``: reading from a
+    write-only mem raises :class:`AccessError` BEFORE the bus call.
+    Slice access does *not* touch the bus (it just returns a live
+    ``MemView``), so taking a slice on a write-only mem is allowed; the
+    error fires later when the view is actually read.
     """
 
     def __getitem__(self: Any, index: int | slice) -> Any:
         if isinstance(index, slice):
             start, stop, _ = _normalize_slice(index, _depth(self))
             return MemView(self, start, stop)
+        _check_mem_readable(self)
         return _unwrap_word(orig_getitem(self, index))
 
     # Tag the wrapper so ``_raw_get`` / ``_set_word`` can reach the
@@ -686,7 +816,14 @@ def _mem_getitem(orig_getitem: Any) -> Any:
 
 
 def _mem_setitem(orig_setitem: Any) -> Any:
-    """Wrap an existing ``__setitem__`` so slice assignment is coalesced."""
+    """Wrap an existing ``__setitem__`` so slice assignment is coalesced.
+
+    Both the int and slice paths are gated on ``mem.info.access``:
+    writing to a read-only mem raises :class:`AccessError` BEFORE the
+    bus call. The slice path also goes through ``_write_block`` (which
+    re-checks), so the gate is symmetrically enforced regardless of
+    which entry point the user takes.
+    """
 
     def __setitem__(self: Any, index: int | slice, value: Any) -> None:
         if isinstance(index, slice):
@@ -695,6 +832,7 @@ def _mem_setitem(orig_setitem: Any) -> Any:
             values = view._broadcast(value, stop - start)
             _write_block(self, start, values)
             return
+        _check_mem_writable(self)
         if orig_setitem is not None:
             orig_setitem(self, index, value)
             return
