@@ -134,6 +134,17 @@ class Info:
     on_write: str | None = None  # "woclr" | "woset" | "wzc" | "wzs" | "wclr" | "wset" | "wuser" | None
     alias_kind: str | None = None  # "full" | "sw_view" | "hw_view" | "scrambled" | None
 
+    # Software-write-enable gate metadata. ``bool`` for a static True/False
+    # constant; ``str`` for a reference to a signal/field name; ``None``
+    # when unset. Surfaced as metadata only -- runtime users read
+    # ``info.swwe`` / ``info.swwel`` to know the register has a conditional
+    # gate (no enforcement happens here).
+    swwe: bool | str | None = None
+    swwel: bool | str | None = None  # inverted ``swwe``
+    # Hardware-side notification flags; pure metadata.
+    swacc: bool = False  # software-access notification
+    swmod: bool = False  # software-modification notification
+
     def __post_init__(self) -> None:
         # Upgrade a known raw-string ``access`` into the typed
         # :class:`AccessMode` enum while keeping unknown strings untouched.
@@ -298,6 +309,46 @@ def _extract_is_hw_writable(node: Any) -> bool:
     return bool(getattr(node, "is_hw_writable", False))
 
 
+def _coerce_signal_gate(value: Any) -> bool | str | None:
+    """Coerce a ``swwe``/``swwel`` RDL property value.
+
+    The RDL accessor may return:
+
+    * ``None`` -- the property is not set; pass through.
+    * A ``bool`` -- a static True/False gate; pass through.
+    * A signal-reference object (e.g. systemrdl ``SignalNode``) -- coerce
+      to its ``inst_name``/``name`` string.
+    * A plain string -- pass through.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value
+    # Signal reference: prefer ``inst_name`` (systemrdl SignalNode), then
+    # ``name``, then fall back to ``str()`` so we never raise.
+    for attr in ("inst_name", "name"):
+        candidate = getattr(value, attr, None)
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return str(value)
+
+
+def _extract_swwe(node: Any) -> bool | str | None:
+    return _coerce_signal_gate(_safe_get_property(node, "swwe"))
+
+
+def _extract_swwel(node: Any) -> bool | str | None:
+    return _coerce_signal_gate(_safe_get_property(node, "swwel"))
+
+
+def _extract_swacc(node: Any) -> bool:
+    return bool(_safe_get_property(node, "swacc", False))
+
+
+def _extract_swmod(node: Any) -> bool:
+    return bool(_safe_get_property(node, "swmod", False))
+
+
 def _extract_reset(node: Any) -> int | None:
     val = _safe_get_property(node, "reset")
     if isinstance(val, int):
@@ -418,6 +469,10 @@ def from_rdl_node(rdl_node: object | None) -> Info:
         on_read=_extract_on_read(rdl_node),
         on_write=_extract_on_write(rdl_node),
         alias_kind=_extract_alias_kind(rdl_node),
+        swwe=_extract_swwe(rdl_node),
+        swwel=_extract_swwel(rdl_node),
+        swacc=_extract_swacc(rdl_node),
+        swmod=_extract_swmod(rdl_node),
     )
 
 

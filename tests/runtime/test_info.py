@@ -53,6 +53,10 @@ def test_info_supports_bare_default_construction() -> None:
     assert info.on_read is None
     assert info.on_write is None
     assert info.alias_kind is None
+    assert info.swwe is None
+    assert info.swwel is None
+    assert info.swacc is False
+    assert info.swmod is False
 
 
 def test_info_is_a_dataclass_with_slots() -> None:
@@ -90,6 +94,10 @@ def test_info_exposes_all_documented_fields() -> None:
         "on_read",
         "on_write",
         "alias_kind",
+        "swwe",
+        "swwel",
+        "swacc",
+        "swmod",
     }
     actual = {f.name for f in fields(Info)}
     assert actual == expected
@@ -392,3 +400,149 @@ def test_info_hw_flags_extracted_from_rdl_stub() -> None:
     info = from_rdl_node(Stub())
     assert info.is_hw_readable is True
     assert info.is_hw_writable is False
+
+
+# ---------------------------------------------------------------------------
+# swwe / swwel / swacc / swmod field properties (sketch §8.3)
+# ---------------------------------------------------------------------------
+
+
+def test_info_swwe_swwel_swacc_swmod_default_values() -> None:
+    """Bare ``Info()`` defaults: ``None`` for swwe/swwel, ``False`` for swacc/swmod."""
+    info = Info()
+    assert info.swwe is None
+    assert info.swwel is None
+    assert info.swacc is False
+    assert info.swmod is False
+
+
+def test_info_swwe_explicit_bool_round_trips() -> None:
+    """A static True/False ``swwe`` is preserved as a bool."""
+    info_true = Info(swwe=True)
+    assert info_true.swwe is True
+    info_false = Info(swwe=False)
+    assert info_false.swwe is False
+
+
+def test_info_swwe_explicit_signal_name_round_trips() -> None:
+    """A string ``swwe`` (signal reference name) is preserved."""
+    info = Info(swwe="my_signal")
+    assert info.swwe == "my_signal"
+
+
+def test_info_swwel_explicit_construction_round_trips() -> None:
+    """``swwel`` behaves like ``swwe``: bool or str round-trips."""
+    assert Info(swwel=True).swwel is True
+    assert Info(swwel="enb_n").swwel == "enb_n"
+    assert Info(swwel=False).swwel is False
+
+
+def test_info_swacc_swmod_explicit_true_round_trips() -> None:
+    info = Info(swacc=True, swmod=True)
+    assert info.swacc is True
+    assert info.swmod is True
+
+
+def test_info_swwe_extracted_from_rdl_stub_bool() -> None:
+    """``swwe=True`` via ``get_property`` plumbs through as a bool."""
+
+    class Stub:
+        inst_name = "f"
+
+        def get_property(self, name: str, default: object = None) -> object:
+            if name == "swwe":
+                return True
+            return default
+
+    info = from_rdl_node(Stub())
+    assert info.swwe is True
+
+
+def test_info_swwe_extracted_from_rdl_stub_signal_ref() -> None:
+    """A SignalRef-like object with ``inst_name`` gets coerced to the name."""
+
+    class FakeSignal:
+        inst_name = "wr_en"
+
+    class Stub:
+        inst_name = "f"
+
+        def get_property(self, name: str, default: object = None) -> object:
+            if name == "swwe":
+                return FakeSignal()
+            return default
+
+    info = from_rdl_node(Stub())
+    assert info.swwe == "wr_en"
+
+
+def test_info_swwel_extracted_from_rdl_stub_signal_with_name_attr() -> None:
+    """A SignalRef-like object exposing only ``name`` is also coerced."""
+
+    class FakeSignal:
+        name = "wr_en_low"
+
+    class Stub:
+        inst_name = "f"
+
+        def get_property(self, name: str, default: object = None) -> object:
+            if name == "swwel":
+                return FakeSignal()
+            return default
+
+    info = from_rdl_node(Stub())
+    assert info.swwel == "wr_en_low"
+
+
+def test_info_swacc_swmod_extracted_from_rdl_stub() -> None:
+    """``swacc``/``swmod`` come through ``get_property`` as bools."""
+
+    class Stub:
+        inst_name = "f"
+
+        def get_property(self, name: str, default: object = None) -> object:
+            if name == "swacc":
+                return True
+            if name == "swmod":
+                return True
+            return default
+
+    info = from_rdl_node(Stub())
+    assert info.swacc is True
+    assert info.swmod is True
+
+
+def test_info_swwe_defaults_when_rdl_stub_omits_property() -> None:
+    """A stub that doesn't advertise the property leaves swwe/swwel as None."""
+
+    class Stub:
+        inst_name = "f"
+
+    info = from_rdl_node(Stub())
+    assert info.swwe is None
+    assert info.swwel is None
+    assert info.swacc is False
+    assert info.swmod is False
+
+
+@pytest.mark.parametrize(
+    "swwe,swwel,swacc,swmod",
+    [
+        (None, None, False, False),
+        (True, None, False, False),
+        (False, True, True, False),
+        ("sig_a", "sig_b", True, True),
+        (None, False, False, True),
+    ],
+)
+def test_info_repr_does_not_crash_for_swwe_swwel_swacc_swmod_combos(
+    swwe: bool | str | None,
+    swwel: bool | str | None,
+    swacc: bool,
+    swmod: bool,
+) -> None:
+    """``__repr__`` must render any combination without raising."""
+    info = Info(swwe=swwe, swwel=swwel, swacc=swacc, swmod=swmod)
+    text = repr(info)
+    assert isinstance(text, str)
+    assert "Info(" in text
