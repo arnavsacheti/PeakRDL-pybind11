@@ -483,3 +483,147 @@ class TestAttach:
             assert isinstance(watcher, widgets.Watcher)
         finally:
             watcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# tree() / dump()
+# ---------------------------------------------------------------------------
+class ReadableReg(FakeRegister):
+    """FakeRegister with a ``read(raw=True)``-compatible read method.
+
+    The base ``FakeRegister`` deliberately omits ``read`` so existing
+    rendering tests can exercise the destructive-read guard. The tree/
+    dump tests want a register that *does* read so ``dump(read=True)``
+    has something to format.
+    """
+
+    def __init__(self, *args: Any, raw_value: int = 0, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._raw_value = raw_value
+        self.regwidth = 32
+
+    def read(self, raw: bool = False) -> int:
+        return self._raw_value
+
+
+class RaisingReg(FakeRegister):
+    """Register whose ``read`` always raises — used to exercise <no-read>."""
+
+    def read(self, raw: bool = False) -> int:
+        raise RuntimeError("bus offline")
+
+
+class FakeSoC(FakeAddrMap):
+    """A small SoC root: ``FakeAddrMap`` already gives us declaration-order
+    children via ``vars()`` ordering when constructed with keyword args."""
+
+
+@pytest.fixture
+def small_soc() -> FakeSoC:
+    """SoC layout:
+
+        soc
+        ├─ uart  (AddrMap @ 0x40001000)
+        │   ├─ control  (Reg @ 0x40001000, value=0x00000042)
+        │   └─ status   (Reg @ 0x40001004, no readable value)
+        └─ ram   (Reg @ 0x40002000, value=0xdeadbeef)
+    """
+    enable = FakeField("enable", lsb=0, width=1, value=1)
+    control = ReadableReg(
+        name="control",
+        address=0x4000_1000,
+        fields=[enable],
+        raw_value=0x42,
+    )
+    status = RaisingReg(name="status", address=0x4000_1004, fields=[])
+    uart = FakeAddrMap(name="uart", address=0x4000_1000, control=control, status=status)
+    ram = ReadableReg(
+        name="ram",
+        address=0x4000_2000,
+        fields=[],
+        raw_value=0xDEAD_BEEF,
+    )
+    soc = FakeSoC(name="soc", address=0, uart=uart, ram=ram)
+    return soc
+
+
+class TestTreeAndDump:
+    def test_tree_returns_string_in_pre_order(self, small_soc: FakeSoC) -> None:
+        out = widgets.tree(small_soc)
+        lines = out.splitlines()
+        # Root + uart + control + status + ram = 5 rows.
+        assert len(lines) == 5
+        # Pre-order: root first, then uart subtree fully expanded
+        # before ram.
+        order = [next((tok for tok in line.split() if tok in {"soc", "uart", "control", "status", "ram"}), "") for line in lines]
+        assert order == ["soc", "uart", "control", "status", "ram"]
+
+    def test_tree_uses_box_drawing_chars(self, small_soc: FakeSoC) -> None:
+        out = widgets.tree(small_soc)
+        assert "├─" in out or "└─" in out
+        assert "│" in out
+
+    def test_tree_includes_addresses_and_kinds(self, small_soc: FakeSoC) -> None:
+        out = widgets.tree(small_soc)
+        assert "[AddrMap @ 0x40001000]" in out
+        assert "[Reg @ 0x40001000]" in out
+        assert "[Reg @ 0x40002000]" in out
+
+    def test_tree_max_depth_zero_returns_only_root(self, small_soc: FakeSoC) -> None:
+        out = widgets.tree(small_soc, max_depth=0)
+        assert len(out.splitlines()) == 1
+        assert "soc" in out
+
+    def test_tree_max_depth_one_truncates_grandchildren(self, small_soc: FakeSoC) -> None:
+        out = widgets.tree(small_soc, max_depth=1)
+        lines = out.splitlines()
+        # Root + uart + ram = 3 rows; control/status are at depth 2 and
+        # must be skipped.
+        assert len(lines) == 3
+        joined = "\n".join(lines)
+        assert "uart" in joined
+        assert "ram" in joined
+        assert "control" not in joined
+        assert "status" not in joined
+
+    def test_dump_with_read_false_equals_tree(self, small_soc: FakeSoC) -> None:
+        assert widgets.dump(small_soc, read=False) == widgets.tree(small_soc)
+
+    def test_dump_with_read_true_includes_hex_values(self, small_soc: FakeSoC) -> None:
+        out = widgets.dump(small_soc, read=True)
+        # 32-bit width → 8 hex digits.
+        assert "= 0x00000042" in out
+        assert "= 0xdeadbeef" in out
+
+    def test_dump_handles_raising_read_gracefully(self, small_soc: FakeSoC) -> None:
+        out = widgets.dump(small_soc, read=True)
+        # ``status`` raises on read but must not crash the dump.
+        assert "status" in out
+        assert "<no-read>" in out
+
+    def test_dump_handles_register_without_read_method(self) -> None:
+        # ``FakeRegister`` (the base) has no ``read`` method at all.
+        bare_reg = FakeRegister(name="bare", address=0x40005000, fields=[])
+        soc = FakeSoC(name="soc", address=0, bare=bare_reg)
+        out = widgets.dump(soc, read=True)
+        assert "<no-read>" in out
+
+    def test_tree_and_dump_attach_to_soc(self) -> None:
+        # Post-create hook should attach bound methods on plain Python
+        # objects via :func:`runtime._registry.fire_post_create_hooks`.
+        from peakrdl_pybind11.runtime._registry import fire_post_create_hooks
+
+        soc = FakeSoC(name="soc", address=0)
+        # Avoid ``Mock``-style hasattr false positives by setting None.
+        fire_post_create_hooks(soc)
+        assert callable(soc.tree)
+        assert callable(soc.dump)
+        # Bound methods should produce the same output as module funcs.
+        assert soc.tree() == widgets.tree(soc)
+        assert soc.dump(read=False) == widgets.dump(soc, read=False)
+
+    def test_module_exposes_tree_and_dump(self) -> None:
+        assert "tree" in widgets.__all__
+        assert "dump" in widgets.__all__
+        assert callable(widgets.tree)
+        assert callable(widgets.dump)

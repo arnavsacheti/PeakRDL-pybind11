@@ -35,6 +35,7 @@ from typing import Any, cast
 from ._registry import (
     SIDE_EFFECT_BADGES,
     register_master_extension,
+    register_post_create,
     register_register_enhancement,
 )
 
@@ -1011,11 +1012,272 @@ def _attach_to_soc(master: Any) -> None:
         attach_widgets(target)
 
 
+# ---------------------------------------------------------------------------
+# tree() / dump() — ASCII hierarchy renderers (§5 of the API sketch)
+# ---------------------------------------------------------------------------
+# Box-drawing characters used by the ASCII tree. Picked to match the
+# canonical ``tree(1)`` output so logs copy-paste cleanly into bug
+# reports and notebooks render them without surprises.
+_TREE_BRANCH = "├─ "
+_TREE_LAST = "└─ "
+_TREE_VERT = "│  "
+_TREE_GAP = "   "
+
+# Kind tags worth descending into. Fields are intentionally *not*
+# children for ``tree()`` — they live inside their parent register's
+# table repr; surfacing them as separate rows would balloon a SoC tree
+# from "the structure" into "every bit".
+_TREE_KINDS = {"reg", "regfile", "addrmap", "mem"}
+
+
+def _node_kind_label(node: Any) -> str:
+    """Render a short capitalised kind tag for the tree line.
+
+    The bracketed field on every tree row uses the same shape as the
+    sketch's ``<Reg uart[0].control @ 0x40001000>``: kind first, then
+    address. Keeping the label one of ``Reg``/``RegFile``/``AddrMap``/
+    ``Mem``/``Field``/``Node`` makes the output greppable.
+    """
+    kind = _node_kind(node)
+    return {
+        "reg": "Reg",
+        "regfile": "RegFile",
+        "addrmap": "AddrMap",
+        "mem": "Mem",
+        "field": "Field",
+    }.get(kind, "Node")
+
+
+def _ordered_children(node: Any) -> list[Any]:
+    """Return the direct children of ``node`` in declaration order.
+
+    ``_list_children`` uses ``dir()`` which sorts alphabetically. The
+    sketch promises "preserve sibling order", which for our test fakes
+    means the order attributes were assigned. ``vars(node)`` returns
+    dict-insertion order on every CPython version we target, so we
+    prefer that when the instance has a ``__dict__``; otherwise we fall
+    back to the alphabetical iterator.
+    """
+    seen: set[int] = set()
+    children: list[Any] = []
+    try:
+        items = vars(node).items()
+    except TypeError:
+        items = ()  # type: ignore[assignment]
+    for attr, value in items:
+        if attr.startswith("_") or value is node or callable(value):
+            continue
+        if id(value) in seen:
+            continue
+        kind = _node_kind(value)
+        if kind in _TREE_KINDS:
+            seen.add(id(value))
+            children.append(value)
+    if children:
+        return children
+    # Fallback for slotted / dynamic instances without ``__dict__``.
+    return _list_children(node)
+
+
+def _tree_line(node: Any, prefix: str, glyph: str, value: str | None = None) -> str:
+    """Render one row of the tree.
+
+    ``value`` is the optional ``= 0x…`` annotation for :func:`dump`.
+    Address is always shown when known so the user can cross-reference
+    the address map.
+    """
+    kind = _node_kind_label(node)
+    name = _node_path(node)
+    addr = _node_address(node)
+    if addr is None:
+        bracket = f"[{kind}]"
+    else:
+        bracket = f"[{kind} @ {_format_address(addr)}"
+        if value is not None:
+            bracket += f" = {value}"
+        bracket += "]"
+    return f"{prefix}{glyph}{name}  {bracket}"
+
+
+def _render_register_value(reg: Any) -> str:
+    """Best-effort read of ``reg`` for :func:`dump`.
+
+    Probe order matches the rest of the runtime:
+
+    1. ``reg.read(raw=True)`` — the fast path emitted by the bindings.
+    2. ``reg.read()`` — for stubs/older surfaces that lack ``raw``.
+    3. ``<no-read>`` — placeholder when neither call works.
+
+    Width preference goes to ``regwidth`` (bits → hex width); when
+    missing we default to 8 hex digits, matching the rest of widgets.
+    """
+    reader = getattr(reg, "read", None)
+    if not callable(reader):
+        return "<no-read>"
+    raw: Any = None
+    try:
+        raw = reader(raw=True)
+    except TypeError:
+        try:
+            raw = reader()
+        except Exception:
+            return "<no-read>"
+    except Exception:
+        return "<no-read>"
+    if raw is None:
+        return "<no-read>"
+    try:
+        value_int = int(raw)
+    except (TypeError, ValueError):
+        return str(raw)
+    width_bits = _field_attr(reg, "regwidth", "width", default=32)
+    try:
+        nibbles = max(2, int(width_bits) // 4)
+    except (TypeError, ValueError):
+        nibbles = 8
+    return f"0x{value_int:0{nibbles}x}"
+
+
+def _walk_tree(
+    node: Any,
+    prefix: str,
+    is_last: bool,
+    depth: int,
+    max_depth: int | None,
+    read_values: bool,
+    lines: list[str],
+    is_root: bool,
+) -> None:
+    """Recursive worker for :func:`tree` / :func:`dump`.
+
+    Depth semantics: the root is at depth 0; ``max_depth=1`` therefore
+    shows the root *and* its direct children. ``max_depth=None`` means
+    unlimited.
+    """
+    if is_root:
+        value = _render_register_value(node) if read_values and _node_kind(node) == "reg" else None
+        lines.append(_tree_line(node, "", "", value))
+        child_prefix = ""
+    else:
+        glyph = _TREE_LAST if is_last else _TREE_BRANCH
+        value = _render_register_value(node) if read_values and _node_kind(node) == "reg" else None
+        lines.append(_tree_line(node, prefix, glyph, value))
+        child_prefix = prefix + (_TREE_GAP if is_last else _TREE_VERT)
+
+    if max_depth is not None and depth >= max_depth:
+        return
+
+    # Registers are leaves for the tree view — their fields appear in
+    # the per-register HTML/pretty repr, not as separate tree rows.
+    if _node_kind(node) == "reg":
+        return
+
+    children = _ordered_children(node)
+    for idx, child in enumerate(children):
+        _walk_tree(
+            child,
+            child_prefix,
+            idx == len(children) - 1,
+            depth + 1,
+            max_depth,
+            read_values,
+            lines,
+            is_root=False,
+        )
+
+
+def tree(node: Any, max_depth: int | None = None) -> str:
+    """Return an ASCII tree of ``node``'s hierarchy.
+
+    Each row is ``<indent>├─ <path>  [<Kind> @ <addr>]`` — the bracketed
+    suffix omits the address when the node doesn't expose one. No bus
+    reads are performed; the call is safe to issue on a fresh SoC
+    against any master (or none at all).
+
+    Args:
+        node: Any SoC/AddrMap/RegFile/Reg/Mem.
+        max_depth: Maximum descent depth. ``None`` (default) means
+            unlimited; ``0`` shows just ``node``; ``1`` shows ``node``
+            plus its direct children, and so on.
+    """
+    lines: list[str] = []
+    _walk_tree(
+        node,
+        prefix="",
+        is_last=True,
+        depth=0,
+        max_depth=max_depth,
+        read_values=False,
+        lines=lines,
+        is_root=True,
+    )
+    return "\n".join(lines)
+
+
+def dump(node: Any, read: bool = True) -> str:
+    """Return a full register dump rooted at ``node``.
+
+    With ``read=True`` (default), every register in the subtree is read
+    via the fast ``read(raw=True)`` path; the value is rendered as
+    ``[Reg @ 0x40000004 = 0x00000042]`` on the matching tree row.
+    Registers without a callable ``read`` (or whose read raises) render
+    as ``<no-read>`` so a partial bring-up never crashes the dump.
+
+    With ``read=False`` the result is byte-identical to :func:`tree`.
+    """
+    if not read:
+        return tree(node)
+    lines: list[str] = []
+    _walk_tree(
+        node,
+        prefix="",
+        is_last=True,
+        depth=0,
+        max_depth=None,
+        read_values=True,
+        lines=lines,
+        is_root=True,
+    )
+    return "\n".join(lines)
+
+
+@register_post_create
+def _attach_tree_dump_to_soc(soc: Any) -> None:
+    """Attach ``soc.tree()`` and ``soc.dump()`` after creation.
+
+    Mirrors the pattern in ``runtime/transactions.py`` for ``batch()``.
+    pybind11 SoC classes without ``py::dynamic_attr()`` reject the
+    ``setattr`` and we silently skip — matching the rest of the registry
+    chain. Already-bound methods are preserved so a generated runtime
+    can ship its own implementation without us stomping on it.
+    """
+
+    def _bound_tree(max_depth: int | None = None) -> str:
+        return tree(soc, max_depth=max_depth)
+
+    def _bound_dump(read: bool = True) -> str:
+        return dump(soc, read=read)
+
+    if not (hasattr(soc, "tree") and callable(getattr(soc, "tree", None))):
+        try:
+            soc.tree = _bound_tree  # type: ignore[attr-defined]
+        except (AttributeError, TypeError):
+            pass
+
+    if not (hasattr(soc, "dump") and callable(getattr(soc, "dump", None))):
+        try:
+            soc.dump = _bound_dump  # type: ignore[attr-defined]
+        except (AttributeError, TypeError):
+            pass
+
+
 __all__ = [
     "NotSupportedError",
     "Watcher",
     "attach_widgets",
+    "dump",
     "render_html",
     "render_pretty",
+    "tree",
     "watch",
 ]
