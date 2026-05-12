@@ -30,7 +30,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 from types import TracebackType
-from typing import IO, Any, Literal, TypedDict, Union
+from typing import IO, Any, Literal, TypedDict
 
 from .base import AccessOp, MasterBase
 
@@ -55,7 +55,7 @@ __all__ = [
 # Profiling against ``wrap_master(PyMockMaster())`` shows per-event flush
 # costs ~6.7 us/op on top of the bus op itself; ``"never"`` collapses
 # that to the in-memory cost (~0.5 us) and ``N=100`` lands in between.
-FlushPolicy = Union[Literal["event", "never"], int]
+FlushPolicy = Literal["event", "never"] | int
 
 
 class Event(TypedDict):
@@ -148,16 +148,9 @@ class RecordingMaster(MasterBase):
         # raises at construction, not silently after the first op.
         # ``isinstance(flush, int) and not isinstance(flush, bool)``
         # excludes True/False, which would otherwise sneak through as 1/0.
-        is_pos_int = (
-            isinstance(flush, int)
-            and not isinstance(flush, bool)
-            and flush >= 1
-        )
+        is_pos_int = isinstance(flush, int) and not isinstance(flush, bool) and flush >= 1
         if flush not in ("event", "never") and not is_pos_int:
-            raise ValueError(
-                f"flush must be 'event', 'never', or a positive int; "
-                f"got {flush!r}"
-            )
+            raise ValueError(f"flush must be 'event', 'never', or a positive int; got {flush!r}")
         self._flush_policy: FlushPolicy = flush
         self._events_since_flush = 0
         if file is not None:

@@ -42,9 +42,9 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 
 from . import _registry
 from .errors import NotSupportedError
@@ -292,10 +292,10 @@ def _iter_cacheable_registers(soc: Any) -> Iterator[Any]:
     walk = getattr(soc, "walk", None)
     if callable(walk):
         try:
-            seq = walk(kind="reg")
+            seq: Iterable[Any] = cast("Iterable[Any]", walk(kind="reg"))
         except TypeError:
             # Some walkers don't accept ``kind=``; fall back to unfiltered.
-            seq = walk()
+            seq = cast("Iterable[Any]", walk())
         for node in seq:
             if hasattr(node, "cache_for") and is_cacheable(node):
                 yield node

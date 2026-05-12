@@ -41,7 +41,7 @@ import fnmatch
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from ..masters.base import AccessOp
@@ -490,7 +490,9 @@ def _walk(node: Any, *, kind: str | None = None) -> Iterator[Any]:
         and not getattr(walk_fn, "__peakrdl_discovery_walk__", False)
     ):
         try:
-            seq = list(walk_fn())
+            from collections.abc import Iterable as _Iterable
+
+            seq: list[Any] = list(cast("_Iterable[Any]", walk_fn()))
         except (TypeError, AttributeError):
             seq = []
         if not seq or seq[0] is not node:
@@ -804,12 +806,14 @@ def attach_discovery(soc: Any) -> None:
     """
 
     if not hasattr(soc, "find") or not callable(getattr(soc, "find", None)):
+
         def _bound_find(addr: int) -> Any | None:
             return _find_by_addr(soc, addr)
 
         _try_setattr(soc, "find", _bound_find)
 
     if not hasattr(soc, "find_by_name") or not callable(getattr(soc, "find_by_name", None)):
+
         def _bound_find_by_name(name: str) -> list:
             return _find_by_name(soc, name)
 

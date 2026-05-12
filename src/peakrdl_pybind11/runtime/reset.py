@@ -39,7 +39,7 @@ from __future__ import annotations
 import logging
 import types
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger("peakrdl_pybind11.runtime.reset")
 
@@ -141,7 +141,7 @@ def is_at_reset(reg: Any) -> bool:
         # The bound read may not accept ``raw=`` on hand-rolled mocks; fall
         # back to a plain ``read()`` and coerce to int.
         actual = read()
-    return int(actual) == int(expected)
+    return int(cast(int, actual)) == int(expected)
 
 
 def _attach_reset_accessors(cls: type, metadata: dict) -> None:
@@ -260,7 +260,9 @@ def _walk_subtree(root: Any) -> Iterator[Any]:
     walk_fn = getattr(root, "walk", None)
     if callable(walk_fn) and not getattr(walk_fn, "__peakrdl_discovery_walk__", False):
         try:
-            seq = list(walk_fn())
+            from collections.abc import Iterable
+
+            seq: list[Any] = list(cast("Iterable[Any]", walk_fn()))
         except (TypeError, AttributeError):
             seq = []
         if seq:

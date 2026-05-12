@@ -1111,26 +1111,26 @@ def _render_register_value(reg: Any) -> str:
     Width preference goes to ``regwidth`` (bits → hex width); when
     missing we default to 8 hex digits, matching the rest of widgets.
     """
-    reader = getattr(reg, "read", None)
+    reader: Any = getattr(reg, "read", None)
     if not callable(reader):
         return "<no-read>"
-    raw: Any = None
+    raw_value: Any = None
     try:
-        raw = reader(raw=True)
+        raw_value = reader(raw=True)
     except TypeError:
         try:
-            raw = reader()
+            raw_value = reader()
         except Exception:
             return "<no-read>"
     except Exception:
         return "<no-read>"
-    if raw is None:
+    if raw_value is None:
         return "<no-read>"
     try:
-        value_int = int(raw)
+        value_int = int(cast(int, raw_value))
     except (TypeError, ValueError):
-        return str(raw)
-    width_bits = _field_attr(reg, "regwidth", "width", default=32)
+        return str(raw_value)
+    width_bits: Any = _field_attr(reg, "regwidth", "width", default=32)
     try:
         nibbles = max(2, int(width_bits) // 4)
     except (TypeError, ValueError):
