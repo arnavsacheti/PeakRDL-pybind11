@@ -497,3 +497,234 @@ def test_attach_router_no_op_when_soc_lacks_attach_master() -> None:
     # Should not raise, should not set anything on the SoC.
     attach_router(soc)
     assert not hasattr(soc, "attach_master")
+
+
+# ---------------------------------------------------------------------------
+# Discovery API (§4.2): soc.find, soc.find_by_name, soc.walk
+# ---------------------------------------------------------------------------
+#
+# These tests build a hand-rolled SoC tree that deliberately does NOT
+# implement ``.walk()`` — so the duck-typed vars() traversal in
+# ``_walk`` is the path under test. Registers expose ``read``/``write``
+# callables and an ``.offset`` (per the task spec); fields expose
+# ``.lsb`` and ``.bits``.
+# ---------------------------------------------------------------------------
+class _DiscField:
+    def __init__(self, name: str, lsb: int, width: int = 1) -> None:
+        self.name = name
+        self.lsb = lsb
+        self.bits = (lsb, lsb + width - 1)
+
+    # No read/write methods on fields — the duck-typed classifier needs
+    # `bits`/`lsb` to dominate over `read`/`write` so a field that
+    # also exposes typed accessors wouldn't be misclassified. Bare
+    # fields here keep that boundary clear.
+
+
+class _DiscReg:
+    def __init__(self, name: str, offset: int, fields: dict) -> None:
+        self.name = name
+        self.offset = offset
+        for fname, fobj in fields.items():
+            setattr(self, fname, fobj)
+
+    def read(self) -> int:  # noqa: D401 — duck-typed marker
+        return 0
+
+    def write(self, value: int) -> None:  # noqa: D401 — duck-typed marker
+        return None
+
+
+class _DiscUart:
+    def __init__(self) -> None:
+        self.name = "uart"
+        self.intr_state = _DiscReg(
+            "intr_state",
+            offset=0x10,
+            fields={
+                "tx_ready": _DiscField("tx_ready", 0),
+                "rx_ready": _DiscField("rx_ready", 1),
+            },
+        )
+        self.ctrl = _DiscReg(
+            "ctrl",
+            offset=0x14,
+            fields={
+                "enable": _DiscField("enable", 0),
+            },
+        )
+
+
+class _DiscSoC:
+    """Hand-rolled SoC fake for discovery tests.
+
+    Deliberately omits ``.walk()`` so the discovery API exercises the
+    duck-typed ``vars()`` traversal rather than the protocol fast-path.
+    """
+
+    def __init__(self) -> None:
+        self.name = "soc"
+        self.uart = _DiscUart()
+
+
+def test_attach_discovery_attaches_three_methods() -> None:
+    """After the post-create hook fires, all three methods are present."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+    assert callable(soc.find)
+    assert callable(soc.find_by_name)
+    assert callable(soc.walk)
+
+
+def test_walk_yields_pre_order_sequence() -> None:
+    """``soc.walk()`` yields the root, then descends in declaration order."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+
+    walked = list(soc.walk())
+    # Pre-order: soc, uart, intr_state, tx_ready, rx_ready, ctrl, enable.
+    names = [getattr(n, "name", type(n).__name__) for n in walked]
+    assert names == [
+        "soc",
+        "uart",
+        "intr_state",
+        "tx_ready",
+        "rx_ready",
+        "ctrl",
+        "enable",
+    ]
+
+
+def test_walk_kind_reg_filters_to_registers_only() -> None:
+    """``walk(kind="reg")`` yields only register nodes."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+
+    regs = list(soc.walk(kind="reg"))
+    names = [getattr(n, "name", type(n).__name__) for n in regs]
+    assert names == ["intr_state", "ctrl"]
+    # And every yielded value really is a _DiscReg.
+    assert all(isinstance(r, _DiscReg) for r in regs)
+
+
+def test_walk_kind_field_filters_to_fields_only() -> None:
+    """``walk(kind="field")`` yields only field nodes."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+
+    fields = list(soc.walk(kind="field"))
+    names = [getattr(n, "name", type(n).__name__) for n in fields]
+    assert names == ["tx_ready", "rx_ready", "enable"]
+
+
+def test_find_by_addr_returns_matching_register() -> None:
+    """``soc.find(addr)`` returns the register whose ``.offset == addr``."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+
+    found = soc.find(0x10)
+    assert found is soc.uart.intr_state
+    assert found.offset == 0x10
+
+    found2 = soc.find(0x14)
+    assert found2 is soc.uart.ctrl
+
+
+def test_find_by_addr_returns_none_when_no_match() -> None:
+    """``soc.find(addr)`` with no matching register returns ``None``."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+    assert soc.find(0xDEAD_BEEF) is None
+
+
+def test_find_by_name_case_insensitive_substring() -> None:
+    """``find_by_name`` is case-insensitive and matches substrings."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+
+    # Exact lowercase.
+    matches = soc.find_by_name("intr_state")
+    assert len(matches) == 1
+    assert matches[0] is soc.uart.intr_state
+
+    # Uppercase / mixed case still matches.
+    matches_upper = soc.find_by_name("INTR_STATE")
+    assert len(matches_upper) == 1
+    assert matches_upper[0] is soc.uart.intr_state
+
+    # Substring: "ready" matches both tx_ready and rx_ready.
+    ready_matches = soc.find_by_name("ready")
+    names = [m.name for m in ready_matches]
+    assert names == ["tx_ready", "rx_ready"]
+
+
+def test_find_by_name_returns_empty_list_on_no_match() -> None:
+    """``find_by_name`` returns an empty list (never None) when nothing hits."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+    result = soc.find_by_name("nonexistent_register")
+    assert result == []
+    assert isinstance(result, list)
+
+
+def test_attach_discovery_is_registered_as_post_create_hook() -> None:
+    """``attach_discovery`` is wired into the post-create registry."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    hooks = _registry.get_post_create_hooks()
+    assert attach_discovery in hooks
+
+
+def test_attach_discovery_is_idempotent() -> None:
+    """Calling the hook twice does not replace existing bound methods."""
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = _DiscSoC()
+    attach_discovery(soc)
+    first_find = soc.find
+    attach_discovery(soc)
+    assert soc.find is first_find
+
+
+def test_attach_discovery_no_op_on_slotted_soc() -> None:
+    """SoCs that reject ``setattr`` (slotted/pybind11) don't crash the hook."""
+
+    class Slotted:
+        __slots__ = ("name",)
+
+        def __init__(self) -> None:
+            self.name = "slotted"
+
+    from peakrdl_pybind11.runtime.routing import attach_discovery
+
+    soc = Slotted()
+    # Must not raise.
+    attach_discovery(soc)
+    # Slotted class rejects setattr for unknown names.
+    assert not hasattr(soc, "find")

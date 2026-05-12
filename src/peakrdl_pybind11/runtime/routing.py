@@ -355,30 +355,193 @@ class Router:
 # ----------------------------------------------------------------------
 # Tree walking helpers
 # ----------------------------------------------------------------------
-def _walk(node: NodeLike) -> Iterator[NodeLike]:
-    """Yield every node in ``node.walk()``, plus the root if missing.
 
-    The :class:`NodeLike` contract says ``walk()`` yields ``self`` then
-    descendants, but real generated trees may eventually choose either
-    convention. We materialise the iterable, prepend the root if it's
-    not already first, and de-duplicate by ``id`` so callers are robust
-    to either shape.
+# Attribute names that signal a child is a "container" (regfile / addrmap /
+# mem) worth descending into when ``vars(node)`` is enumerated. Duck typing
+# only — we avoid importing the generated C++ classes from this module so
+# the runtime stays decoupled from the per-SoC bindings.
+_CHILD_ATTR_HINTS = ("read", "write", "bits", "lsb", "offset", "info")
+
+
+def _kind_for(node: Any) -> str:
+    """Coarse classification of ``node``. Returns one of:
+
+    ``"Field"`` — has ``bits`` or ``lsb`` (and no ``read``/``write``).
+    ``"Reg"``   — has ``read`` and ``write`` callables (and is not a field).
+    ``"Mem"``   — type name contains ``"mem"`` (case-insensitive substring).
+    ``"RegFile"``/``"AddrMap"`` — type name contains those tokens.
+    ``""`` otherwise.
+    """
+
+    if node is None:
+        return ""
+    cls_name = type(node).__name__.lower()
+    # Fields: bits/lsb take precedence over read/write because some
+    # generated field types also expose a ``read()`` for typed readback.
+    has_bits = hasattr(node, "bits") or hasattr(node, "lsb")
+    has_rw = callable(getattr(node, "read", None)) and callable(getattr(node, "write", None))
+    if has_bits and not has_rw:
+        return "Field"
+    if "field" in cls_name:
+        return "Field"
+    if has_rw and not has_bits:
+        return "Reg"
+    if "reg" in cls_name and "regfile" not in cls_name:
+        return "Reg"
+    if "mem" in cls_name:
+        return "Mem"
+    if "regfile" in cls_name:
+        return "RegFile"
+    if "addrmap" in cls_name or "soc" in cls_name:
+        return "AddrMap"
+    return ""
+
+
+def _looks_like_child(value: Any) -> bool:
+    """Duck-typed check: is ``value`` a node we should descend into?
+
+    Two recognition paths:
+
+    1. *Leaf* nodes (registers/fields) expose at least one of the hint
+       attributes from :data:`_CHILD_ATTR_HINTS` (``read``/``write`` for
+       registers, ``bits``/``lsb`` for fields, etc.).
+    2. *Container* nodes (regfiles/addrmaps/mems) have no hint attribute
+       themselves but their ``__dict__`` contains at least one
+       node-like child. We detect them by inspecting ``vars(value)`` and
+       recursing one level — bounded recursion, since a container has
+       to bottom out at leaves to be useful.
+    """
+
+    if value is None or isinstance(value, (str, bytes, int, float, bool)):
+        return False
+    if isinstance(value, (list, tuple, dict, set, frozenset)):
+        return False
+    if callable(value) and not hasattr(value, "__dict__"):
+        return False
+    # Path 1: leaf-style node with a recognised hint attribute.
+    if any(hasattr(value, attr) for attr in _CHILD_ATTR_HINTS):
+        return True
+    # Path 2: container-style node — has its own ``__dict__`` and at
+    # least one nested attribute that itself exposes a hint attribute.
+    try:
+        nested = vars(value)
+    except TypeError:
+        return False
+    for child_name, child in nested.items():
+        if child_name.startswith("_"):
+            continue
+        if child is value:
+            continue
+        if any(hasattr(child, attr) for attr in _CHILD_ATTR_HINTS):
+            return True
+    return False
+
+
+def _iter_children(node: Any) -> Iterator[Any]:
+    """Yield duck-typed child nodes of ``node`` in deterministic order.
+
+    Iterates ``vars(node)`` (the instance ``__dict__``) and filters out
+    private members, the parent back-pointer, the bus master, and any
+    non-node-like values. Order matches insertion order in the dict —
+    on CPython 3.7+ that's deterministic per construction.
     """
 
     try:
-        seq = list(node.walk())
-    except (AttributeError, TypeError):
-        seq = []
-    if not seq or seq[0] is not node:
-        seq.insert(0, node)
-
-    seen: set[int] = set()
-    for n in seq:
-        key = id(n)
-        if key in seen:
+        items = vars(node)
+    except TypeError:
+        return
+    for name, value in items.items():
+        if name.startswith("_"):
             continue
-        seen.add(key)
-        yield n
+        if name in ("parent", "master", "info"):
+            continue
+        if value is node:
+            continue
+        if _looks_like_child(value):
+            yield value
+
+
+def _walk(node: Any, *, kind: str | None = None) -> Iterator[Any]:
+    """Pre-order traversal of the SoC tree rooted at ``node``.
+
+    Two modes:
+
+    * If ``node.walk()`` exists, use it. This preserves the existing
+      :class:`NodeLike` Protocol contract (FakeNodes in router tests
+      implement ``.walk()`` directly) and lets generated trees pick
+      whichever shape they prefer.
+    * Otherwise fall back to a duck-typed pre-order traversal over
+      ``vars(node)``. This is what the discovery API uses against real
+      pybind11 SoCs which don't ship a ``.walk()`` method.
+
+    The optional ``kind`` filter accepts a string token (case-insensitive
+    substring match against either :func:`_kind_for` or the node's class
+    name, e.g. ``"Reg"`` matches a generated ``uart_control_t``). Nodes
+    that don't match the filter are skipped but their children are still
+    traversed — a containing ``AddrMap`` shouldn't hide its registers.
+    """
+
+    walk_fn = getattr(node, "walk", None)
+    # Skip the bound ``walk`` we install ourselves (post-create hook):
+    # calling it would recurse straight back into _walk on the same node.
+    if (
+        walk_fn is not None
+        and callable(walk_fn)
+        and not getattr(walk_fn, "__peakrdl_discovery_walk__", False)
+    ):
+        try:
+            seq = list(walk_fn())
+        except (TypeError, AttributeError):
+            seq = []
+        if not seq or seq[0] is not node:
+            seq.insert(0, node)
+        seen: set[int] = set()
+        for n in seq:
+            key = id(n)
+            if key in seen:
+                continue
+            seen.add(key)
+            if _matches_kind(n, kind):
+                yield n
+        return
+
+    # Duck-typed fallback: pre-order DFS over vars() with a visited set
+    # so cycles (back-pointers we somehow let through the filter) don't
+    # loop forever.
+    visited: set[int] = set()
+    stack: list[Any] = [node]
+    while stack:
+        cur = stack.pop()
+        key = id(cur)
+        if key in visited:
+            continue
+        visited.add(key)
+        if _matches_kind(cur, kind):
+            yield cur
+        # Push children in reverse so pre-order DFS keeps the natural
+        # left-to-right traversal order users see when reading vars().
+        children = list(_iter_children(cur))
+        for child in reversed(children):
+            stack.append(child)
+
+
+def _matches_kind(node: Any, kind: str | None) -> bool:
+    """``True`` if ``node`` matches the ``kind`` filter token.
+
+    Empty / None filter matches everything. Otherwise compares the token
+    (case-insensitive) against both the duck-typed classification from
+    :func:`_kind_for` and the node's class name — so ``kind="reg"``
+    catches a duck-typed ``"Reg"`` and a generated ``uart_control_reg_t``.
+    """
+
+    if not kind:
+        return True
+    token = kind.lower()
+    duck = _kind_for(node).lower()
+    if duck and token in duck:
+        return True
+    cls_name = type(node).__name__.lower()
+    return token in cls_name
 
 
 def _node_range(node: NodeLike) -> _Range | None:
@@ -544,6 +707,124 @@ def attach_router(soc: Any) -> None:
 
 
 # ----------------------------------------------------------------------
+# Discovery API (sketch §4.2): soc.find(addr), soc.find_by_name(name),
+# soc.walk(kind=...).
+#
+# All three are exposed as bound methods on the SoC via the post-create
+# registry seam (mirroring ``transactions._attach_batch_to_soc``). The
+# free functions below are the real implementations; the seam just
+# closes a Python closure over the SoC and attaches it. Stays decoupled
+# from the C++ classes — we duck-type the tree.
+# ----------------------------------------------------------------------
+
+
+def _find_by_addr(soc: Any, addr: int) -> Any | None:
+    """Return the first register in ``soc`` whose ``.offset == addr``.
+
+    Walks the tree pre-order and returns the *first* node that both
+    duck-types as a register and exposes a matching ``.offset``. Returns
+    ``None`` if no match is found. Address matching is exact; callers
+    that need range-based lookup should use the :class:`Router`
+    machinery instead.
+    """
+
+    target = int(addr)
+    for node in _walk(soc):
+        if _kind_for(node) != "Reg":
+            continue
+        offset = getattr(node, "offset", None)
+        if offset is None:
+            continue
+        try:
+            if int(offset) == target:
+                return node
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _find_by_name(soc: Any, name: str) -> list:
+    """Return every node in ``soc`` whose ``.name`` matches ``name``.
+
+    Case-insensitive substring match against ``node.name`` (falls back
+    to ``type(node).__name__`` if the instance has no ``name`` attr).
+    Returns a list (possibly empty) — never raises, never returns
+    ``None``. Order matches the pre-order traversal so callers can
+    treat ``result[0]`` as the first match when they expect a unique
+    hit.
+    """
+
+    needle = (name or "").lower()
+    if not needle:
+        return []
+    matches: list[Any] = []
+    for node in _walk(soc):
+        node_name = getattr(node, "name", None)
+        if not isinstance(node_name, str):
+            continue
+        if needle in node_name.lower():
+            matches.append(node)
+    return matches
+
+
+def _bound_walk(soc: Any) -> Callable[..., Iterator[Any]]:
+    """Build a bound ``walk(kind=None)`` callable closed over ``soc``."""
+
+    def walk(kind: str | None = None) -> Iterator[Any]:
+        return _walk(soc, kind=kind)
+
+    # Marker so ``_walk`` doesn't recurse into its own bound wrapper
+    # when it discovers ``soc.walk`` via getattr().
+    walk.__peakrdl_discovery_walk__ = True  # type: ignore[attr-defined]
+    return walk
+
+
+def _try_setattr(obj: Any, name: str, value: Any) -> None:
+    """``setattr`` that swallows the rejection from pybind11 classes.
+
+    pybind11 classes without ``py::dynamic_attr()`` raise
+    :class:`AttributeError` (or :class:`TypeError`) on ``setattr``; we
+    treat that as "nothing to attach here" so the registry hook stays a
+    no-op for raw C++ SoC objects.
+    """
+
+    try:
+        setattr(obj, name, value)
+    except (AttributeError, TypeError):
+        pass
+
+
+def attach_discovery(soc: Any) -> None:
+    """Attach ``find`` / ``find_by_name`` / ``walk`` bound methods to ``soc``.
+
+    Idempotent: if the SoC already exposes any of the three callables
+    (set previously, or natively provided by the generated class), the
+    existing implementation is left alone. Best-effort: failures to
+    ``setattr`` on a slotted/pybind11 SoC are swallowed silently.
+    """
+
+    if not hasattr(soc, "find") or not callable(getattr(soc, "find", None)):
+        def _bound_find(addr: int) -> Any | None:
+            return _find_by_addr(soc, addr)
+
+        _try_setattr(soc, "find", _bound_find)
+
+    if not hasattr(soc, "find_by_name") or not callable(getattr(soc, "find_by_name", None)):
+        def _bound_find_by_name(name: str) -> list:
+            return _find_by_name(soc, name)
+
+        _try_setattr(soc, "find_by_name", _bound_find_by_name)
+
+    # ``walk`` is a little trickier — Router's NodeLike protocol declares
+    # ``walk()`` (no kwargs), and FakeNode in our existing tests already
+    # implements it. We only attach the discovery flavor if no such
+    # method is already present. If the SoC already has ``walk``, we
+    # respect it.
+    if not hasattr(soc, "walk") or not callable(getattr(soc, "walk", None)):
+        _try_setattr(soc, "walk", _bound_walk(soc))
+
+
+# ----------------------------------------------------------------------
 # Registry wiring (sibling-dep: Unit 1's runtime/_registry).
 #
 # When the registry seam is present we register :func:`attach_router`
@@ -561,3 +842,4 @@ except ImportError:
 
 if _registry is not None and hasattr(_registry, "register_post_create"):
     _registry.register_post_create(attach_router)
+    _registry.register_post_create(attach_discovery)
