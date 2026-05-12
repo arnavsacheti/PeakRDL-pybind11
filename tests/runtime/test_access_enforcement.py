@@ -357,3 +357,43 @@ def test_register_shim_write_fields_uses_access_error_for_non_writable() -> None
     msg = str(exc_info.value)
     assert "locked" in msg
     assert "sw=r" in msg  # readable defaults to True, writable=False → "r"
+
+
+def test_register_shim_write_fields_unknown_field_raises_attribute_error() -> None:
+    """Per sketch §19, an unknown field name in ``write_fields`` /
+    ``modify(**kwargs)`` raises :class:`AttributeError` (not ``KeyError``)
+    with a did-you-mean suggestion when a similar real field exists.
+
+    Mirrors attribute-style access elsewhere in the API surface; the
+    ``RegisterValue.replace`` path keeps its ``KeyError`` because it's
+    subscript-style mutation. The exception message must include the
+    misspelled name and, when a close match exists, point at it.
+    """
+
+    class MockRegister(_MockRegisterNative):
+        def write_fields(self, mask: int, value: int) -> None:  # type: ignore[override]
+            pass  # pragma: no cover - not exercised on the error path
+
+    metadata = {
+        "fields": {"data": (0, 8), "locked": (8, 8)},
+        "writable": {"data": True, "locked": True},
+        "name": "reg",
+    }
+    _default_register_shim(MockRegister, metadata)
+
+    instance = MockRegister()
+
+    # Bogus name with no close match → ``AttributeError`` is raised and
+    # the message includes the bad name.
+    with pytest.raises(AttributeError) as exc_info:
+        instance.write_fields(definitely_not_a_field=1)
+    msg = str(exc_info.value)
+    assert "definitely_not_a_field" in msg
+
+    # Near-typo of a real field → message must include a did-you-mean
+    # pointing at the actual field name.
+    with pytest.raises(AttributeError) as typo_info:
+        instance.write_fields(dat=1)  # close enough to "data" for difflib
+    typo_msg = str(typo_info.value)
+    assert "dat" in typo_msg
+    assert "data" in typo_msg  # did-you-mean suggestion surfaces the real field

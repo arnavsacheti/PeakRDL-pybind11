@@ -25,7 +25,7 @@ from collections.abc import Callable
 from typing import Any
 
 from . import _registry
-from .errors import AccessError
+from .errors import AccessError, did_you_mean
 from .values import FieldValue, RegisterValue, _normalize_field_meta
 
 logger = logging.getLogger("peakrdl_pybind11.runtime.default_shims")
@@ -233,8 +233,18 @@ def _make_write_fields(
         for name, raw_value in kwargs.items():
             spec = fields_spec.get(name)
             if spec is None:
-                raise KeyError(
-                    f"Unknown field '{name}' on register '{self.name}'. Known fields: {sorted(fields_spec)}"
+                # Per sketch §19 matrix: an unknown field name passed to
+                # ``modify(**kwargs)`` (which routes through this shim)
+                # surfaces as ``AttributeError`` with a did-you-mean
+                # suggestion — mirrors attribute-style access elsewhere
+                # in the API and is the canonical "you typo'd a name"
+                # exception. The legacy ``KeyError`` path lives only on
+                # ``RegisterValue.replace`` (subscript-style mutation).
+                suggestion = did_you_mean(name, fields_spec.keys())
+                hint = f"; did you mean {suggestion!r}?" if suggestion else ""
+                raise AttributeError(
+                    f"Unknown field {name!r} on register {self.name!r}. "
+                    f"Known fields: {sorted(fields_spec)}{hint}"
                 )
             if not writable_spec.get(name, False):
                 # Build a node_path consistent with per-field errors:

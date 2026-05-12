@@ -106,7 +106,7 @@ class TestWriteFields:
         # +1 read for verification.
         assert int(soc.reg_multi.read()) == expected
 
-    def test_unknown_field_raises_key_error(self, tmpdir):
+    def test_unknown_field_raises_attribute_error(self, tmpdir):
         soc_module = _build_module(tmpdir)
         if soc_module is None:
             pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
@@ -114,7 +114,10 @@ class TestWriteFields:
         soc = soc_module.create()
         soc.attach_master(soc_module.MockMaster())
 
-        with pytest.raises(KeyError):
+        # Per sketch §19, unknown field names in ``write_fields`` /
+        # ``modify(**kwargs)`` surface as ``AttributeError`` (with a
+        # did-you-mean hint), not ``KeyError``.
+        with pytest.raises(AttributeError):
             soc.reg_multi.write_fields(field_a=1, nonexistent=2)
 
     def test_read_only_field_raises_permission_error(self, tmpdir):
