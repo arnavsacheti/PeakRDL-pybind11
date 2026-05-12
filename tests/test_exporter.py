@@ -393,6 +393,50 @@ addrmap hierarchical_soc {
             assert 'Callable[[int, int], int]' in stubs
             assert 'Callable[[int, int, int], None]' in stubs
 
+    def test_field_write_stub_annotates_range(self):
+        """Per-field ``write`` stubs declare ``Annotated[int, Range(0, max)]``.
+
+        Renders ``stubs.pyi.jinja`` directly (bypassing the plugin's
+        post-process) so the assertion targets the template change alone.
+        ``SIMPLE_RDL`` has ``enable[0:0]`` (width=1 -> max=1) and
+        ``mode[2:1]`` (width=2 -> max=3); both must appear.
+        """
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SIMPLE_RDL))
+        root = rdl.elaborate()
+
+        exporter = Pybind11Exporter()
+        nodes = exporter._collect_nodes(root.top)
+
+        env = Environment(
+            loader=PackageLoader("peakrdl_pybind11", "templates"),
+            autoescape=select_autoescape(),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        env.filters["pybind_name"] = exporter._pybind_name_from_node
+        env.filters["safe_id"] = exporter._sanitize_identifier
+        env.filters["members"] = exporter._members_for_node
+        template = env.get_template("stubs.pyi.jinja")
+        rendered = template.render(
+            soc_name="simple_soc",
+            top_node=root.top,
+            nodes=nodes,
+        )
+
+        # The Range marker class must be defined for the annotation to resolve.
+        assert "class Range:" in rendered
+        # Annotated must be imported.
+        assert "Annotated" in rendered
+        # enable[0:0] -> width 1 -> max 1
+        assert "Annotated[int, Range(0, 1)]" in rendered
+        # mode[2:1] -> width 2 -> max 3
+        assert "Annotated[int, Range(0, 3)]" in rendered
+        # FieldBase.write must stay unconstrained (plain ``int``).
+        assert "def write(self, value: int, *, raw: bool = ...) -> None:" in rendered
+
     @staticmethod
     def _write_rdl(content):
         """Write RDL content to a temporary file"""
