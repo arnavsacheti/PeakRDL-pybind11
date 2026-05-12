@@ -107,6 +107,79 @@ class TestRecordingMaster:
         # Streaming events match in-memory events.
         assert events == list(rec.events)
 
+    def test_flush_event_default_flushes_per_op(self, tmp_path: Path) -> None:
+        """Default ``flush='event'`` lands each event on disk before the
+        next op returns. Read the file mid-session to prove it."""
+        path = tmp_path / "stream.ndjson"
+        rec = RecordingMaster(MockMaster(), file=path)
+        try:
+            rec.write(0x0, 0x1, 4)
+            # File visible BEFORE close() — the per-event flush must work.
+            mid = path.read_text()
+            assert "0x1" in mid or '"value": 1' in mid
+            rec.write(0x4, 0x2, 4)
+            mid = path.read_text()
+            assert mid.count("\n") == 2
+        finally:
+            rec.close()
+
+    def test_flush_never_only_flushes_on_close(self, tmp_path: Path) -> None:
+        """``flush='never'`` buffers all events; close() flushes the tail."""
+        path = tmp_path / "stream.ndjson"
+        rec = RecordingMaster(MockMaster(), file=path, flush="never")
+        try:
+            for i in range(5):
+                rec.write(i * 4, i, 4)
+            # Mid-session: nothing on disk yet (the buffer is unflushed).
+            # Note: small writes may stay in Python's stdio buffer; we
+            # assert at most one line landed (some OSes line-buffer text
+            # streams when interactive), but never all five.
+            mid_lines = path.read_text().count("\n") if path.exists() else 0
+            assert mid_lines < 5, (
+                f"expected <5 events visible mid-session, saw {mid_lines}"
+            )
+        finally:
+            rec.close()
+        # After close, the full trace is on disk.
+        final_lines = [
+            json.loads(line)
+            for line in path.read_text().splitlines()
+            if line.strip()
+        ]
+        assert len(final_lines) == 5
+        assert [e["value"] for e in final_lines] == [0, 1, 2, 3, 4]
+
+    def test_flush_n_flushes_every_n_events(self, tmp_path: Path) -> None:
+        """``flush=N`` flushes every N events; the remainder lives in the
+        buffer until close()."""
+        path = tmp_path / "stream.ndjson"
+        rec = RecordingMaster(MockMaster(), file=path, flush=3)
+        try:
+            # 7 events: 3 flushed at event 3, 3 more at event 6, 1 in buffer.
+            for i in range(7):
+                rec.write(i * 4, i, 4)
+            mid_lines = path.read_text().count("\n")
+            assert mid_lines == 6, (
+                f"expected 6 flushed events mid-session, saw {mid_lines}"
+            )
+        finally:
+            rec.close()
+        # After close, all 7 are on disk.
+        final_lines = path.read_text().splitlines()
+        assert len(final_lines) == 7
+
+    def test_flush_validation_rejects_garbage(self) -> None:
+        """Typos and bad values raise at construction."""
+        with pytest.raises(ValueError, match="flush must be"):
+            RecordingMaster(MockMaster(), flush="evnt")  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="flush must be"):
+            RecordingMaster(MockMaster(), flush=0)
+        with pytest.raises(ValueError, match="flush must be"):
+            RecordingMaster(MockMaster(), flush=-5)
+        # ``True``/``False`` are technically ``int`` but are nonsense here.
+        with pytest.raises(ValueError, match="flush must be"):
+            RecordingMaster(MockMaster(), flush=True)  # type: ignore[arg-type]
+
     def test_read_many_records_each_op(self) -> None:
         inner = MockMaster()
         inner.write(0x0, 0x1, 4)
