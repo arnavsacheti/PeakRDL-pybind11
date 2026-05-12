@@ -25,6 +25,7 @@ from collections.abc import Callable
 from typing import Any
 
 from . import _registry
+from .errors import AccessError
 from .values import FieldValue, RegisterValue, _normalize_field_meta
 
 logger = logging.getLogger("peakrdl_pybind11.runtime.default_shims")
@@ -33,6 +34,39 @@ logger = logging.getLogger("peakrdl_pybind11.runtime.default_shims")
 # wrap twice. Mirrors the ``__peakrdl_enhanced__`` marker used in the
 # original template.
 _ENHANCED = "__peakrdl_enhanced__"
+
+
+def _field_access_mode(readable: bool, writable: bool) -> str:
+    """Map (readable, writable) booleans onto the canonical sw= token.
+
+    Used to build the ``access_mode`` argument for :class:`AccessError` so
+    the default error message — ``"<path> is sw=<mode>"`` — reflects the
+    actual access mode of the field that rejected the operation.
+    """
+    if readable and writable:
+        return "rw"
+    if readable:
+        return "r"
+    if writable:
+        return "w"
+    return "na"
+
+
+def _field_node_path(field: Any) -> str:
+    """Best-effort path for a field instance, used in error messages.
+
+    Falls back to the bare ``name`` attribute (always present on generated
+    fields) when no richer path is available.
+    """
+    info = getattr(field, "info", None)
+    if info is not None:
+        path = getattr(info, "path", None)
+        if isinstance(path, str) and path:
+            return path
+    name = getattr(field, "name", None)
+    if isinstance(name, str) and name:
+        return name
+    return "<field>"
 
 
 def _enhanced_register_read(
@@ -110,9 +144,24 @@ def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[..., Any
 
     ``field.read()``         → ``FieldValue``
     ``field.read(raw=True)`` → plain ``int`` from the C++ binding
+
+    Reads on write-only fields (``is_readable == False``) raise
+    :class:`AccessError` before touching the bus, including on the
+    ``raw=True`` fast path. Missing ``is_readable`` defaults to ``True``
+    so unannotated mocks remain back-compatible.
     """
 
     def read(self: Any, *, raw: bool = False) -> Any:
+        # Gate BEFORE calling ``original_read`` so the raw fast path is
+        # also blocked — otherwise the side effect of the bus read would
+        # leak past the access check.
+        readable = getattr(self, "is_readable", True)
+        if not readable:
+            writable = getattr(self, "is_writable", True)
+            raise AccessError(
+                _field_node_path(self),
+                _field_access_mode(readable, writable),
+            )
         value = original_read(self)
         if raw:
             return value
@@ -131,9 +180,24 @@ def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[..., Any
 
 
 def _enhanced_field_write(original_write: Callable[[Any, int], None]) -> Callable[..., None]:
-    """Field write only has one shape; ``raw`` is accepted for parity."""
+    """Field write only has one shape; ``raw`` is accepted for parity.
+
+    Writes on read-only fields (``is_writable == False``) raise
+    :class:`AccessError` before touching the bus, including on the
+    ``raw=True`` fast path. Missing ``is_writable`` defaults to ``True``
+    so unannotated mocks remain back-compatible.
+    """
 
     def write(self: Any, value: Any, *, raw: bool = False) -> None:
+        # Gate BEFORE calling ``original_write`` so ``raw=True`` does not
+        # leak past the access check.
+        writable = getattr(self, "is_writable", True)
+        if not writable:
+            readable = getattr(self, "is_readable", True)
+            raise AccessError(
+                _field_node_path(self),
+                _field_access_mode(readable, writable),
+            )
         # ``raw`` is signature parity with the register write — for fields
         # the path is identical either way (no FieldValue dispatch).
         original_write(self, int(value))
@@ -145,14 +209,23 @@ def _enhanced_field_write(original_write: Callable[[Any, int], None]) -> Callabl
 def _make_write_fields(
     fields_spec: dict[str, tuple[int, int]],
     writable_spec: dict[str, bool],
+    readable_spec: dict[str, bool] | None = None,
 ) -> Callable[..., None]:
     """Build a ``write_fields(**kwargs)`` shim for a generated register class.
 
     Collapses N per-field writes into a single C++ ``write_fields(mask,
     value)`` call (1 read + 1 write on the master, regardless of N).
     Validates field names and writability at the Python boundary so the
-    C++ side stays minimal.
+    C++ side stays minimal. Writability failures surface as
+    :class:`AccessError` for consistency with the per-field
+    ``field.write()`` access gate.
+
+    ``readable_spec`` is accepted (and unused on this path) so callers can
+    pass through the full readable/writable metadata pair without
+    surprises; per-field read gating happens in :func:`_enhanced_field_read`.
     """
+
+    _ = readable_spec  # unused on the write path; kept in the signature for symmetry.
 
     def write_fields(self: Any, **kwargs: Any) -> None:
         combined_mask = 0
@@ -164,7 +237,16 @@ def _make_write_fields(
                     f"Unknown field '{name}' on register '{self.name}'. Known fields: {sorted(fields_spec)}"
                 )
             if not writable_spec.get(name, False):
-                raise PermissionError(f"Field '{name}' on register '{self.name}' is not writable")
+                # Build a node_path consistent with per-field errors:
+                # ``<register_name>.<field_name>``. ``access_mode`` is
+                # ``"r"`` when the field is at least readable, ``"na"``
+                # otherwise — the readable_spec is the only signal we
+                # have at this layer.
+                read_ok = True if readable_spec is None else readable_spec.get(name, True)
+                raise AccessError(
+                    f"{self.name}.{name}",
+                    _field_access_mode(read_ok, False),
+                )
             lsb, width = spec
             field_mask = ((1 << width) - 1) << lsb
             combined_mask |= field_mask
@@ -184,6 +266,9 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
 
     * ``"fields"``      — ``{field_name: (lsb, width)}``
     * ``"writable"``    — ``{field_name: bool}``
+    * ``"readable"``    — ``{field_name: bool}``  (optional; missing
+      entries default to ``True`` for back-compat with templates that
+      don't yet emit this key)
     * ``"flag_type"``   — optional flag class for this register
     * ``"enum_type"``   — optional enum class for this register
 
@@ -192,6 +277,13 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
     If ``cls`` doesn't expose ``read``/``write`` (e.g. a unit test passes
     a stub class) we bail cleanly — the seam is generic, but the default
     shim only knows how to handle generated register classes.
+
+    Per-field access-mode enforcement (sw=r read-only, sw=w write-only)
+    is implemented in :func:`_enhanced_field_read` and
+    :func:`_enhanced_field_write`, which gate on the C++-exposed
+    ``is_readable``/``is_writable`` instance attributes of each field.
+    Missing attributes default to allowing the access — keeps Python
+    stubs and pre-enforcement bindings working unchanged.
     """
     raw_read = getattr(cls, "read", None)
     if raw_read is None:
@@ -201,6 +293,11 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
 
     fields_spec: dict[str, tuple[int, int]] = metadata.get("fields", {})
     writable_spec: dict[str, bool] = metadata.get("writable", {})
+    # ``readable`` is optional metadata. When the template doesn't emit
+    # it, ``readable_spec`` is empty and ``write_fields`` treats every
+    # field as readable; per-field read gating still works because it
+    # consults the field instance's ``is_readable`` attribute directly.
+    readable_spec: dict[str, bool] = metadata.get("readable", {})
     flag_type: type | None = metadata.get("flag_type")
     enum_type: type | None = metadata.get("enum_type")
 
@@ -220,7 +317,7 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
     # shim with validation under the public name.
     if hasattr(cls, "write_fields"):
         cls._native_write_fields = cls.write_fields  # type: ignore[attr-defined]
-        write_fields_shim = _make_write_fields(fields_spec, writable_spec)
+        write_fields_shim = _make_write_fields(fields_spec, writable_spec, readable_spec)
         cls.write_fields = write_fields_shim  # type: ignore[method-assign]
         # ``reg.modify(**fields)`` is the canonical aspirational API
         # (sketch §3.3). The C++ ``modify(value, mask)`` is preserved
