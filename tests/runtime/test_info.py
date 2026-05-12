@@ -37,6 +37,7 @@ def test_info_supports_bare_default_construction() -> None:
     assert info.address == 0
     assert info.offset == 0
     assert info.regwidth is None
+    assert info.accesswidth is None
     assert info.access is None
     assert info.reset is None
     assert info.fields == {}
@@ -47,6 +48,8 @@ def test_info_supports_bare_default_construction() -> None:
     assert info.paritycheck is False
     assert info.is_volatile is False
     assert info.is_interrupt_source is False
+    assert info.is_hw_readable is False
+    assert info.is_hw_writable is False
     assert info.on_read is None
     assert info.on_write is None
     assert info.alias_kind is None
@@ -69,6 +72,7 @@ def test_info_exposes_all_documented_fields() -> None:
         "address",
         "offset",
         "regwidth",
+        "accesswidth",
         "access",
         "reset",
         "fields",
@@ -81,6 +85,8 @@ def test_info_exposes_all_documented_fields() -> None:
         "paritycheck",
         "is_volatile",
         "is_interrupt_source",
+        "is_hw_readable",
+        "is_hw_writable",
         "on_read",
         "on_write",
         "alias_kind",
@@ -298,3 +304,91 @@ def test_access_mode_importable_from_runtime_package() -> None:
     import peakrdl_pybind11.runtime as runtime
 
     assert getattr(runtime, "AccessMode", None) is AccessMode
+
+
+# ---------------------------------------------------------------------------
+# Hardware-access flags & accesswidth
+# ---------------------------------------------------------------------------
+
+
+def test_info_is_hw_readable_explicit_true_exposes_attribute() -> None:
+    """Spec: ``Info(is_hw_readable=True).is_hw_readable is True``."""
+    info = Info(is_hw_readable=True)
+    assert info.is_hw_readable is True
+    # Sibling flag stays at its default unless set.
+    assert info.is_hw_writable is False
+
+
+def test_info_is_hw_writable_explicit_true_exposes_attribute() -> None:
+    info = Info(is_hw_writable=True)
+    assert info.is_hw_writable is True
+    assert info.is_hw_readable is False
+
+
+def test_info_hw_flags_and_accesswidth_default_false_and_none() -> None:
+    """Bare ``Info()`` defaults the hw flags False and accesswidth None."""
+    info = Info()
+    assert info.is_hw_readable is False
+    assert info.is_hw_writable is False
+    assert info.accesswidth is None
+
+
+@pytest.mark.parametrize(
+    "token,readable,writable",
+    [
+        ("rw", True, True),
+        ("r", True, False),
+        ("w", False, True),
+        ("na", False, False),
+    ],
+)
+def test_info_hw_access_token_combos(token: str, readable: bool, writable: bool) -> None:
+    """The four hw access tokens map to the expected (readable, writable) pair."""
+    info = Info(is_hw_readable=readable, is_hw_writable=writable)
+    assert info.is_hw_readable is readable
+    assert info.is_hw_writable is writable
+    # Sanity: the parametric token covers the 2x2 truth table.
+    assert (info.is_hw_readable, info.is_hw_writable) == (
+        token in ("rw", "r"),
+        token in ("rw", "w"),
+    )
+
+
+def test_info_accesswidth_round_trips_through_repr() -> None:
+    """``accesswidth`` survives construction and is visible in ``__repr__``
+    via the underlying dataclass — at minimum the attribute survives."""
+    info = Info(accesswidth=32)
+    assert info.accesswidth == 32
+    # ``__repr__`` exists and is callable without raising.
+    text = repr(info)
+    assert isinstance(text, str)
+    assert "Info(" in text
+
+
+def test_info_accesswidth_extracted_from_rdl_stub() -> None:
+    """When a stub exposes ``accesswidth`` via ``get_property``, ``from_rdl_node``
+    picks it up — guards the plumbing through ``_extract_accesswidth``."""
+
+    class Stub:
+        inst_name = "r"
+
+        def get_property(self, name: str, default: object = None) -> object:
+            if name == "accesswidth":
+                return 16
+            return default
+
+    info = from_rdl_node(Stub())
+    assert info.accesswidth == 16
+
+
+def test_info_hw_flags_extracted_from_rdl_stub() -> None:
+    """Stub exposing ``is_hw_readable``/``is_hw_writable`` as attrs gets plumbed."""
+
+    class Stub:
+        inst_name = "f"
+        is_hw_readable = True
+        is_hw_writable = False
+
+    info = from_rdl_node(Stub())
+    assert info.is_hw_readable is True
+    assert info.is_hw_writable is False

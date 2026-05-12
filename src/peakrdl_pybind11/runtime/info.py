@@ -112,6 +112,7 @@ class Info:
     address: int = 0
     offset: int = 0
     regwidth: int | None = None
+    accesswidth: int | None = None  # smallest atomic access width in bits
     # Coerced to :class:`AccessMode` in ``__post_init__`` when the input
     # is a recognized token; unknown strings pass through unchanged.
     access: AccessMode | str | None = None
@@ -127,6 +128,8 @@ class Info:
     paritycheck: bool = False
     is_volatile: bool = False  # hwclr/hwset/sticky/counter
     is_interrupt_source: bool = False  # has the `intr` UDP
+    is_hw_readable: bool = False  # hw can read the field
+    is_hw_writable: bool = False  # hw can write the field
     on_read: str | None = None  # "rclr" | "rset" | "ruser" | None
     on_write: str | None = None  # "woclr" | "woset" | "wzc" | "wzs" | "wclr" | "wset" | "wuser" | None
     alias_kind: str | None = None  # "full" | "sw_view" | "hw_view" | "scrambled" | None
@@ -276,6 +279,25 @@ def _extract_regwidth(node: Any) -> int | None:
     return width if isinstance(width, int) else None
 
 
+def _extract_accesswidth(node: Any) -> int | None:
+    """Smallest atomic access width in bits, or ``None`` if not declared."""
+    val = _safe_get_property(node, "accesswidth")
+    if isinstance(val, int):
+        return val
+    val = getattr(node, "accesswidth", None)
+    return val if isinstance(val, int) else None
+
+
+def _extract_is_hw_readable(node: Any) -> bool:
+    """Mirrors ``FieldNode.is_hw_readable`` (direct attr, not a property)."""
+    return bool(getattr(node, "is_hw_readable", False))
+
+
+def _extract_is_hw_writable(node: Any) -> bool:
+    """Mirrors ``FieldNode.is_hw_writable`` (direct attr, not a property)."""
+    return bool(getattr(node, "is_hw_writable", False))
+
+
 def _extract_reset(node: Any) -> int | None:
     val = _safe_get_property(node, "reset")
     if isinstance(val, int):
@@ -379,6 +401,7 @@ def from_rdl_node(rdl_node: object | None) -> Info:
         address=_extract_address(rdl_node),
         offset=_extract_offset(rdl_node),
         regwidth=_extract_regwidth(rdl_node),
+        accesswidth=_extract_accesswidth(rdl_node),
         access=_extract_access(rdl_node),
         reset=_extract_reset(rdl_node),
         fields=_extract_fields(rdl_node),
@@ -390,6 +413,8 @@ def from_rdl_node(rdl_node: object | None) -> Info:
         paritycheck=_extract_paritycheck(rdl_node),
         is_volatile=_extract_is_volatile(rdl_node),
         is_interrupt_source=_extract_is_interrupt(rdl_node),
+        is_hw_readable=_extract_is_hw_readable(rdl_node),
+        is_hw_writable=_extract_is_hw_writable(rdl_node),
         on_read=_extract_on_read(rdl_node),
         on_write=_extract_on_write(rdl_node),
         alias_kind=_extract_alias_kind(rdl_node),
