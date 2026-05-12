@@ -61,11 +61,18 @@ DEFAULT_STATE_PATTERN = re.compile(r"(?:INTR[_]?STAT(?:E|US)|.+_INT_STATUS)\Z")
 # order matters: a state register named ``INTR_STATE`` -> partners are
 # ``INTR_ENABLE`` / ``INTR_MASK`` / ``INTR_TEST`` / ``INTR_RAW``. We match
 # them with the same case-insensitive comparison the state regex uses.
-PARTNER_SUFFIXES: tuple[tuple[str, str], ...] = (
-    ("enable_reg", "ENABLE"),
-    ("mask_reg", "MASK"),
-    ("test_reg", "TEST"),
-    ("raw_reg", "RAW"),
+#
+# Each entry is ``(attribute_name, (alias1, alias2, ...))`` so a partner
+# can be detected under several spelling conventions (sketch §9.4): e.g.
+# ``MASK``/``MSK`` for the mask companion, ``HALTMASK``/``HALT_MASK`` for
+# the debug-halt variant.
+PARTNER_SUFFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("enable_reg", ("ENABLE",)),
+    ("mask_reg", ("MASK", "MSK")),
+    ("test_reg", ("TEST",)),
+    ("raw_reg", ("RAW",)),
+    ("haltmask_reg", ("HALTMASK", "HALT_MASK")),
+    ("haltenable_reg", ("HALTENABLE", "HALT_ENABLE")),
 )
 
 
@@ -79,6 +86,8 @@ class InterruptGroup:
     test_reg: str | None
     mask_reg: str | None = None
     raw_reg: str | None = None
+    haltmask_reg: str | None = None
+    haltenable_reg: str | None = None
     sources: tuple[str, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,6 +98,8 @@ class InterruptGroup:
             "test_reg": self.test_reg,
             "mask_reg": self.mask_reg,
             "raw_reg": self.raw_reg,
+            "haltmask_reg": self.haltmask_reg,
+            "haltenable_reg": self.haltenable_reg,
             "sources": list(self.sources),
         }
 
@@ -162,27 +173,39 @@ def _siblings(state: RegNode) -> dict[str, RegNode]:
 def _match_partner(
     siblings: Mapping[str, RegNode],
     state_name: str,
-    suffix: str,
+    suffixes: tuple[str, ...] | str,
 ) -> RegNode | None:
-    """Look for ``<stem>_<SUFFIX>`` or ``<stem><SUFFIX>`` in ``siblings``."""
+    """Look for any of ``<stem>_<SUFFIX>`` / ``<stem><SUFFIX>`` / ``<SUFFIX>``
+    in ``siblings``. ``suffixes`` may be a single string (legacy single-alias
+    form) or a tuple of aliases; matching is case-insensitive against the
+    upper-cased sibling names.
+    """
+    if isinstance(suffixes, str):
+        suffixes = (suffixes,)
     stem = _state_stem(state_name)
-    if stem is None:
-        # No recognisable suffix on the state name; fall back to swapping
-        # the trailing token wholesale (e.g. ``INTR_STATE`` -> ``INTR_<S>``).
-        upper = state_name.upper()
-        for tail in ("_STATE", "_STATUS"):
-            if upper.endswith(tail):
-                candidate = upper[: -len(tail)] + "_" + suffix
-                if candidate in siblings:
-                    return siblings[candidate]
-        return None
-    candidates = (
-        f"{stem}_{suffix}" if stem else suffix,
-        f"{stem}{suffix}",
-    )
-    for cand in candidates:
-        if cand in siblings:
-            return siblings[cand]
+    for suffix in suffixes:
+        if stem is None:
+            # No recognisable suffix on the state name; fall back to
+            # swapping the trailing token wholesale (e.g. ``INTR_STATE`` ->
+            # ``INTR_<S>``).
+            upper = state_name.upper()
+            for tail in ("_STATE", "_STATUS"):
+                if upper.endswith(tail):
+                    candidate = upper[: -len(tail)] + "_" + suffix
+                    if candidate in siblings:
+                        return siblings[candidate]
+            continue
+        candidates = (
+            f"{stem}_{suffix}" if stem else suffix,
+            f"{stem}{suffix}",
+            # Bare suffix (e.g. ``MASK`` alone, no ``INTR_`` prefix) — the
+            # task spec lists ``MASK``/``MSK``/``HALT_MASK`` as valid hits
+            # in their own right.
+            suffix,
+        )
+        for cand in candidates:
+            if cand in siblings:
+                return siblings[cand]
     return None
 
 
@@ -217,8 +240,8 @@ def detect_interrupt_groups(
 
         siblings = _siblings(node)
         partners: dict[str, RegNode | None] = {}
-        for attr, suffix in PARTNER_SUFFIXES:
-            partners[attr] = _match_partner(siblings, node.inst_name, suffix)
+        for attr, suffixes in PARTNER_SUFFIXES:
+            partners[attr] = _match_partner(siblings, node.inst_name, suffixes)
 
         sources = _shared_field_names(
             node,
@@ -238,6 +261,8 @@ def detect_interrupt_groups(
                 test_reg=_path_or_none(partners.get("test_reg")),
                 mask_reg=_path_or_none(partners.get("mask_reg")),
                 raw_reg=_path_or_none(partners.get("raw_reg")),
+                haltmask_reg=_path_or_none(partners.get("haltmask_reg")),
+                haltenable_reg=_path_or_none(partners.get("haltenable_reg")),
                 sources=tuple(sources),
             )
         )

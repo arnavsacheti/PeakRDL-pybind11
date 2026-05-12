@@ -27,7 +27,7 @@ import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import Any, Protocol, cast, runtime_checkable
 
-from .errors import WaitTimeoutError
+from .errors import NotSupportedError, WaitTimeoutError
 
 logger = logging.getLogger("peakrdl_pybind11.runtime.interrupts")
 
@@ -128,10 +128,17 @@ class InterruptSource:
         enable_field: FieldLike | None = None,
         test_field: FieldLike | None = None,
         name: str = "",
+        *,
+        mask_field: FieldLike | None = None,
+        haltmask_field: FieldLike | None = None,
+        haltenable_field: FieldLike | None = None,
     ) -> None:
         self._state_field = state_field
         self._enable_field = enable_field
         self._test_field = test_field
+        self._mask_field = mask_field
+        self._haltmask_field = haltmask_field
+        self._haltenable_field = haltenable_field
         self._name = name
 
     # -- introspection ------------------------------------------------------
@@ -153,6 +160,18 @@ class InterruptSource:
     @property
     def test_field(self) -> FieldLike | None:
         return self._test_field
+
+    @property
+    def mask_field(self) -> FieldLike | None:
+        return self._mask_field
+
+    @property
+    def haltmask_field(self) -> FieldLike | None:
+        return self._haltmask_field
+
+    @property
+    def haltenable_field(self) -> FieldLike | None:
+        return self._haltenable_field
 
     def __repr__(self) -> str:
         return f"InterruptSource(name={self._name!r})"
@@ -191,6 +210,57 @@ class InterruptSource:
         if self._enable_field is None:
             raise NotImplementedError(f"interrupt {self._name!r} has no enable field")
         self._enable_field.write(0)
+
+    # -- mask / haltmask / haltenable partners (§9.4) -----------------------
+    #
+    # Three companion registers extend the basic ENABLE/STATE/TEST trio:
+    # ``INTR_MASK`` (and ``MSK``/``MASK`` variants) disables specific
+    # interrupts even when ENABLE is set; ``INTR_HALTMASK`` /
+    # ``INTR_HALTENABLE`` are debug-halt variants. The runtime exposes
+    # symmetric mutators for each, and raises :class:`NotSupportedError`
+    # when the matching partner field is absent on this source.
+
+    def mask(self) -> None:
+        """Set the mask bit (block this interrupt). Raises if no mask partner."""
+
+        if self._mask_field is None:
+            raise NotSupportedError(f"interrupt {self._name!r} has no INTR_MASK companion")
+        self._mask_field.write(1)
+
+    def unmask(self) -> None:
+        """Clear the mask bit (unblock). Raises if no mask partner."""
+
+        if self._mask_field is None:
+            raise NotSupportedError(f"interrupt {self._name!r} has no INTR_MASK companion")
+        self._mask_field.write(0)
+
+    def halt_mask(self) -> None:
+        """Set the debug-halt mask bit. Raises if no haltmask partner."""
+
+        if self._haltmask_field is None:
+            raise NotSupportedError(f"interrupt {self._name!r} has no INTR_HALTMASK companion")
+        self._haltmask_field.write(1)
+
+    def halt_unmask(self) -> None:
+        """Clear the debug-halt mask bit. Raises if no haltmask partner."""
+
+        if self._haltmask_field is None:
+            raise NotSupportedError(f"interrupt {self._name!r} has no INTR_HALTMASK companion")
+        self._haltmask_field.write(0)
+
+    def halt_enable(self) -> None:
+        """Set the debug-halt enable bit. Raises if no haltenable partner."""
+
+        if self._haltenable_field is None:
+            raise NotSupportedError(f"interrupt {self._name!r} has no INTR_HALTENABLE companion")
+        self._haltenable_field.write(1)
+
+    def halt_disable(self) -> None:
+        """Clear the debug-halt enable bit. Raises if no haltenable partner."""
+
+        if self._haltenable_field is None:
+            raise NotSupportedError(f"interrupt {self._name!r} has no INTR_HALTENABLE companion")
+        self._haltenable_field.write(0)
 
     def clear(self) -> None:
         """Clear the pending state bit, doing the right thing per RDL.
@@ -409,13 +479,18 @@ class InterruptGroup:
         state: Any,
         enable: object | None = None,
         test: object | None = None,
+        *,
+        mask: object | None = None,
+        haltmask: object | None = None,
+        haltenable: object | None = None,
     ) -> InterruptGroup:
         """Build a group from raw register objects when auto-detect failed.
 
-        Matches sources by field name across the trio. ``state`` is required
-        (it's where the pending bits live); ``enable`` and ``test`` are
-        optional and matched by best-effort name lookup so missing partners
-        on individual sources don't sink the whole group.
+        Matches sources by field name across the trio plus the §9.4
+        companion partners. ``state`` is required (it's where the pending
+        bits live); every other partner is optional and matched by
+        best-effort name lookup so missing partners on individual sources
+        don't sink the whole group.
 
         Each register is expected to expose a ``fields()`` iterator yielding
         objects with ``.inst_name`` (or ``.name``) — the convention shared by
@@ -427,6 +502,9 @@ class InterruptGroup:
             raise ValueError("state register exposes no fields")
         enable_fields = _enumerate_fields(enable)
         test_fields = _enumerate_fields(test)
+        mask_fields = _enumerate_fields(mask)
+        haltmask_fields = _enumerate_fields(haltmask)
+        haltenable_fields = _enumerate_fields(haltenable)
 
         sources: dict[str, InterruptSource] = {}
         for fname, sfield in state_fields.items():
@@ -435,6 +513,9 @@ class InterruptGroup:
                 enable_field=enable_fields.get(fname),
                 test_field=test_fields.get(fname),
                 name=fname,
+                mask_field=mask_fields.get(fname),
+                haltmask_field=haltmask_fields.get(fname),
+                haltenable_field=haltenable_fields.get(fname),
             )
         return cls(sources)
 
@@ -520,6 +601,80 @@ class InterruptGroup:
                 raise KeyError(f"interrupt group has no source {name!r}; known: {sorted(self._sources)}")
             if source.enable_field is not None:
                 source.enable()
+
+    # -- §9.4 companion-partner group mutators ------------------------------
+    #
+    # Symmetric helpers that mirror ``enable()``/``disable_all()`` for the
+    # mask / haltmask / haltenable partners. Calling them on a group whose
+    # detection didn't surface the corresponding partner raises
+    # :class:`NotSupportedError` — the per-source method that gets
+    # delegated to does the actual raising. Per-source skip-when-absent
+    # (matching the ``enable()`` semantics) is preserved by the
+    # ``_for_each_source_with_partner`` helper below: it only raises when
+    # *no* source in the group carries the partner.
+
+    def mask(self, *sources: str) -> None:
+        """Mask one or more sources (or all, if ``sources`` is empty)."""
+
+        self._for_each_source_with_partner(sources, "mask_field", "mask", "INTR_MASK")
+
+    def unmask(self, *sources: str) -> None:
+        """Unmask one or more sources (or all, if ``sources`` is empty)."""
+
+        self._for_each_source_with_partner(sources, "mask_field", "unmask", "INTR_MASK")
+
+    def halt_mask(self, *sources: str) -> None:
+        """Set the debug-halt mask bit for the named sources (or all)."""
+
+        self._for_each_source_with_partner(sources, "haltmask_field", "halt_mask", "INTR_HALTMASK")
+
+    def halt_unmask(self, *sources: str) -> None:
+        """Clear the debug-halt mask bit for the named sources (or all)."""
+
+        self._for_each_source_with_partner(sources, "haltmask_field", "halt_unmask", "INTR_HALTMASK")
+
+    def halt_enable(self, *sources: str) -> None:
+        """Set the debug-halt enable bit for the named sources (or all)."""
+
+        self._for_each_source_with_partner(sources, "haltenable_field", "halt_enable", "INTR_HALTENABLE")
+
+    def halt_disable(self, *sources: str) -> None:
+        """Clear the debug-halt enable bit for the named sources (or all)."""
+
+        self._for_each_source_with_partner(sources, "haltenable_field", "halt_disable", "INTR_HALTENABLE")
+
+    def _for_each_source_with_partner(
+        self,
+        sources: tuple[str, ...],
+        partner_attr: str,
+        method: str,
+        partner_label: str,
+    ) -> None:
+        """Dispatch a per-source method, surfacing missing-partner errors.
+
+        - If ``sources`` is empty, walk every source in the group; if *none*
+          of them carry ``partner_attr``, raise :class:`NotSupportedError`
+          (the group has no partner at all). Otherwise call the method on
+          each source that does, silently skipping those that lack one —
+          matches the per-source skip semantic ``enable()`` uses.
+        - If ``sources`` is non-empty, raise :class:`KeyError` for unknown
+          names and propagate the per-source method's own
+          :class:`NotSupportedError` for sources missing the partner.
+        """
+
+        if not sources:
+            with_partner = [s for s in self._sources.values() if getattr(s, partner_attr) is not None]
+            if not with_partner:
+                raise NotSupportedError(f"interrupt group has no {partner_label} companion")
+            for source in with_partner:
+                getattr(source, method)()
+            return
+
+        for name in sources:
+            source = self._sources.get(name)
+            if source is None:
+                raise KeyError(f"interrupt group has no source {name!r}; known: {sorted(self._sources)}")
+            getattr(source, method)()
 
 
 # ---------------------------------------------------------------------------
@@ -679,6 +834,10 @@ def _build_group_from_register(
     state_reg: Any,
     enable_reg: Any | None = None,
     test_reg: Any | None = None,
+    *,
+    mask_reg: Any | None = None,
+    haltmask_reg: Any | None = None,
+    haltenable_reg: Any | None = None,
 ) -> InterruptGroup:
     """Build an :class:`InterruptGroup` from instance-level register objects.
 
@@ -689,7 +848,14 @@ def _build_group_from_register(
     constructor.
     """
 
-    return InterruptGroup.manual(state=state_reg, enable=enable_reg, test=test_reg)
+    return InterruptGroup.manual(
+        state=state_reg,
+        enable=enable_reg,
+        test=test_reg,
+        mask=mask_reg,
+        haltmask=haltmask_reg,
+        haltenable=haltenable_reg,
+    )
 
 
 def _attach_group_as_interrupts(target: Any, group: InterruptGroup) -> None:
@@ -731,7 +897,17 @@ def register_register_enhancement_hook(register: Any, info: Any) -> InterruptGro
         return None
     enable = getattr(info, "enable_register", None)
     test = getattr(info, "test_register", None)
-    group = _build_group_from_register(register, enable, test)
+    mask = getattr(info, "mask_register", None)
+    haltmask = getattr(info, "haltmask_register", None)
+    haltenable = getattr(info, "haltenable_register", None)
+    group = _build_group_from_register(
+        register,
+        enable,
+        test,
+        mask_reg=mask,
+        haltmask_reg=haltmask,
+        haltenable_reg=haltenable,
+    )
 
     parent = getattr(register, "parent", None) or getattr(register, "_parent", None)
     _attach_group_as_interrupts(parent, group)
@@ -854,8 +1030,18 @@ def _build_groups_from_detected(
             continue
         enable_reg = _resolve_path(soc, entry.get("enable_reg") or "")
         test_reg = _resolve_path(soc, entry.get("test_reg") or "")
+        mask_reg = _resolve_path(soc, entry.get("mask_reg") or "")
+        haltmask_reg = _resolve_path(soc, entry.get("haltmask_reg") or "")
+        haltenable_reg = _resolve_path(soc, entry.get("haltenable_reg") or "")
         try:
-            group = _build_group_from_register(state_reg, enable_reg, test_reg)
+            group = _build_group_from_register(
+                state_reg,
+                enable_reg,
+                test_reg,
+                mask_reg=mask_reg,
+                haltmask_reg=haltmask_reg,
+                haltenable_reg=haltenable_reg,
+            )
         except (ValueError, TypeError):
             logger.exception("interrupts: failed to build group for %r", state_path)
             continue

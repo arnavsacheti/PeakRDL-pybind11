@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from peakrdl_pybind11.runtime import _registry
-from peakrdl_pybind11.runtime.errors import WaitTimeoutError
+from peakrdl_pybind11.runtime.errors import NotSupportedError, WaitTimeoutError
 from peakrdl_pybind11.runtime.interrupts import (
     InterruptGroup,
     InterruptSource,
@@ -431,6 +431,273 @@ def test_manual_accepts_field_mapping() -> None:
     state = {"tx_done": MockField(value=1)}
     group = InterruptGroup.manual(state=state)
     assert group.tx_done.is_pending() is True
+
+
+# ---------------------------------------------------------------------------
+# §9.4 companion partners: INTR_MASK / INTR_HALTMASK / INTR_HALTENABLE
+#
+# These three partners extend the basic STATE/ENABLE/TEST trio. The detection
+# plugin emits them under ``mask_reg``/``haltmask_reg``/``haltenable_reg``
+# keys in ``interrupts_detected.py``; the runtime then exposes per-source
+# (``source.mask()``) and group-level (``group.mask(*sources)``) helpers.
+# Missing partners produce a :class:`NotSupportedError` rather than a silent
+# no-op so callers can detect them and adapt.
+# ---------------------------------------------------------------------------
+
+
+def _build_full_partner_group() -> tuple[
+    InterruptGroup,
+    dict[str, MockField],
+    dict[str, MockField],
+    dict[str, MockField],
+    dict[str, MockField],
+    dict[str, MockField],
+]:
+    """Three-source group with state + enable + test + mask + haltmask + haltenable."""
+
+    names = ("tx_done", "rx_overflow", "parity_err")
+    state_fields = {n: MockField(value=0, name=n) for n in names}
+    enable_fields = {n: MockField(value=0, on_write="rw", name=n) for n in names}
+    test_fields = {n: MockField(value=0, on_write="rw", name=n) for n in names}
+    mask_fields = {n: MockField(value=0, on_write="rw", name=n) for n in names}
+    haltmask_fields = {n: MockField(value=0, on_write="rw", name=n) for n in names}
+    haltenable_fields = {n: MockField(value=0, on_write="rw", name=n) for n in names}
+    sources = {
+        n: InterruptSource(
+            state_fields[n],
+            enable_fields[n],
+            test_fields[n],
+            name=n,
+            mask_field=mask_fields[n],
+            haltmask_field=haltmask_fields[n],
+            haltenable_field=haltenable_fields[n],
+        )
+        for n in names
+    }
+    return (
+        InterruptGroup(sources),
+        state_fields,
+        enable_fields,
+        mask_fields,
+        haltmask_fields,
+        haltenable_fields,
+    )
+
+
+def test_full_partner_group_exposes_all_new_methods() -> None:
+    """Synthetic detection dict with all four partners → every method works.
+
+    Direct construction (no C++ compile) per the task: we build the group
+    in-process and verify the per-source and group-level methods on every
+    companion partner.
+    """
+
+    group, _, _, mask_fields, haltmask_fields, haltenable_fields = _build_full_partner_group()
+
+    # Per-source proxies for each of the new partners.
+    group.tx_done.mask()
+    assert mask_fields["tx_done"].writes == [1]
+    group.tx_done.unmask()
+    assert mask_fields["tx_done"].writes == [1, 0]
+
+    group.tx_done.halt_mask()
+    assert haltmask_fields["tx_done"].writes == [1]
+    group.tx_done.halt_unmask()
+    assert haltmask_fields["tx_done"].writes == [1, 0]
+
+    group.tx_done.halt_enable()
+    assert haltenable_fields["tx_done"].writes == [1]
+    group.tx_done.halt_disable()
+    assert haltenable_fields["tx_done"].writes == [1, 0]
+
+    # Group-level varargs surface: empty argv touches every source.
+    group.mask()
+    for name in ("tx_done", "rx_overflow", "parity_err"):
+        # tx_done already had [1, 0] from the per-source test; the group
+        # call adds another write of 1 to every source.
+        assert mask_fields[name].writes[-1] == 1
+
+    group.halt_mask()
+    for name in ("tx_done", "rx_overflow", "parity_err"):
+        assert haltmask_fields[name].writes[-1] == 1
+
+    group.halt_enable()
+    for name in ("tx_done", "rx_overflow", "parity_err"):
+        assert haltenable_fields[name].writes[-1] == 1
+
+
+def test_group_mask_targets_named_sources_only() -> None:
+    """``group.mask(*sources)`` writes only to the named subset."""
+
+    group, _, _, mask_fields, _, _ = _build_full_partner_group()
+
+    group.mask("tx_done", "parity_err")
+
+    assert mask_fields["tx_done"].writes == [1]
+    assert mask_fields["parity_err"].writes == [1]
+    assert mask_fields["rx_overflow"].writes == []
+
+
+def test_partial_partner_group_raises_for_missing_haltmask() -> None:
+    """A peripheral with only ENABLE + MASK → halt_mask raises ``NotSupportedError``.
+
+    Mirrors the task spec: when the detection plugin didn't surface a
+    HALTMASK companion, the runtime raises :class:`NotSupportedError`
+    with a clear message — both at the per-source and group entry points.
+    """
+
+    state = MockField(value=0, name="tx_done")
+    enable = MockField(value=0, on_write="rw", name="tx_done")
+    mask = MockField(value=0, on_write="rw", name="tx_done")
+    # No haltmask_field, no haltenable_field — these partners are absent.
+    source = InterruptSource(
+        state, enable, name="tx_done", mask_field=mask,
+    )
+    group = InterruptGroup({"tx_done": source})
+
+    # Mask path works: ENABLE + MASK are both present.
+    source.mask()
+    assert mask.writes == [1]
+    source.unmask()
+    assert mask.writes == [1, 0]
+    group.mask()
+    assert mask.writes == [1, 0, 1]
+
+    # Halt-* paths raise: no haltmask/haltenable companion was detected.
+    with pytest.raises(NotSupportedError) as exc:
+        source.halt_mask()
+    assert "INTR_HALTMASK" in str(exc.value)
+
+    with pytest.raises(NotSupportedError) as exc:
+        source.halt_enable()
+    assert "INTR_HALTENABLE" in str(exc.value)
+
+    # Group-level over an empty argv → group-wide diagnosis.
+    with pytest.raises(NotSupportedError) as exc:
+        group.halt_mask()
+    assert "INTR_HALTMASK" in str(exc.value)
+
+    with pytest.raises(NotSupportedError):
+        group.halt_disable()
+
+
+def test_per_source_mask_writes_one_to_right_register() -> None:
+    """Per-source ``source.mask()`` targets the matching mask field only.
+
+    The §9.4 mask register is a per-bit companion; this test pins the
+    invariant that writing one source's mask doesn't touch any other
+    source's mask field — i.e. the runtime is correctly routing the
+    write through the per-field handle, not blasting the whole register.
+    """
+
+    names = ("tx_done", "rx_overflow")
+    state_fields = {n: MockField(value=0, name=n) for n in names}
+    mask_fields = {n: MockField(value=0, on_write="rw", name=n) for n in names}
+    sources = {
+        n: InterruptSource(
+            state_fields[n], name=n, mask_field=mask_fields[n],
+        )
+        for n in names
+    }
+    group = InterruptGroup(sources)
+
+    group.tx_done.mask()
+    assert mask_fields["tx_done"].writes == [1]
+    assert mask_fields["rx_overflow"].writes == []
+
+    group.rx_overflow.unmask()
+    assert mask_fields["tx_done"].writes == [1]
+    assert mask_fields["rx_overflow"].writes == [0]
+
+
+def test_existing_enable_disable_clear_paths_unaffected() -> None:
+    """The new partners must not break ``enable()`` / ``disable()`` / ``clear()``.
+
+    Regression guard: with the companion-partner plumbing in place, the
+    original §9.1 mutators still walk through the same fields as before.
+    """
+
+    group, state_fields, enable_fields, _, _, _ = _build_full_partner_group()
+    state_fields["tx_done"].set_hw(1)
+
+    group.tx_done.enable()
+    assert enable_fields["tx_done"].writes == [1]
+    assert group.tx_done.is_enabled() is True
+
+    group.tx_done.clear()
+    # MockField with default ``on_write="woclr"`` writes 1 to clear.
+    assert state_fields["tx_done"].writes == [1]
+    assert state_fields["tx_done"]._value == 0
+
+    group.tx_done.disable()
+    assert enable_fields["tx_done"].writes == [1, 0]
+
+
+def test_build_groups_from_detected_picks_up_new_partners(monkeypatch: Any) -> None:
+    """The post-create walk threads the new partner keys through to ``InterruptGroup``.
+
+    Builds a synthetic ``interrupts_detected.py`` payload carrying
+    ``mask_reg`` / ``haltmask_reg`` / ``haltenable_reg`` keys and verifies
+    that ``soc.uart.interrupts`` exposes the new methods end-to-end.
+    """
+
+    import sys
+    import types as _types
+
+    from peakrdl_pybind11.runtime import interrupts
+
+    interrupts._GROUP_REGISTRY.clear()
+
+    intr_state = MockRegister(tx_done=MockField(value=0))
+    intr_enable = MockRegister(tx_done=MockField(value=0, on_write="rw"))
+    intr_test = MockRegister(tx_done=MockField(value=0, on_write="rw"))
+    intr_mask = MockRegister(tx_done=MockField(value=0, on_write="rw"))
+    intr_haltmask = MockRegister(tx_done=MockField(value=0, on_write="rw"))
+    intr_haltenable = MockRegister(tx_done=MockField(value=0, on_write="rw"))
+
+    uart = SimpleNamespace(
+        INTR_STATE=intr_state,
+        INTR_ENABLE=intr_enable,
+        INTR_TEST=intr_test,
+        INTR_MASK=intr_mask,
+        INTR_HALTMASK=intr_haltmask,
+        INTR_HALTENABLE=intr_haltenable,
+    )
+    soc: Any = _FakeSoc()
+    soc.uart = uart
+
+    fake_pkg_name = "peakrdl_pybind11_test_fake_soc_pkg_partners"
+    detected_module_name = f"{fake_pkg_name}.interrupts_detected"
+    pkg = _types.ModuleType(fake_pkg_name)
+    pkg.__path__ = []  # type: ignore[attr-defined]
+    detected = _types.ModuleType(detected_module_name)
+    detected.interrupt_groups = [  # type: ignore[attr-defined]
+        {
+            "path": "soc.uart",
+            "state_reg": "soc.uart.INTR_STATE",
+            "enable_reg": "soc.uart.INTR_ENABLE",
+            "test_reg": "soc.uart.INTR_TEST",
+            "mask_reg": "soc.uart.INTR_MASK",
+            "haltmask_reg": "soc.uart.INTR_HALTMASK",
+            "haltenable_reg": "soc.uart.INTR_HALTENABLE",
+            "sources": ["tx_done"],
+        }
+    ]
+    monkeypatch.setitem(sys.modules, fake_pkg_name, pkg)
+    monkeypatch.setitem(sys.modules, detected_module_name, detected)
+    soc._module_name = fake_pkg_name
+
+    interrupts_post_create(soc)
+
+    src = soc.interrupts.uart.tx_done
+    src.mask()
+    assert intr_mask.tx_done.writes == [1]
+    src.halt_mask()
+    assert intr_haltmask.tx_done.writes == [1]
+    src.halt_enable()
+    assert intr_haltenable.tx_done.writes == [1]
+
+    interrupts._GROUP_REGISTRY.clear()
 
 
 # ---------------------------------------------------------------------------
