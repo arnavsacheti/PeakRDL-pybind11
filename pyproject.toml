@@ -96,6 +96,9 @@ ignore = [
 "src/peakrdl_pybind11/exporter_plugins/**/*.py" = ["ANN401"]
 "src/peakrdl_pybind11/masters/base.py" = ["ANN401"]
 "src/peakrdl_pybind11/masters/mock_extensions.py" = ["ANN401"]
+# SimMaster's side-effect model walks duck-typed register/field nodes.
+"src/peakrdl_pybind11/masters/_side_effect_model.py" = ["ANN401"]
+"src/peakrdl_pybind11/masters/sim.py" = ["ANN401"]
 
 [tool.ruff.format]
 quote-style = "double"
