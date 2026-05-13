@@ -154,6 +154,16 @@ class Nodes(TypedDict):
     # Per-register flag/enum members: keyed by id(reg) -> [(name, value), ...].
     # Populated for entries in flag_regs and enum_regs.
     register_members: dict[int, list[tuple[str, int]]]
+    # Per-field RDL ``encode`` enums: keyed by field path -> [(name, value), ...].
+    # Populated when a FieldNode has a non-None ``encode`` property pointing
+    # at a systemrdl ``UserEnum``. Consumed by ``runtime.py.jinja`` to emit
+    # one ``IntEnum`` per encoded field (sketch §8.1). Orthogonal to the
+    # register-level ``is_flag`` / ``is_enum`` mechanism.
+    #
+    # Keyed by path string (not ``id(field)``) because systemrdl's
+    # ``RegNode.fields()`` returns fresh ``FieldNode`` wrappers every call —
+    # identity is per-iteration, but ``get_path()`` is stable.
+    field_encodes: dict[str, list[tuple[str, int]]]
 
 
 # UDPs that the exporter understands. CLI users declare these in their RDL
@@ -202,6 +212,12 @@ class Pybind11Exporter:
         # register; populated by _collect_nodes.
         self._members_by_id: dict[int, list[tuple[str, int]]] = {}
         self.env.filters["members"] = self._members_for_node
+        # Per-field encode IntEnum member list; populated by _collect_nodes.
+        # Keyed by ``FieldNode.get_path()`` because systemrdl returns fresh
+        # FieldNode wrappers from each ``RegNode.fields()`` call — keying on
+        # ``id(field)`` would miss every template-side lookup.
+        self._field_encodes_by_path: dict[str, list[tuple[str, int]]] = {}
+        self.env.filters["field_encode_members"] = self._field_encode_members_for_node
         self.soc_name: str | None = None
         self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
@@ -263,6 +279,7 @@ class Pybind11Exporter:
         # Collect all nodes first
         nodes = self._collect_nodes(self.top_node)
         self._members_by_id = nodes["register_members"]
+        self._field_encodes_by_path = nodes["field_encodes"]
 
         # Generate C++ descriptor header
         self._generate_descriptors(nodes)
@@ -635,6 +652,7 @@ class Pybind11Exporter:
                 "enum_regs": [],
                 "signals": [],
                 "register_members": {},
+                "field_encodes": {},
             }
 
         if isinstance(node, AddrmapNode):
@@ -673,6 +691,21 @@ class Pybind11Exporter:
                 nodes["register_members"][id(node)] = self._register_member_layout(node)
             for field in node.fields():
                 nodes["fields"].append(field)
+                # Per-field RDL ``encode`` UDP (sketch §8.1). The property
+                # returns a ``UserEnum`` subclass whose ``.members`` is an
+                # ordered dict of ``name -> UserEnumMember``. Coerce to a
+                # ``(name, int)`` list once so the template doesn't need
+                # to know about systemrdl internals.
+                try:
+                    enc = field.get_property("encode")
+                except LookupError:
+                    enc = None
+                if enc is not None:
+                    members = getattr(enc, "members", None)
+                    if members:
+                        nodes["field_encodes"][field.get_path()] = [
+                            (str(name), int(member.value)) for name, member in members.items()
+                        ]
 
         return nodes
 
@@ -687,6 +720,18 @@ class Pybind11Exporter:
     def _members_for_node(self, node: Node) -> list[tuple[str, int]]:
         """Jinja filter: return the (name, value) members for a flag/enum reg."""
         return self._members_by_id.get(id(node), [])
+
+    def _field_encode_members_for_node(self, node: Node) -> list[tuple[str, int]]:
+        """Jinja filter: return the IntEnum members for a field with RDL ``encode``.
+
+        Returns ``[]`` when the field has no encode — that's the signal the
+        template uses to decide whether to emit the per-field enum class.
+
+        Lookup is by ``node.get_path()`` because systemrdl's
+        ``RegNode.fields()`` returns fresh FieldNode wrappers per call;
+        keying on ``id(node)`` would always miss the template-side lookups.
+        """
+        return self._field_encodes_by_path.get(node.get_path(), [])
 
     @staticmethod
     def _get_string_property(node: Node, name: str) -> str | None:

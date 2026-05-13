@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from enum import IntEnum
 from typing import Any
 
 from . import _registry
@@ -139,16 +140,24 @@ def _enhanced_register_write(
     return write
 
 
-def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[..., Any]:
+def _enhanced_field_read(
+    original_read: Callable[..., int],
+    encode_type: type[IntEnum] | None = None,
+) -> Callable[..., Any]:
     """Wrap the C++ field read with the typed/raw kwarg dispatch.
 
-    ``field.read()``         → ``FieldValue``
+    ``field.read()``         → ``FieldValue`` (decodes to ``encode_type`` when set)
     ``field.read(raw=True)`` → plain ``int`` from the C++ binding
 
     Reads on write-only fields (``is_readable == False``) raise
     :class:`AccessError` before touching the bus, including on the
     ``raw=True`` fast path. Missing ``is_readable`` defaults to ``True``
     so unannotated mocks remain back-compatible.
+
+    ``encode_type`` is the per-field RDL ``encode`` IntEnum class (sketch
+    §8.1). When set, the returned :class:`FieldValue` carries the class so
+    ``.decoded()`` and ``__repr__`` surface enum-member names; otherwise
+    the FieldValue is plain.
     """
 
     def read(self: Any, *, raw: bool = False) -> Any:
@@ -173,6 +182,7 @@ def _enhanced_field_read(original_read: Callable[..., int]) -> Callable[..., Any
             lsb=self.lsb,
             width=self.width,
             name=getattr(self, "name", None),
+            encode=encode_type,
         )
 
     setattr(read, _ENHANCED, True)
@@ -353,8 +363,15 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
 
 
 @_registry.register_field_enhancement
-def _default_field_shim(cls: type) -> None:
+def _default_field_shim(cls: type, metadata: dict | None = None) -> None:
     """Wrap the generated field class with typed read/write.
+
+    ``metadata`` is the optional per-field metadata dict the registry
+    threads through ``apply_field_enhancements`` (sketch §8.1). Today the
+    only key we honor is ``"encode"`` — an :class:`enum.IntEnum` subclass
+    produced by the RDL ``encode`` property. When present, the encode
+    class is attached to every :class:`FieldValue` returned by
+    ``field.read()`` and surfaced as ``cls.choices``.
 
     Bails cleanly on classes that don't expose ``read``/``write`` so the
     seam stays generic enough to test in isolation.
@@ -368,5 +385,18 @@ def _default_field_shim(cls: type) -> None:
     raw_write = getattr(cls, "write", None)
     if raw_write is None:
         return
-    cls.read = _enhanced_field_read(raw_read)  # type: ignore[method-assign]
+
+    encode_type: type[IntEnum] | None = None
+    if metadata:
+        candidate = metadata.get("encode")
+        if isinstance(candidate, type) and issubclass(candidate, IntEnum):
+            encode_type = candidate
+
+    cls.read = _enhanced_field_read(raw_read, encode_type)  # type: ignore[method-assign]
     cls.write = _enhanced_field_write(raw_write)  # type: ignore[method-assign]
+    if encode_type is not None:
+        # ``field.choices`` surfaces the list of enum members so users can
+        # iterate / display valid encodings. Per task spec we expose the
+        # member *list* (not the type) — diverges from API sketch §8.1
+        # which describes the type itself; documented in the unit's report.
+        cls.choices = list(encode_type)  # type: ignore[attr-defined]

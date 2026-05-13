@@ -182,6 +182,28 @@ __all__.append('{{ reg | pybind_name }}_e')
 {% endfor %}
 
 
+# Per-field RDL ``encode`` IntEnums (sketch §8.1). Orthogonal to the
+# register-level ``is_enum``/``is_flag`` mechanism above: a field with
+# ``encode = MyEnum;`` reads back as ``MyEnum.MEMBER`` from
+# ``field.read()`` and surfaces ``field.choices`` for IDE completion.
+from enum import IntEnum as _IntEnum
+
+{% for reg in nodes.regs %}
+{% for field in reg.fields() %}
+{% set encode_members = field | field_encode_members %}
+{% if encode_members %}
+class {{ reg | pybind_name }}__{{ field.inst_name | safe_id }}_e(_IntEnum):
+    """Encode for {{ reg.get_path() }}.{{ field.inst_name }}."""
+{% for name, value in encode_members %}
+    {{ name }} = {{ value }}
+{% endfor %}
+
+__all__.append('{{ reg | pybind_name }}__{{ field.inst_name | safe_id }}_e')
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+
 # ---------------------------------------------------------------------------
 # Per-register field metadata. Consumed by the default register
 # enhancement (``runtime/_default_shims.py``) and by sibling units that
@@ -229,6 +251,38 @@ _FIELD_CLASSES: tuple = (
 {% endfor %}
 )
 
+# Map each field class to its RDL ``encode`` IntEnum class (if any).
+# Consumed by ``_default_field_shim`` to attach the encode type to
+# ``FieldValue`` instances returned from ``field.read()`` and to expose
+# ``field.choices``. Fields without an encode are absent from this dict.
+_FIELD_ENCODES: dict[type, type] = {
+{% for reg in nodes.regs %}
+{% for field in reg.fields() %}
+{% if field | field_encode_members %}
+    {{ reg | pybind_name }}_{{ field.inst_name | safe_id }}_field: {{ reg | pybind_name }}__{{ field.inst_name | safe_id }}_e,
+{% endif %}
+{% endfor %}
+{% endfor %}
+}
+
+# Per-register lookup: maps the register class to ``{field_name: encode_type}``.
+# Surfaced through the register-enhancement metadata as ``"encode_types"`` so
+# sibling units that operate on the register class can find per-field decode
+# without re-parsing the field classes.
+_FIELD_ENCODE_TYPES: dict[type, dict[str, type]] = {
+{% for reg in nodes.regs %}
+{% set ns = namespace(any=false) %}
+{% for field in reg.fields() %}{% if field | field_encode_members %}{% set ns.any = true %}{% endif %}{% endfor %}
+{% if ns.any %}
+    {{ reg | pybind_name }}_t: {
+{% for field in reg.fields() %}{% if field | field_encode_members %}
+        "{{ field.inst_name | safe_id }}": {{ reg | pybind_name }}__{{ field.inst_name | safe_id }}_e,
+{% endif %}{% endfor %}
+    },
+{% endif %}
+{% endfor %}
+}
+
 
 # Apply every registered enhancement (defaults + sibling units). The
 # metadata dict carries everything the defaults need plus an open
@@ -258,12 +312,16 @@ for _reg_cls, _spec in _REGISTER_FIELDS.items():
             "writable": _REGISTER_FIELD_WRITABLE.get(_reg_cls, {}),
             "flag_type": _FLAG_REG_TYPES.get(_reg_cls),
             "enum_type": _ENUM_REG_TYPES.get(_reg_cls),
+            "encode_types": _FIELD_ENCODE_TYPES.get(_reg_cls, {}),
             **_REGISTER_INFO.get(_reg_cls, {}),
         },
     )
 
 for _field_cls in _FIELD_CLASSES:
-    _peakrdl_registry.apply_field_enhancements(_field_cls)
+    _peakrdl_registry.apply_field_enhancements(
+        _field_cls,
+        {"encode": _FIELD_ENCODES.get(_field_cls)},
+    )
 
 # Wire any registered lazy node attributes (e.g. ``.info``) onto every
 # generated register and field class. The shared base (``NodeBase``,

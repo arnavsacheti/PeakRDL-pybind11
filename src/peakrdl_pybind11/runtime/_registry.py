@@ -28,6 +28,7 @@ expected to hold any cross-cutting locks.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 from collections.abc import Callable
@@ -41,7 +42,11 @@ logger = logging.getLogger("peakrdl_pybind11.runtime.registry")
 # ---------------------------------------------------------------------------
 
 RegisterEnhancement = Callable[[type, dict], None]
-FieldEnhancement = Callable[[type], None]
+# Field enhancements may be either the legacy single-arg ``(cls)`` shape
+# (used by ``bits.py`` / ``side_effects.py`` and unit tests) or the new
+# ``(cls, metadata)`` shape introduced for RDL ``encode`` plumbing. The
+# dispatcher consults each callable's arity at fire time and adapts.
+FieldEnhancement = Callable[..., None]
 PostCreateHook = Callable[[Any], None]
 MasterExtension = Callable[[Any], None]
 NodeAttributeFactory = Callable[[Any], Any]
@@ -232,26 +237,94 @@ def apply_register_enhancements(cls: type, metadata: dict) -> None:
     _fire(_register_enhancements, "register enhancement", cls, metadata)
 
 
-def apply_field_enhancements(cls: type) -> None:
-    """Run every registered field enhancement against ``cls``."""
-    _fire(_field_enhancements, "field enhancement", cls)
+# Per-callable arity cache for field enhancements. Computed lazily in
+# ``apply_field_enhancements`` and stamped on the callable as
+# ``__peakrdl_arity__`` so we don't pay ``inspect.signature`` on every
+# dispatch (the hot path runs once per field class at module import,
+# but tests call this in loops).
+_ARITY_ATTR = "__peakrdl_arity__"
+
+
+def _field_enhancement_arity(fn: Callable[..., None]) -> int:
+    """Return the positional arity of a field-enhancement callable.
+
+    Cached on the callable. ``2+`` means the callable accepts
+    ``(cls, metadata)``; ``1`` means the legacy ``(cls)`` shape used by
+    ``bits.py`` / ``side_effects.py`` / unit tests.
+    """
+    cached = getattr(fn, _ARITY_ATTR, None)
+    if isinstance(cached, int):
+        return cached
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        # Built-ins / C extensions without introspectable signatures —
+        # assume the legacy single-arg shape to stay safe.
+        n_positional = 1
+    else:
+        n_positional = sum(
+            1
+            for p in sig.parameters.values()
+            if p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.VAR_POSITIONAL,
+            )
+        )
+    try:
+        setattr(fn, _ARITY_ATTR, n_positional)
+    except (AttributeError, TypeError):
+        # Some callables (built-ins) don't accept attribute assignment.
+        # The lookup will repeat ``inspect.signature`` on the next call,
+        # which is fine — correctness over micro-perf.
+        pass
+    return n_positional
+
+
+def apply_field_enhancements(cls: type, metadata: dict | None = None) -> None:
+    """Run every registered field enhancement against ``cls``.
+
+    ``metadata`` is the optional per-field metadata dict introduced for
+    the RDL ``encode`` flow (sketch §8.1). When provided, callables that
+    accept ``(cls, metadata)`` receive it; legacy single-arg callables
+    are still called with just ``cls`` so sibling units that pre-date
+    this signature (``bits.py``, ``side_effects.py``) keep working.
+    """
+    with _lock:
+        funcs = list(_field_enhancements)
+    meta = metadata if metadata is not None else {}
+    for fn in funcs:
+        try:
+            arity = _field_enhancement_arity(fn)
+            if arity >= 2:
+                fn(cls, meta)
+            else:
+                fn(cls)
+        except Exception:
+            logger.exception("field enhancement %r raised on %r", fn, cls)
 
 
 def apply_enhancements(
     register_classes: dict[type, dict] | None = None,
-    field_classes: list[type] | None = None,
+    field_classes: list[type] | dict[type, dict] | None = None,
 ) -> None:
     """Apply every registered enhancement to multiple classes at once.
 
     Convenience wrapper used by sibling tests that drive the seam from
     Python (the generated ``runtime.py`` calls the per-class helpers
     directly). ``register_classes`` maps each register class to its
-    metadata dict; ``field_classes`` is a flat list of field classes.
+    metadata dict; ``field_classes`` is either a flat list of field
+    classes (legacy, metadata=None) or a ``{cls: metadata}`` dict.
     """
     for cls, metadata in (register_classes or {}).items():
         apply_register_enhancements(cls, metadata)
-    for cls in field_classes or []:
-        apply_field_enhancements(cls)
+    if isinstance(field_classes, dict):
+        for cls, metadata in field_classes.items():
+            apply_field_enhancements(cls, metadata)
+    else:
+        for cls in field_classes or []:
+            apply_field_enhancements(cls)
 
 
 def fire_post_create_hooks(soc: Any) -> None:
