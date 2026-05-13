@@ -190,6 +190,11 @@ private:
     WriteManyFn write_many_;
 };
 
+// MmapMaster is POSIX-only — the Windows mapping API is different
+// enough that we don't wrap it today. The class, its private helpers,
+// and its pybind11 binding are all gated on the same ``_WIN32`` check
+// as the ``<sys/mman.h>`` includes in ``descriptors.hpp.jinja``.
+#if !defined(_WIN32)
 /**
  * MmapMaster: mmap-backed master for hosted register access.
  *
@@ -385,6 +390,7 @@ private:
     bool owns_fd_ = false;
     bool read_only_ = false;
 };
+#endif  // !_WIN32
 
 /**
  * Cross-register transaction context.

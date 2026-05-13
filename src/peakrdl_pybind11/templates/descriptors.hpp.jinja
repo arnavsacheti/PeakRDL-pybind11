@@ -18,13 +18,18 @@
 #include <iomanip>
 #include <unordered_map>
 #include <utility>
-// POSIX mmap support — used by MmapMaster
+// POSIX mmap support — used by MmapMaster. Windows ships an alternate
+// mapping API (CreateFileMapping / MapViewOfFile) that we don't wrap
+// today, so MmapMaster is POSIX-only and these headers (plus the class
+// itself + its pybind11 binding) are guarded out of the Windows build.
+#if !defined(_WIN32)
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
 #include <cerrno>
+#endif
 
 namespace {{ soc_name }} {
 

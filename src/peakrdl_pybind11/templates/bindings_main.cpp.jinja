@@ -108,6 +108,10 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("__repr__", &CallbackMaster::__repr__);
 
     // MmapMaster: native mmap-backed master. No Python in the hot path.
+    // POSIX-only — the class is guarded out of the Windows build, so the
+    // pybind11 binding is gated by the same check. Python users on
+    // Windows simply won't see ``soc_module.MmapMaster``.
+#if !defined(_WIN32)
     py::class_<MmapMaster, Master>(m, "MmapMaster", py::dynamic_attr())
         .def(py::init<const std::string&, size_t, uint64_t, bool>(),
              py::arg("path"), py::arg("size") = 0,
@@ -128,6 +132,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("base_address", &MmapMaster::base_address)
         .def_property_readonly("is_read_only", &MmapMaster::is_read_only)
         .def("__repr__", &MmapMaster::__repr__);
+#endif  // !_WIN32
 
     // Transaction: cross-register write batching context manager.
     py::class_<Transaction>(m, "Transaction")

@@ -50,7 +50,9 @@ __all__ = [
     'Master',
     'MockMaster',
     'CallbackMaster',
-    'MmapMaster',
+    # ``MmapMaster`` is POSIX-only; the native binding is guarded out
+    # of the Windows build. Add it to ``__all__`` only when the symbol
+    # actually exists so ``from <soc> import *`` works on every platform.
     'Transaction',
     'AccessOp',
     'create',
@@ -62,6 +64,8 @@ __all__ = [
     'RegisterValue',
     'FieldValue',
 ]
+if 'MmapMaster' in dir():
+    __all__.append('MmapMaster')
 
 
 def create():
