@@ -366,6 +366,8 @@ _CHILD_ATTR_HINTS = ("read", "write", "bits", "lsb", "offset", "info")
 def _kind_for(node: Any) -> str:
     """Coarse classification of ``node``. Returns one of:
 
+    ``"Signal"`` — :class:`~peakrdl_pybind11.runtime.signals.Signal`
+                   instance (metadata-only, no bus access).
     ``"Field"`` — has ``bits`` or ``lsb`` (and no ``read``/``write``).
     ``"Reg"``   — has ``read`` and ``write`` callables (and is not a field).
     ``"Mem"``   — type name contains ``"mem"`` (case-insensitive substring).
@@ -375,6 +377,15 @@ def _kind_for(node: Any) -> str:
 
     if node is None:
         return ""
+    # Signals must be tested before the bits/lsb branch: ``Signal.lsb``
+    # is part of its dataclass schema, so the duck-typed Field check
+    # below would otherwise grab it. Lazy import to avoid the circular
+    # import — ``signals`` imports ``_registry`` which is part of the
+    # same package and loads after ``routing`` alphabetically.
+    from .signals import Signal as _Signal
+
+    if isinstance(node, _Signal):
+        return "Signal"
     cls_name = type(node).__name__.lower()
     # Fields: bits/lsb take precedence over read/write because some
     # generated field types also expose a ``read()`` for typed readback.

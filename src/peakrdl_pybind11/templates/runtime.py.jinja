@@ -76,6 +76,39 @@ def create():
     return soc
 
 
+{% if nodes.signals %}
+# ---------------------------------------------------------------------------
+# RDL ``signal`` metadata. Each entry is ``(rdl_path, metadata_dict)``;
+# the post-create hook in ``peakrdl_pybind11.runtime.signals`` strips
+# the leading SoC-root segment from the path, builds an immutable
+# :class:`Signal` from the metadata, and attaches it to the parent node
+# on the freshly-created SoC tree.
+#
+# The whole block only renders when the RDL has at least one signal —
+# otherwise ``register_signals`` would be a no-op and the import is
+# unnecessary, and rendering the template in isolation (e.g. from the
+# ``test_cli_subcommands`` strict-fields tests) would fail because
+# ``{{ soc_name }}_t`` is not yet defined.
+# ---------------------------------------------------------------------------
+from peakrdl_pybind11.runtime import signals as _peakrdl_signals
+
+_SIGNAL_METADATA: list[tuple[str, dict]] = [
+{% for sig in nodes.signals %}
+    ({{ sig.get_path() | python_string }}, {
+        "name": {{ sig.inst_name | python_string }},
+        "width": {{ sig.width }},
+        "lsb": {{ sig.lsb }},
+        "external": {{ 'True' if sig.external else 'False' }},
+        "description": {% if sig.get_property("desc") %}{{ sig.get_property("desc") | python_string }}{% else %}None{% endif %},
+        # ``tags`` collected from non-built-in properties:
+        "tags": { {% for prop in sig.list_properties() if prop not in ("desc", "name") %}{{ prop | python_string }}: {{ sig.get_property(prop) | python_string }}, {% endfor %} },
+    }),
+{% endfor %}
+]
+_peakrdl_signals.register_signals({{ soc_name }}_t, _SIGNAL_METADATA)
+{% endif %}
+
+
 def wrap_master(master_impl):
     """
     Wrap a Python master implementation to work with this SoC.

@@ -10,7 +10,16 @@ from pathlib import Path
 from typing import TypedDict
 
 from jinja2 import Environment, PackageLoader, select_autoescape
-from systemrdl.node import AddrmapNode, FieldNode, MemNode, Node, RegfileNode, RegNode, RootNode
+from systemrdl.node import (
+    AddrmapNode,
+    FieldNode,
+    MemNode,
+    Node,
+    RegfileNode,
+    RegNode,
+    RootNode,
+    SignalNode,
+)
 
 # Words that cannot be used as identifiers in either Python or C++.
 #
@@ -136,6 +145,12 @@ class Nodes(TypedDict):
     mems: list[MemNode]
     flag_regs: list[RegNode]
     enum_regs: list[RegNode]
+    # RDL ``signal`` declarations under any AddrmapNode / RegfileNode.
+    # Consumed by ``runtime.py.jinja`` to populate the per-SoC signal
+    # registry that ``runtime.signals._attach_signals`` reads at
+    # create() time. Signals have no relevant descendants for the
+    # exporter, so the collector never recurses into a SignalNode.
+    signals: list[SignalNode]
     # Per-register flag/enum members: keyed by id(reg) -> [(name, value), ...].
     # Populated for entries in flag_regs and enum_regs.
     register_members: dict[int, list[tuple[str, int]]]
@@ -177,6 +192,11 @@ class Pybind11Exporter:
         self.env.filters["pybind_name"] = self._pybind_name_from_node
         self.env.filters["enum_member"] = self._enum_member_name
         self.env.filters["cpp_string"] = self._cpp_string_escape
+        # ``repr`` produces a properly-quoted, escape-safe Python literal
+        # for any value — used by the signals block in ``runtime.py.jinja``
+        # to inline RDL paths and UDP keys without re-implementing escape
+        # logic.
+        self.env.filters["python_string"] = repr
         self.env.filters["safe_id"] = self._sanitize_identifier
         # Lazily resolves to the (name, value) list for an is_flag / is_enum
         # register; populated by _collect_nodes.
@@ -613,16 +633,26 @@ class Pybind11Exporter:
                 "mems": [],
                 "flag_regs": [],
                 "enum_regs": [],
+                "signals": [],
                 "register_members": {},
             }
 
         if isinstance(node, AddrmapNode):
             nodes["addrmaps"].append(node)
             for child in node.children():
+                # ``SignalNode`` children of an addrmap/regfile have no
+                # relevant descendants for us; track them flat and skip
+                # the recursive descent the other kinds use.
+                if isinstance(child, SignalNode):
+                    nodes["signals"].append(child)
+                    continue
                 self._collect_nodes(child, nodes)
         elif isinstance(node, RegfileNode):
             nodes["regfiles"].append(node)
             for child in node.children():
+                if isinstance(child, SignalNode):
+                    nodes["signals"].append(child)
+                    continue
                 self._collect_nodes(child, nodes)
         elif isinstance(node, MemNode):
             children = list(node.children())
