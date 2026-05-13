@@ -5,6 +5,15 @@ PeakRDL-pybind11 Documentation
    :target: https://github.com/arnavsacheti/PeakRDL-pybind11/blob/main/LICENSE
    :alt: License
 
+.. image:: https://img.shields.io/badge/source-GitHub-blue?logo=github
+   :target: https://github.com/arnavsacheti/PeakRDL-pybind11
+   :alt: Source on GitHub
+
+`Source repository on GitHub
+<https://github.com/arnavsacheti/PeakRDL-pybind11>`_ ·
+`Issue tracker
+<https://github.com/arnavsacheti/PeakRDL-pybind11/issues>`_
+
 PeakRDL-pybind11 generates Python bindings from SystemRDL register
 descriptions so a Python-fluent person who is *not* a hardware engineer can
 stay productive on hardware.
@@ -74,7 +83,12 @@ in one place -- is available as a single document.
 
 * :download:`IDEAL_API_SKETCH.md <IDEAL_API_SKETCH.md>` -- the design sketch in full.
 
+.. The toctrees below register pages with Sphinx so the side-pane nav
+   shows them, but are hidden from the homepage body — the sidebar is
+   the primary navigation and the inline TOC would just duplicate it.
+
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: Getting started
 
@@ -83,6 +97,7 @@ in one place -- is available as a single document.
    feature_matrix
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
    :caption: Concepts
 
@@ -104,6 +119,7 @@ in one place -- is available as a single document.
    concepts/cli_repl
 
 .. toctree::
+   :hidden:
    :maxdepth: 1
    :caption: Extending
 
@@ -112,16 +128,10 @@ in one place -- is available as a single document.
    extending/cli
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
    :caption: API Reference
 
    api/int_types
    api/exporter
    api/masters
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

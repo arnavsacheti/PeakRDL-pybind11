@@ -16,7 +16,11 @@ sys.path.insert(0, os.path.abspath('..'))
 project = 'PeakRDL-pybind11'
 copyright = f'{datetime.now().year}, Arnav Sacheti'
 author = 'Arnav Sacheti'
-release = '0.1.0'
+# Version intentionally omitted — the rendered docs follow the latest
+# tagged release on PyPI and the inline number drifts from reality as
+# soon as it's hard-coded. Leaving ``release`` empty drops the version
+# line from the Sphinx header.
+release = ''
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -51,6 +55,17 @@ exclude_patterns = [
 
 html_theme = 'sphinx_book_theme'
 html_static_path = ['_static']
+
+# sphinx_book_theme picks up the repository URL from these options and
+# adds a GitHub button to the rendered header so users can jump back to
+# the source without scrolling for a link in the body.
+html_theme_options = {
+    'repository_url': 'https://github.com/arnavsacheti/PeakRDL-pybind11',
+    'repository_branch': 'main',
+    'use_repository_button': True,
+    'use_issues_button': True,
+    'use_source_button': True,
+}
 
 # -- Options for autodoc -----------------------------------------------------
 autodoc_member_order = 'bysource'
