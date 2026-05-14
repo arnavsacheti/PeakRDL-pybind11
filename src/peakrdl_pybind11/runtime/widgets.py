@@ -257,10 +257,21 @@ def _format_value(value: Any) -> str:
 
 
 def _node_kind(node: Any) -> str:
-    """Return a short kind tag for *node*: 'reg', 'field', 'mem', 'regfile', 'addrmap'."""
+    """Return a short kind tag for *node*: 'reg', 'field', 'mem', 'regfile', 'addrmap', 'array'."""
     explicit = getattr(node, "_node_kind", None)
     if explicit is not None:
         return str(explicit)
+    # Phase 5 (#138): :class:`~peakrdl_pybind11.runtime.arrays.ArrayView`
+    # wrappers render as a single ``array`` row in :func:`tree` / :func:`dump`
+    # rather than expanding into N per-entry rows. Lazy import keeps
+    # ``arrays`` decoupled from ``widgets`` at module import time.
+    try:
+        from .arrays import ArrayView as _ArrayView
+
+        if isinstance(node, _ArrayView):
+            return "array"
+    except ImportError:  # pragma: no cover - defensive
+        pass
     cls = type(node).__name__.lower()
     if "field" in cls:
         return "field"
@@ -271,6 +282,17 @@ def _node_kind(node: Any) -> str:
     if "addrmap" in cls:
         return "addrmap"
     if "reg" in cls:
+        return "reg"
+    # Phase 5 (#138): generated entry classes (``simple_array_soc__lut_t``)
+    # carry neither ``reg`` nor ``regfile`` in their names. Fall back
+    # to duck-typing -- a node with read/write is a register; a node
+    # with bits/lsb but no read/write is a field.
+    has_read = callable(getattr(node, "read", None))
+    has_write = callable(getattr(node, "write", None))
+    has_bits = hasattr(node, "bits") or hasattr(node, "lsb")
+    if has_bits and not (has_read and has_write):
+        return "field"
+    if has_read and has_write and not has_bits:
         return "reg"
     return "node"
 
@@ -302,7 +324,12 @@ def _list_fields(reg: Any) -> list[Any]:
 
 
 def _list_children(node: Any) -> list[Any]:
-    """List the direct children of an addrmap/regfile node."""
+    """List the direct children of an addrmap/regfile node.
+
+    Phase 5 (#138): arrays are now in the kind set so generated SoCs
+    (with class-level ``ArrayView`` properties installed by
+    ``_install_array_properties``) expose their arrays here too.
+    """
     children: list[Any] = []
     seen: set[int] = set()
     for attr in dir(node):
@@ -315,7 +342,7 @@ def _list_children(node: Any) -> list[Any]:
         if value is node or callable(value) or id(value) in seen:
             continue
         kind = _node_kind(value)
-        if kind in {"reg", "regfile", "mem", "addrmap"}:
+        if kind in {"reg", "regfile", "mem", "addrmap", "array"}:
             seen.add(id(value))
             children.append(value)
     return children
@@ -1027,7 +1054,7 @@ _TREE_GAP = "   "
 # children for ``tree()`` — they live inside their parent register's
 # table repr; surfacing them as separate rows would balloon a SoC tree
 # from "the structure" into "every bit".
-_TREE_KINDS = {"reg", "regfile", "addrmap", "mem"}
+_TREE_KINDS = {"reg", "regfile", "addrmap", "mem", "array"}
 
 
 def _node_kind_label(node: Any) -> str:
@@ -1036,7 +1063,7 @@ def _node_kind_label(node: Any) -> str:
     The bracketed field on every tree row uses the same shape as the
     sketch's ``<Reg uart[0].control @ 0x40001000>``: kind first, then
     address. Keeping the label one of ``Reg``/``RegFile``/``AddrMap``/
-    ``Mem``/``Field``/``Node`` makes the output greppable.
+    ``Mem``/``Field``/``Array``/``Node`` makes the output greppable.
     """
     kind = _node_kind(node)
     return {
@@ -1045,6 +1072,7 @@ def _node_kind_label(node: Any) -> str:
         "addrmap": "AddrMap",
         "mem": "Mem",
         "field": "Field",
+        "array": "Array",
     }.get(kind, "Node")
 
 
@@ -1084,11 +1112,17 @@ def _tree_line(node: Any, prefix: str, glyph: str, value: str | None = None) -> 
 
     ``value`` is the optional ``= 0x…`` annotation for :func:`dump`.
     Address is always shown when known so the user can cross-reference
-    the address map.
+    the address map. Phase 5 (#138): arrays render with their shape as a
+    ``[A][B]`` suffix on the name so the tree row is self-describing
+    (``lut[8]  [Array @ 0x100]`` rather than the bare ``lut``).
     """
     kind = _node_kind_label(node)
     name = _node_path(node)
     addr = _node_address(node)
+    if kind == "Array":
+        shape = _array_shape(node)
+        if shape:
+            name = f"{name}{shape}"
     if addr is None:
         bracket = f"[{kind}]"
     else:
@@ -1097,6 +1131,65 @@ def _tree_line(node: Any, prefix: str, glyph: str, value: str | None = None) -> 
             bracket += f" = {value}"
         bracket += "]"
     return f"{prefix}{glyph}{name}  {bracket}"
+
+
+def _array_shape(node: Any) -> str:
+    """Render an :class:`ArrayView`'s shape as ``"[A][B]"`` (or ``""``).
+
+    Used by :func:`_tree_line` to disambiguate a 1-D ``lut[8]`` from a
+    2-D ``matrix[4][8]`` at a glance. Returns an empty string for
+    non-array nodes so the call site can append it unconditionally.
+    """
+    info = getattr(node, "info", None)
+    shape: tuple[int, ...] | None = None
+    if info is not None:
+        candidate = getattr(info, "shape", None)
+        if isinstance(candidate, tuple):
+            shape = candidate
+    if shape is None:
+        candidate = getattr(node, "shape", None)
+        if isinstance(candidate, tuple):
+            shape = candidate
+    if not shape:
+        return ""
+    return "".join(f"[{d}]" for d in shape)
+
+
+def _render_array_value(arr: Any) -> str:
+    """Best-effort summary read for an :class:`ArrayView`.
+
+    Returns a single-line ``[0xAA, 0xBB, ..., 0x11] (N values)`` string
+    for the array; coalesces into ``master.read_many`` when the array
+    surfaces it. Returns ``"<no-read>"`` if the read raises or the array
+    has no bus-readable entries.
+    """
+    reader: Any = getattr(arr, "read", None)
+    if not callable(reader):
+        return "<no-read>"
+    try:
+        values = reader()
+    except Exception:
+        return "<no-read>"
+    # ``ArrayView.read`` returns an ``ndarray``; convert to ints for
+    # a uniform hex render. Skip the rendering loop entirely when the
+    # array is empty.
+    try:
+        flat_iter: Any = values.flat if hasattr(values, "flat") else values
+        flat = list(flat_iter)
+    except Exception:
+        return "<no-read>"
+    if not flat:
+        return "[] (0 values)"
+    # Show up to four head + two tail entries; this keeps the line
+    # short for a 256-entry LUT while still surfacing endpoint deltas.
+    n = len(flat)
+    head = [int(v) for v in flat[: min(4, n)]]
+    tail = [int(v) for v in flat[-2:]] if n > 6 else []
+    parts = [f"0x{v:x}" for v in head]
+    if tail:
+        parts.append("...")
+        parts.extend(f"0x{v:x}" for v in tail)
+    return f"[{', '.join(parts)}] ({n} values)"
 
 
 def _render_register_value(reg: Any) -> str:
@@ -1147,20 +1240,34 @@ def _walk_tree(
     read_values: bool,
     lines: list[str],
     is_root: bool,
+    *,
+    show_array_entries: bool = False,
 ) -> None:
     """Recursive worker for :func:`tree` / :func:`dump`.
 
     Depth semantics: the root is at depth 0; ``max_depth=1`` therefore
     shows the root *and* its direct children. ``max_depth=None`` means
     unlimited.
+
+    Phase 5 (#138): :class:`~peakrdl_pybind11.runtime.arrays.ArrayView`
+    renders as one line with the shape encoded in the name
+    (``lut[8] [Array @ 0x100]``) and, when ``read_values`` is set, a
+    one-line summary of the entries.  Per-entry rows are gated on the
+    explicit ``show_array_entries`` flag so a large array doesn't
+    explode the output.
     """
+    kind = _node_kind(node)
+    value: str | None = None
+    if read_values:
+        if kind == "reg":
+            value = _render_register_value(node)
+        elif kind == "array":
+            value = _render_array_value(node)
     if is_root:
-        value = _render_register_value(node) if read_values and _node_kind(node) == "reg" else None
         lines.append(_tree_line(node, "", "", value))
         child_prefix = ""
     else:
         glyph = _TREE_LAST if is_last else _TREE_BRANCH
-        value = _render_register_value(node) if read_values and _node_kind(node) == "reg" else None
         lines.append(_tree_line(node, prefix, glyph, value))
         child_prefix = prefix + (_TREE_GAP if is_last else _TREE_VERT)
 
@@ -1169,10 +1276,19 @@ def _walk_tree(
 
     # Registers are leaves for the tree view — their fields appear in
     # the per-register HTML/pretty repr, not as separate tree rows.
-    if _node_kind(node) == "reg":
+    if kind == "reg":
         return
-
-    children = _ordered_children(node)
+    # Arrays are leaves by default; ``show_array_entries=True`` opts
+    # into per-entry rows for callers that want full visibility.
+    if kind == "array":
+        if not show_array_entries:
+            return
+        # The "children" of an array for tree rendering are its entries.
+        # Iterate via the public ``__iter__`` so multi-dim arrays still
+        # expand row-major along the outermost axis.
+        children = list(iter(node))
+    else:
+        children = _ordered_children(node)
     for idx, child in enumerate(children):
         _walk_tree(
             child,
@@ -1183,10 +1299,16 @@ def _walk_tree(
             read_values,
             lines,
             is_root=False,
+            show_array_entries=show_array_entries,
         )
 
 
-def tree(node: Any, max_depth: int | None = None) -> str:
+def tree(
+    node: Any,
+    max_depth: int | None = None,
+    *,
+    show_array_entries: bool = False,
+) -> str:
     """Return an ASCII tree of ``node``'s hierarchy.
 
     Each row is ``<indent>├─ <path>  [<Kind> @ <addr>]`` — the bracketed
@@ -1199,6 +1321,10 @@ def tree(node: Any, max_depth: int | None = None) -> str:
         max_depth: Maximum descent depth. ``None`` (default) means
             unlimited; ``0`` shows just ``node``; ``1`` shows ``node``
             plus its direct children, and so on.
+        show_array_entries: When ``True``, expand
+            :class:`~peakrdl_pybind11.runtime.arrays.ArrayView` nodes
+            into per-entry rows. The default (``False``) renders an
+            array as one row with its shape — ``lut[8] [Array @ 0x100]``.
     """
     lines: list[str] = []
     _walk_tree(
@@ -1210,11 +1336,17 @@ def tree(node: Any, max_depth: int | None = None) -> str:
         read_values=False,
         lines=lines,
         is_root=True,
+        show_array_entries=show_array_entries,
     )
     return "\n".join(lines)
 
 
-def dump(node: Any, read: bool = True) -> str:
+def dump(
+    node: Any,
+    read: bool = True,
+    *,
+    show_array_entries: bool = False,
+) -> str:
     """Return a full register dump rooted at ``node``.
 
     With ``read=True`` (default), every register in the subtree is read
@@ -1224,9 +1356,13 @@ def dump(node: Any, read: bool = True) -> str:
     as ``<no-read>`` so a partial bring-up never crashes the dump.
 
     With ``read=False`` the result is byte-identical to :func:`tree`.
+
+    Phase 5 (#138): arrays render as one summary line
+    (``lut[8] [Array @ 0x100 = [0xAA, 0xBB, ..., 0x11] (8 values)]``).
+    Pass ``show_array_entries=True`` to expand per-entry rows.
     """
     if not read:
-        return tree(node)
+        return tree(node, show_array_entries=show_array_entries)
     lines: list[str] = []
     _walk_tree(
         node,
@@ -1237,6 +1373,7 @@ def dump(node: Any, read: bool = True) -> str:
         read_values=True,
         lines=lines,
         is_root=True,
+        show_array_entries=show_array_entries,
     )
     return "\n".join(lines)
 
@@ -1252,11 +1389,15 @@ def _attach_tree_dump_to_soc(soc: Any) -> None:
     can ship its own implementation without us stomping on it.
     """
 
-    def _bound_tree(max_depth: int | None = None) -> str:
-        return tree(soc, max_depth=max_depth)
+    def _bound_tree(
+        max_depth: int | None = None,
+        *,
+        show_array_entries: bool = False,
+    ) -> str:
+        return tree(soc, max_depth=max_depth, show_array_entries=show_array_entries)
 
-    def _bound_dump(read: bool = True) -> str:
-        return dump(soc, read=read)
+    def _bound_dump(read: bool = True, *, show_array_entries: bool = False) -> str:
+        return dump(soc, read=read, show_array_entries=show_array_entries)
 
     if not (hasattr(soc, "tree") and callable(getattr(soc, "tree", None))):
         try:

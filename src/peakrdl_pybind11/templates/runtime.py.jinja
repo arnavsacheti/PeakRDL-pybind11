@@ -108,10 +108,15 @@ def create():
 # ---------------------------------------------------------------------------
 from peakrdl_pybind11.runtime import arrays as _peakrdl_arrays
 
-# (rdl_path_with_root, shape_tuple)
-_ARRAY_PATHS: list[tuple[str, tuple[int, ...]]] = [
+# Phase 5 (#138) extends the per-array tuple with strides and the
+# entry-type name so :class:`ArrayInfo` can expose them.  Order:
+# ``(rdl_path_with_root, shape_tuple, strides_tuple, entry_type_name)``.
+# Phases 1-4 used a 2-tuple; the new wrapping code unpacks defensively
+# so a stale generated runtime that still emits the 2-tuple keeps
+# working (with empty strides / entry_type_name).
+_ARRAY_PATHS: list[tuple[str, tuple[int, ...], tuple[int, ...], str]] = [
 {% for array in nodes.arrays %}
-    ("{{ array.node.get_path() }}", ({% for d in array.dimensions %}{{ d }}, {% endfor %})),
+    ("{{ array.node.get_path() }}", ({% for d in array.dimensions %}{{ d }}, {% endfor %}), ({% for s in array.strides %}{{ s }}, {% endfor %}), "{{ array.node | pybind_name }}_t"),
 {% endfor %}
 ]
 
@@ -212,7 +217,12 @@ def _install_array_properties() -> None:
     pointed message rather than silent breakage.
     """
     soc_cls = {{ soc_name }}_t
-    for path_with_root, _shape in _ARRAY_PATHS:
+    for entry in _ARRAY_PATHS:
+        # Phases 1-4 stored 2-tuples; Phase 5 (#138) stores 4-tuples
+        # ``(path, shape, strides, entry_type_name)``. Unpack defensively
+        # so a freshly-regenerated runtime works against an older
+        # ``arrays.py`` and vice versa during transitions.
+        path_with_root = entry[0]
         rel_path = _strip_soc_root(path_with_root)
         parent_path, _, attr = rel_path.rpartition(".")
         if parent_path:
@@ -294,7 +304,15 @@ def _wrap_arrays(soc) -> None:
     row-major indexing happy.
     """
     cache: dict[str, object] = {}
-    for path_with_root, shape in _ARRAY_PATHS:
+    for entry in _ARRAY_PATHS:
+        # Phase 5 (#138) extends ``_ARRAY_PATHS`` from a 2-tuple to a
+        # 4-tuple ``(path, shape, strides, entry_type_name)``. Unpack
+        # defensively so the runtime works against both shapes.
+        path_with_root = entry[0]
+        shape = entry[1]
+        strides = entry[2] if len(entry) > 2 else ()
+        entry_type_name = entry[3] if len(entry) > 3 else ""
+
         rel_path = _strip_soc_root(path_with_root)
         parent_path, _, attr = rel_path.rpartition(".")
         parent = soc
@@ -315,7 +333,24 @@ def _wrap_arrays(soc) -> None:
         # row-major; the ``ArrayView`` ``shape`` is then the full
         # multi-dim tuple from ``_ARRAY_PATHS``.
         elements = _flatten_cxx_array(cxx_array, shape)
-        view = _peakrdl_arrays.wrap_array(type(parent), attr, elements, shape)
+        # SoC-rooted dotted path for :class:`ArrayInfo`. ``rel_path``
+        # is the array's path under the SoC (e.g. ``"lut"`` or
+        # ``"peripherals.dma.channel"``); join it with the soc instance
+        # name for a usable ``info.path``. We fall back to the bare
+        # relative path when the user hasn't named the SoC node.
+        soc_name_prefix = getattr(type(soc), "__name__", "soc")
+        if soc_name_prefix.endswith("_t"):
+            soc_name_prefix = soc_name_prefix[:-2]
+        view_path = f"{soc_name_prefix}.{rel_path}" if soc_name_prefix else rel_path
+        view = _peakrdl_arrays.wrap_array(
+            type(parent),
+            attr,
+            elements,
+            shape,
+            path=view_path,
+            strides=strides,
+            entry_type_name=entry_type_name,
+        )
         cache[attr] = view
     if cache:
         _ARRAY_VIEW_CACHE[id(soc)] = cache

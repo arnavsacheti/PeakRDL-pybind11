@@ -149,12 +149,20 @@ Arrays
      - Notes
    * - Register array (``reg my_reg[N]``)
      - ``soc.lut[i]``, ``soc.lut[:]``, ``ArrayView``,
-       ``.read() -> ndarray[uint32]``
+       ``.read() -> ndarray[uint32]``, ``soc.lut.info.shape``,
+       ``soc.walk(kind="array")``
      - implemented
-     - Phase 1 of the Tier 3 plan (issue #138). 1-D register arrays only;
-       multi-dim and regfile/addrmap/field arrays still raise
-       ``NotSupportedError``. Codegen seam: the C++ ``ArrayBase`` template
-       in ``templates/descriptors/base_classes.hpp.jinja`` plus the
+     - Phases 1-5 of the Tier 3 plan (issue #138). 1-D register arrays
+       (Phase 1) plus regfile (Phase 2), multi-dim (Phase 3), and field
+       (Phase 4) integration. Phase 5 wires arrays into the rest of the
+       runtime metadata surface: :class:`ArrayInfo` on ``arr.info``;
+       ``soc.walk(kind="array")``; single-line array rendering in
+       ``soc.tree()`` / ``soc.dump()`` (with opt-in
+       ``show_array_entries=True`` for per-entry expansion);
+       snapshot synthesizes ``soc.lut[i]`` paths per entry; schema
+       export emits ``kind="array"`` nodes with nested entry shape.
+       Codegen seam: the C++ ``ArrayBase`` template in
+       ``templates/descriptors/base_classes.hpp.jinja`` plus the
        per-array typedef partial in ``templates/descriptors/arrays.hpp.jinja``;
        Python wrapping via ``runtime/arrays.py:wrap_array`` and the
        ``_wrap_arrays`` hook emitted by ``templates/runtime.py.jinja``.
@@ -633,8 +641,8 @@ These are the planned runtime surfaces, indexed for cross-reference.
    * - NumPy interop
      - ``np.asarray(mem)``, ``ArrayView.read() -> ndarray``,
        ``snap.to_dataframe()``
-     - partial
-     - ``np.asarray(mem)`` and ``ArrayView.read() -> ndarray`` ship via ``runtime/mem_view.py`` and ``runtime/arrays.py``; the ``snap.to_dataframe()`` pandas helper is not yet implemented.
+     - implemented
+     - ``np.asarray(mem)`` and ``ArrayView.read() -> ndarray`` ship via ``runtime/mem_view.py`` and ``runtime/arrays.py``; ``snap.to_dataframe()`` ships via ``runtime/snapshot.py``. Phase 5 of the Tier 3 plan (issue #138) routes array entries through the dataframe with synthesized ``"soc.lut[i]"`` paths per entry.
    * - Observation hooks
      - ``soc.observers.add_read(...)``, ``soc.observers.add_write(...)``,
        ``with soc.observe() as obs:``

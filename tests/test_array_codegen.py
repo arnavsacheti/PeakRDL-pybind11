@@ -474,8 +474,13 @@ class TestRegfileArrayRuntimeWiring:
         """The runtime's ``_install_array_properties`` walks the unified list."""
         out = _export(REGFILE_ARRAY_RDL, soc_name="rf_array_soc", tmpdir=tmp_path)
         runtime = (out / "rf_array_soc" / "__init__.py").read_text()
-        # The loop now consumes ``_ARRAY_PATHS`` (Phase 2 rename).
-        assert "for path_with_root, _shape in _ARRAY_PATHS:" in runtime
+        # Phase 5 (#138) widened ``_ARRAY_PATHS`` to a 4-tuple
+        # ``(path, shape, strides, entry_type_name)``; the loop now
+        # iterates each entry and unpacks defensively. The earlier
+        # ``for path_with_root, _shape in _ARRAY_PATHS:`` shape is gone.
+        assert "for entry in _ARRAY_PATHS:" in runtime
+        # Defensive unpack present so old-shape tuples still work.
+        assert 'entry[2] if len(entry) > 2 else ()' in runtime
 
 
 class TestRegfileArrayStubGeneration:
@@ -772,3 +777,515 @@ class TestPhase3StopGaps:
         with pytest.raises(NotSupportedError) as exc:
             Pybind11Exporter().export(root.top, str(out), soc_name="am_array_soc")
         assert "addrmap arrays" in str(exc.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 (#138) — codegen-level integration of arrays with the rest of
+# the runtime metadata surface (``.info``, walk, tree, snapshot, schema).
+# These tests don't need the C++ build; the runtime-shape tests live in
+# ``test_array_integration.py``.
+# ---------------------------------------------------------------------------
+
+
+class TestPhase5ArrayPathsShape:
+    """``_ARRAY_PATHS`` carries 4-tuples ``(path, shape, strides, entry_type)``."""
+
+    def test_array_paths_includes_strides_and_entry_type(self, tmp_path: Path) -> None:
+        """1-D array path tuple has ``(shape=(8,), strides=(4,), entry='lut_t')``."""
+        out = _export(SIMPLE_ARRAY_RDL, tmpdir=tmp_path)
+        runtime = (out / "simple_array_soc" / "__init__.py").read_text()
+        # 1-D: shape (8,), strides (4,), entry "simple_array_soc__lut_t".
+        assert '"simple_array_soc.lut[]"' in runtime
+        assert "(8, )" in runtime or "(8,)" in runtime
+        assert "(4, )" in runtime or "(4,)" in runtime
+        assert '"simple_array_soc__lut_t"' in runtime
+
+    def test_multidim_array_paths_strides(self, tmp_path: Path) -> None:
+        """2-D ``matrix[4][8]`` emits ``strides=(32, 4)`` in ``_ARRAY_PATHS``."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        runtime = (out / "multidim_reg_soc" / "__init__.py").read_text()
+        # Outer-axis stride = 32 (=8*4); inner = 4.
+        assert "(32, 4," in runtime
+
+
+class TestPhase5RuntimeIntegration:
+    """The generated runtime threads metadata into ``wrap_array``."""
+
+    def test_wrap_arrays_passes_path_kwarg(self, tmp_path: Path) -> None:
+        """``_wrap_arrays`` passes ``path=`` to ``wrap_array``."""
+        out = _export(SIMPLE_ARRAY_RDL, tmpdir=tmp_path)
+        runtime = (out / "simple_array_soc" / "__init__.py").read_text()
+        # ``path=view_path`` keyword argument present in the wrap_array call.
+        assert "path=view_path" in runtime
+        # The view path is built from the SoC root + relative path.
+        assert "view_path = " in runtime
+
+    def test_wrap_arrays_passes_strides_kwarg(self, tmp_path: Path) -> None:
+        """``_wrap_arrays`` forwards strides + entry_type_name."""
+        out = _export(SIMPLE_ARRAY_RDL, tmpdir=tmp_path)
+        runtime = (out / "simple_array_soc" / "__init__.py").read_text()
+        assert "strides=strides" in runtime
+        assert "entry_type_name=entry_type_name" in runtime
+
+
+class TestPhase5ArrayInfo:
+    """:class:`ArrayInfo` is a separate dataclass shaped for arrays."""
+
+    def test_array_info_distinct_from_info(self) -> None:
+        """``ArrayInfo`` is *not* ``Info`` -- the two are sibling dataclasses."""
+        from peakrdl_pybind11.runtime.info import ArrayInfo, Info
+        assert ArrayInfo is not Info
+
+    def test_array_info_default_kind(self) -> None:
+        """``ArrayInfo.kind`` defaults to lowercase ``"array"``."""
+        from peakrdl_pybind11.runtime.info import ArrayInfo
+        info = ArrayInfo()
+        assert info.kind == "array"
+
+    def test_array_info_dims_alias_for_shape(self) -> None:
+        """``info.dims`` is a list view of ``info.shape``."""
+        from peakrdl_pybind11.runtime.info import ArrayInfo
+        info = ArrayInfo(shape=(4, 8))
+        assert info.dims == [4, 8]
+
+    def test_array_view_info_property(self) -> None:
+        """``ArrayView.info`` exposes an :class:`ArrayInfo`."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.info import ArrayInfo
+
+        # Build a trivial ArrayView; we don't need real C++ elements for
+        # the metadata path -- we just need ``shape`` and the wiring kwargs.
+        class _StubReg:
+            offset = 0
+
+        view = ArrayView(
+            [_StubReg(), _StubReg()],
+            shape=(2,),
+            path="soc.lut",
+            strides=(4,),
+            entry_type_name="lut_t",
+        )
+        info = view.info
+        assert isinstance(info, ArrayInfo)
+        assert info.shape == (2,)
+        assert info.dims == [2]
+        assert info.path == "soc.lut"
+        assert info.strides == (4,)
+        assert info.entry_type_name == "lut_t"
+        assert info.kind == "array"
+        assert info.name == "lut"  # last segment of path.
+
+    def test_array_view_info_multidim(self) -> None:
+        """Multi-dim shape + strides round-trip into ``info``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+
+        class _StubReg:
+            offset = 0
+
+        view = ArrayView(
+            [_StubReg() for _ in range(32)],
+            shape=(4, 8),
+            path="soc.matrix",
+            strides=(32, 4),
+            entry_type_name="matrix_t",
+        )
+        info = view.info
+        assert info.shape == (4, 8)
+        assert info.dims == [4, 8]
+        assert info.strides == (32, 4)
+
+
+class TestPhase5Routing:
+    """``_kind_for`` and walk descend into arrays."""
+
+    def test_kind_for_array_view(self) -> None:
+        """``_kind_for(ArrayView)`` returns ``"Array"``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.routing import _kind_for
+
+        view = ArrayView([], shape=(0,))
+        assert _kind_for(view) == "Array"
+
+    def test_walk_descends_into_array_entries(self) -> None:
+        """``_walk(soc)`` yields the array, then each entry."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.routing import _walk
+
+        class _Reg:
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        elements = [_Reg(), _Reg(), _Reg()]
+        view = ArrayView(elements, shape=(3,), path="soc.lut")
+
+        class _Soc:
+            pass
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+
+        nodes = list(_walk(soc))
+        # soc + view + 3 entries = 5 (view is yielded, then each entry).
+        assert len(nodes) == 5
+        assert nodes[1] is view
+        assert nodes[2:] == elements
+
+    def test_walk_kind_array_filter(self) -> None:
+        """``_walk(soc, kind='array')`` yields only the ArrayView."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.routing import _walk
+
+        class _Reg:
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        elements = [_Reg(), _Reg()]
+        view = ArrayView(elements, shape=(2,), path="soc.lut")
+
+        class _Soc:
+            pass
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+
+        nodes = list(_walk(soc, kind="array"))
+        assert len(nodes) == 1
+        assert nodes[0] is view
+
+
+class TestPhase5SchemaArrayNode:
+    """Schema emits ``kind="array"`` entries with a nested ``entry``."""
+
+    def test_schema_array_kind(self) -> None:
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.schema import to_dict
+
+        class _Reg:
+            class info:
+                kind = "reg"
+                name = "lut"
+                path = "soc.lut"
+                address = 0x100
+                regwidth = 32
+                desc = None
+                fields = {}
+
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        view = ArrayView(
+            [_Reg(), _Reg()],
+            shape=(2,),
+            path="soc.lut",
+            strides=(4,),
+            entry_type_name="lut_t",
+        )
+
+        class _Soc:
+            pass
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+
+        out = to_dict(soc)
+        # Top-level SoC carries one child -- the array.
+        children = out.get("children", [])
+        assert len(children) == 1
+        node = children[0]
+        assert node["kind"] == "array"
+        assert node["path"] == "soc.lut"
+        assert node["dims"] == [2]
+        assert node["shape"] == [2]
+        assert node["strides"] == [4]
+        assert node["entry_type_name"] == "lut_t"
+        # The nested entry dict describes the entry shape.
+        assert node["entry"]["kind"] == "reg"
+
+    def test_schema_multidim_array(self) -> None:
+        """2-D array schema includes ``dims=[4, 8]`` and ``strides=[32, 4]``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.schema import to_dict
+
+        class _Reg:
+            class info:
+                kind = "reg"
+                name = "matrix"
+                path = "soc.matrix"
+                address = 0x100
+                regwidth = 32
+                desc = None
+                fields = {}
+
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        elements = [_Reg() for _ in range(32)]
+        view = ArrayView(
+            elements,
+            shape=(4, 8),
+            path="soc.matrix",
+            strides=(32, 4),
+            entry_type_name="matrix_t",
+        )
+
+        class _Soc:
+            pass
+
+        soc = _Soc()
+        soc.matrix = view  # type: ignore[attr-defined]
+
+        out = to_dict(soc)
+        children = out.get("children", [])
+        assert len(children) == 1
+        node = children[0]
+        assert node["dims"] == [4, 8]
+        assert node["strides"] == [32, 4]
+        assert node["entry"]["kind"] == "reg"
+
+
+class TestPhase5WidgetsArrayTreeRendering:
+    """``tree()`` renders arrays as a single line with shape suffix."""
+
+    def test_array_tree_line_includes_shape(self) -> None:
+        """``soc.tree()`` shows ``lut[8] [Array @ 0x100]`` for a 1-D array."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.widgets import tree
+
+        class _Reg:
+            class info:
+                name = "lut"
+                path = "soc.lut"
+                address = 0x100
+                regwidth = 32
+                desc = None
+                fields = {}
+
+            offset = 0x100
+
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        view = ArrayView(
+            [_Reg(), _Reg()],
+            shape=(2,),
+            path="soc.lut",
+            strides=(4,),
+            entry_type_name="lut_t",
+        )
+
+        class _Soc:
+            class info:
+                name = "soc"
+                path = "soc"
+                address = 0
+                regwidth = None
+                desc = None
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+        rendered = tree(soc)
+        # Shape suffix in the name, ``[Array @ ...]`` bracket.
+        assert "[2]" in rendered
+        assert "[Array" in rendered
+
+    def test_array_tree_does_not_explode_entries(self) -> None:
+        """Default ``tree()`` does *not* expand per-entry rows."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.widgets import tree
+
+        class _Reg:
+            class info:
+                name = "lut"
+                path = "soc.lut"
+                address = 0x100
+                regwidth = 32
+                desc = None
+                fields = {}
+
+            offset = 0x100
+
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        view = ArrayView(
+            [_Reg() for _ in range(8)],
+            shape=(8,),
+            path="soc.lut",
+            strides=(4,),
+        )
+
+        class _Soc:
+            class info:
+                name = "soc"
+                path = "soc"
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+        rendered = tree(soc)
+        # Should be a small number of lines (soc + array, not 8+).
+        assert rendered.count("\n") <= 1, f"expected <=2 lines, got:\n{rendered}"
+
+    def test_array_tree_show_entries_expands(self) -> None:
+        """``tree(show_array_entries=True)`` expands per-entry rows."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.widgets import tree
+
+        class _Reg:
+            class info:
+                name = "lut"
+                path = "soc.lut"
+                address = 0x100
+                regwidth = 32
+                desc = None
+                fields = {}
+
+            offset = 0x100
+
+            def read(self) -> int:
+                return 0
+
+            def write(self, v: int) -> None:
+                return None
+
+        view = ArrayView(
+            [_Reg(), _Reg(), _Reg()],
+            shape=(3,),
+            path="soc.lut",
+            strides=(4,),
+        )
+
+        class _Soc:
+            class info:
+                name = "soc"
+                path = "soc"
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+        rendered = tree(soc, show_array_entries=True)
+        # soc + array + 3 entries = 5 lines.
+        assert rendered.count("\n") >= 3
+
+
+class TestPhase5SnapshotArrayEntries:
+    """Snapshot synthesizes ``soc.lut[i]`` paths for array entries."""
+
+    def test_snapshot_includes_synthesized_array_paths(self) -> None:
+        """1-D array entries appear as ``soc.lut[0]`` ... ``soc.lut[7]``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.snapshot import take_snapshot
+
+        # Each _Reg has its own value + info.path = "soc.lut" (the array
+        # node's path -- all entries share it on the C++ side).
+        class _Reg:
+            def __init__(self, value: int) -> None:
+                self._v = value
+
+            class info:
+                name = "lut"
+                path = "soc.lut"
+                address = 0x100
+                regwidth = 32
+                access = "rw"
+                on_read = None
+                fields = {}
+
+            def peek(self) -> int:
+                return self._v
+
+            def read(self) -> int:
+                return self._v
+
+            def write(self, v: int) -> None:
+                self._v = int(v)
+
+        regs = [_Reg(value=0xAA + i) for i in range(4)]
+        view = ArrayView(regs, shape=(4,), path="soc.lut", strides=(4,))
+
+        class _Soc:
+            class info:
+                name = "soc"
+                path = "soc"
+
+            def walk(self):
+                yield self
+                yield self.lut
+                yield from regs
+
+        soc = _Soc()
+        soc.lut = view  # type: ignore[attr-defined]
+
+        snap = take_snapshot(soc)
+        # Synthesized indexed paths present.
+        for i in range(4):
+            assert f"soc.lut[{i}]" in snap.values
+            assert snap.values[f"soc.lut[{i}]"] == 0xAA + i
+        # The bare "soc.lut" path is *not* present -- it would collapse
+        # the 4 distinct entries onto a single key.
+        assert "soc.lut" not in snap.values
+
+    def test_snapshot_includes_synthesized_multidim_paths(self) -> None:
+        """2-D entries appear as ``soc.matrix[0,0]`` ... ``soc.matrix[3,7]``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        from peakrdl_pybind11.runtime.snapshot import take_snapshot
+
+        class _Reg:
+            def __init__(self, value: int) -> None:
+                self._v = value
+
+            class info:
+                name = "matrix"
+                path = "soc.matrix"
+                address = 0x100
+                regwidth = 32
+                access = "rw"
+                on_read = None
+                fields = {}
+
+            def peek(self) -> int:
+                return self._v
+
+            def read(self) -> int:
+                return self._v
+
+            def write(self, v: int) -> None:
+                self._v = int(v)
+
+        regs = [_Reg(i) for i in range(12)]
+        view = ArrayView(regs, shape=(3, 4), path="soc.matrix", strides=(16, 4))
+
+        class _Soc:
+            class info:
+                name = "soc"
+                path = "soc"
+
+            def walk(self):
+                yield self
+                yield self.matrix
+                yield from regs
+
+        soc = _Soc()
+        soc.matrix = view  # type: ignore[attr-defined]
+
+        snap = take_snapshot(soc)
+        # 3*4=12 synthesized paths.
+        assert "soc.matrix[0,0]" in snap.values
+        assert "soc.matrix[2,3]" in snap.values
+        assert sum(1 for k in snap.values if k.startswith("soc.matrix[")) == 12

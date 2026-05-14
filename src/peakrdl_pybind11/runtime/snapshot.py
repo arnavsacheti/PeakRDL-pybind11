@@ -663,10 +663,50 @@ def take_snapshot(
     This is the implementation behind ``soc.snapshot(...)``. The hosted method
     binds ``soc`` automatically; use this directly only if you have a soc
     instance that hasn't been wired through :func:`attach_snapshot`.
+
+    Phase 5 (#138): when the walk yields an
+    :class:`~peakrdl_pybind11.runtime.arrays.ArrayView`, each entry is
+    captured under a synthesized indexed path (``"soc.lut[3]"``,
+    ``"soc.matrix[2,5]"``).  Without this, every entry of an array
+    would key on the same RDL path (the array node's) and snapshot
+    would collapse N entries into one.
     """
+    # Lazy-import :class:`ArrayView` so the snapshot module stays
+    # importable when ``runtime/arrays`` isn't installed.
+    try:
+        from .arrays import ArrayView as _ArrayView
+    except ImportError:  # pragma: no cover - defensive
+        _ArrayView = None  # type: ignore[assignment]
+
     values: dict[PathStr, int] = {}
     metadata: dict[PathStr, Info] = {}
+    arrays_seen: set[int] = set()
+    array_entry_ids: set[int] = set()
     for node in _walk_readable(soc):
+        if _ArrayView is not None and isinstance(node, _ArrayView):
+            # The array itself isn't readable, but we record one
+            # synthesized row per entry so ``snap.to_dataframe()`` /
+            # ``snap.to_dict()`` reflects the full per-element state.
+            # Deduplicate so a SoC that exposes the array under
+            # multiple aliases doesn't double-capture the entries.
+            if id(node) in arrays_seen:
+                continue
+            arrays_seen.add(id(node))
+            _capture_array_entries(
+                node,
+                values=values,
+                metadata=metadata,
+                where=where,
+                allow_destructive=allow_destructive,
+                entry_ids=array_entry_ids,
+            )
+            continue
+        # Walk yields the entries inside the array *after* the array
+        # itself; we've already captured them under synthesized paths.
+        # Skip the bare-path duplicate here so the snapshot doesn't
+        # collapse N entries onto the shared array RDL path.
+        if id(node) in array_entry_ids:
+            continue
         info = getattr(node, "info", None)
         path = getattr(info, "path", None)
         if path is None:
@@ -678,6 +718,67 @@ def take_snapshot(
         if info is not None:
             metadata[path] = info
     return Snapshot(values=values, metadata=metadata)
+
+
+def _capture_array_entries(
+    arr: Any,
+    *,
+    values: dict[PathStr, int],
+    metadata: dict[PathStr, Info],
+    where: str | Callable[[str], bool] | None,
+    allow_destructive: bool,
+    entry_ids: set[int] | None = None,
+) -> None:
+    """Capture each entry of an :class:`ArrayView` under a synthesized path.
+
+    Indices come from the view's :attr:`shape` so multi-dim arrays
+    produce ``"matrix[2,5]"`` rather than the flat ``"matrix[21]"`` a
+    naive enumeration would yield. Per-entry registers without an
+    ``info.path`` still get an index-suffixed key because we don't
+    trust ``entry.info.path`` (all 8 entries share the array node's
+    path on the C++ side).
+
+    ``entry_ids`` (optional) is populated with ``id()`` of each entry
+    we touched so the caller can de-duplicate against the unfiltered
+    walk that yields entries again after the array.
+    """
+    info = getattr(arr, "info", None)
+    base_path = getattr(info, "path", None) if info is not None else None
+    if not isinstance(base_path, str) or not base_path:
+        return
+    shape: tuple[int, ...] = tuple(getattr(arr, "shape", ()) or ())
+    if not shape:
+        return
+
+    # Walk every multi-dim index combination row-major (matches
+    # :class:`ArrayView`'s row-major flattening).
+    def _enumerate(prefix: tuple[int, ...], remaining: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+        if not remaining:
+            yield prefix
+            return
+        for i in range(remaining[0]):
+            yield from _enumerate((*prefix, i), remaining[1:])
+
+    for idx in _enumerate((), shape):
+        idx_str = ",".join(str(i) for i in idx)
+        synthesized = f"{base_path}[{idx_str}]"
+        # Resolve the entry. For 1-D arrays ``arr[i]`` is the entry;
+        # for N-D ``arr[idx]`` is too (tuple-indexing is supported by
+        # :class:`ArrayView`).
+        entry = arr[idx[0]] if len(idx) == 1 else arr[idx]
+        if entry_ids is not None:
+            entry_ids.add(id(entry))
+        if not _matches_where(synthesized, where):
+            continue
+        try:
+            value = _peek_or_read(entry, allow_destructive=allow_destructive)
+        except (TypeError, AttributeError):
+            # Entry isn't readable on this transport; skip.
+            continue
+        values[synthesized] = value
+        entry_info = getattr(entry, "info", None)
+        if entry_info is not None:
+            metadata[synthesized] = entry_info
 
 
 def restore(

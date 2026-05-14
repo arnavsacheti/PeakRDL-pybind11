@@ -82,7 +82,11 @@ from typing import Any
 # uses for ``_node_kind``).
 _CONTAINER_KINDS = frozenset({"soc", "addrmap", "regfile"})
 _LEAF_KINDS = frozenset({"reg", "mem", "field"})
-_NODE_KINDS = _CONTAINER_KINDS | _LEAF_KINDS
+# Phase 5 (#138): ``array`` is a hybrid — it carries one entry shape
+# beneath it (rendered as ``"entry"``), so it's neither a pure
+# container nor a leaf. Schema emits it with a nested ``entry`` dict.
+_ARRAY_KINDS = frozenset({"array"})
+_NODE_KINDS = _CONTAINER_KINDS | _LEAF_KINDS | _ARRAY_KINDS
 
 
 def _node_kind(node: Any) -> str:
@@ -92,14 +96,26 @@ def _node_kind(node: Any) -> str:
 
     1. An explicit ``_node_kind`` attribute (the escape hatch used by
        widget fakes and any node that wants to lie about its class).
-    2. Class-name substring matches, longest first to disambiguate
+    2. :class:`~peakrdl_pybind11.runtime.arrays.ArrayView` instances
+       (Phase 5 of Tier 3 array support, #138).
+    3. Class-name substring matches, longest first to disambiguate
        ``regfile`` from ``reg`` and ``memory`` from ``mem``.
-    3. Fallback: ``"node"`` (rendered as a generic addrmap-like
+    4. Fallback: ``"node"`` (rendered as a generic addrmap-like
        container with no special attributes).
     """
     explicit = getattr(node, "_node_kind", None)
     if isinstance(explicit, str):
         return explicit
+
+    # Phase 5: ArrayView wraps an RDL array node; render it as its
+    # own ``kind="array"`` schema entry with a nested ``entry``.
+    try:
+        from .arrays import ArrayView as _ArrayView
+
+        if isinstance(node, _ArrayView):
+            return "array"
+    except ImportError:  # pragma: no cover - defensive
+        pass
 
     cls = type(node).__name__.lower()
     # Order matters: ``regfile`` must be tested before ``reg``.
@@ -110,6 +126,17 @@ def _node_kind(node: Any) -> str:
     if "mem" in cls:
         return "mem"
     if "reg" in cls:
+        return "reg"
+    # Phase 5 (#138): generated entry classes (``simple_array_soc__lut_t``)
+    # carry neither ``reg`` nor ``regfile`` in their names. Fall back to
+    # duck-typing -- a node with read/write is a register; a node with
+    # bits/lsb but no read/write is a field.
+    has_read = callable(getattr(node, "read", None))
+    has_write = callable(getattr(node, "write", None))
+    has_bits = hasattr(node, "bits") or hasattr(node, "lsb")
+    if has_bits and not (has_read and has_write):
+        return "field"
+    if has_read and has_write and not has_bits:
         return "reg"
     return "node"
 
@@ -431,20 +458,25 @@ def _iter_fields(reg: Any) -> list[Any]:
 
 
 def _iter_children(node: Any) -> list[Any]:
-    """List direct child nodes (reg/regfile/addrmap/mem) in declaration order.
+    """List direct child nodes (reg/regfile/addrmap/mem/array) in declaration order.
 
-    Uses ``vars(node)`` so the order matches dict insertion (which on
-    CPython 3.7+ is declaration order for kwarg-built objects). Children
-    are anything whose ``_node_kind`` classification is in
-    :data:`_NODE_KINDS` (excluding plain ``"field"`` — fields are nested
-    inside their parent register, not direct children of containers).
+    Phase 5 (#138): arrays are direct children of containers and
+    render as ``kind="array"`` schema entries with a nested ``entry``.
+
+    Iteration strategy: walk both ``vars(node)`` (instance ``__dict__``)
+    and ``dir(type(node))`` (class-level descriptors). The instance
+    dict is consulted first to preserve declaration order for the
+    canonical hand-rolled SoC fakes; the class-level walk picks up
+    pybind11-generated array properties (installed by the runtime
+    template's ``_install_array_properties``) that aren't present
+    on the instance dict. De-duplication is by ``id()``.
     """
     out: list[Any] = []
     seen: set[int] = set()
     try:
-        items = vars(node).items()
+        items = list(vars(node).items())
     except TypeError:
-        return out
+        items = []
 
     for attr, value in items:
         if attr.startswith("_") or value is node or callable(value):
@@ -452,7 +484,26 @@ def _iter_children(node: Any) -> list[Any]:
         if id(value) in seen:
             continue
         kind = _node_kind(value)
-        if kind in ("reg", "regfile", "addrmap", "mem"):
+        if kind in ("reg", "regfile", "addrmap", "mem", "array"):
+            seen.add(id(value))
+            out.append(value)
+
+    # Always also walk class-level descriptors: real pybind11 SoCs have
+    # an instance ``__dict__`` populated with bound methods (snapshot,
+    # tree, schema, ...), but the array attributes live only on the
+    # class. The de-dup guards against double-collecting an attribute
+    # that surfaces in both.
+    for attr in dir(type(node)):
+        if attr.startswith("_"):
+            continue
+        try:
+            value = getattr(node, attr)
+        except Exception:
+            continue
+        if value is node or callable(value) or id(value) in seen:
+            continue
+        kind = _node_kind(value)
+        if kind in ("reg", "regfile", "addrmap", "mem", "array"):
             seen.add(id(value))
             out.append(value)
     return out
@@ -512,6 +563,59 @@ def _mem_dict(node: Any) -> dict[str, Any]:
     return out
 
 
+def _array_dict(arr: Any) -> dict[str, Any]:
+    """Render an :class:`ArrayView` as a schema ``kind="array"`` dict.
+
+    Phase 5 (#138) chooses the **single-array-with-nested-entry** shape
+    over the flat-per-element alternative — it faithfully represents
+    the RDL ``reg foo[N]`` source and lets a consumer rebuild the
+    array structure without inferring from path patterns.
+    """
+    info = _info(arr)
+    out: dict[str, Any] = {
+        "kind": "array",
+        "name": getattr(info, "name", "") if info is not None else "",
+        "path": getattr(info, "path", "") if info is not None else "",
+    }
+    address = getattr(info, "address", None) if info is not None else None
+    if isinstance(address, int):
+        out["address"] = int(address)
+    shape = getattr(info, "shape", None) if info is not None else None
+    if isinstance(shape, tuple):
+        out["shape"] = list(shape)
+        out["dims"] = list(shape)
+    strides = getattr(info, "strides", None) if info is not None else None
+    if isinstance(strides, tuple):
+        out["strides"] = list(strides)
+    entry_type_name = getattr(info, "entry_type_name", "") if info is not None else ""
+    if entry_type_name:
+        out["entry_type_name"] = entry_type_name
+
+    # Nested entry: serialize the first element so the schema describes
+    # the entry shape (the RDL says "reg foo[N]" — all entries are
+    # identical, so one representative suffices). For multi-dim arrays
+    # ``arr[0]`` is a *sub-view* (the inner-axis ArrayView), but we want
+    # the schema to surface the *leaf* entry type rather than chained
+    # array nodes — so walk down to the actual register/regfile.
+    entry_dict: dict[str, Any] | None = None
+    first: Any = arr
+    while True:
+        try:
+            nxt = first[0]
+        except (IndexError, TypeError):
+            break
+        if nxt is first:
+            break
+        first = nxt
+        if _node_kind(first) != "array":
+            break
+    if first is not arr and first is not None:
+        entry_dict = _node_dict(first)
+    if entry_dict is not None:
+        out["entry"] = entry_dict
+    return out
+
+
 def _node_dict(node: Any, *, root_kind: str | None = None) -> dict[str, Any]:
     """Dispatch a node to the appropriate serializer.
 
@@ -530,6 +634,8 @@ def _node_dict(node: Any, *, root_kind: str | None = None) -> dict[str, Any]:
         return _reg_dict(node)
     if kind == "mem":
         return _mem_dict(node)
+    if kind == "array":
+        return _array_dict(node)
     if kind in _CONTAINER_KINDS:
         return _container_dict(node, kind)
     # Unknown kinds fall back to addrmap-style traversal so a partly-

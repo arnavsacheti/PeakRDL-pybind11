@@ -646,3 +646,208 @@ class TestCubeIntegration:
         """
         base = int(cube_soc.cube[0, 0, 0].offset)
         assert int(cube_soc.cube[1, 2, 3].offset) == base + 48 + 2 * 16 + 3 * 4
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 (#138) — integration of arrays with .info, walk, tree, dump,
+# snapshot, and schema. Reuses the multidim_soc fixture so we don't pay
+# the cmake cost twice.
+# ---------------------------------------------------------------------------
+
+
+class TestPhase5ArrayInfoSurface:
+    """``arr.info`` is an :class:`ArrayInfo` with shape/dims/path/strides."""
+
+    def test_one_d_array_info_shape(self, soc) -> None:
+        """``soc.lut.info.shape == (8,)``."""
+        info = soc.lut.info
+        assert tuple(info.shape) == (8,)
+
+    def test_one_d_array_info_dims(self, soc) -> None:
+        """``soc.lut.info.dims == [8]``."""
+        info = soc.lut.info
+        assert list(info.dims) == [8]
+
+    def test_one_d_array_info_strides(self, soc) -> None:
+        """``soc.lut.info.strides == (4,)`` -- 32-bit entries."""
+        info = soc.lut.info
+        assert tuple(info.strides) == (4,)
+
+    def test_one_d_array_info_kind(self, soc) -> None:
+        """``info.kind == "array"`` (lowercase)."""
+        info = soc.lut.info
+        assert info.kind == "array"
+
+    def test_one_d_array_info_path(self, soc) -> None:
+        """``soc.lut.info.path`` contains ``lut``."""
+        info = soc.lut.info
+        assert "lut" in info.path
+
+    def test_one_d_array_info_entry_type_name(self, soc) -> None:
+        """``info.entry_type_name`` carries the C++ entry class name."""
+        info = soc.lut.info
+        # The generated entry class is ``simple_array_soc__lut_t``.
+        assert "lut_t" in info.entry_type_name
+
+    def test_two_d_array_info_shape(self, multidim_soc) -> None:
+        """``soc.matrix.info.shape == (4, 8)``."""
+        info = multidim_soc.matrix.info
+        assert tuple(info.shape) == (4, 8)
+
+    def test_two_d_array_info_strides(self, multidim_soc) -> None:
+        """``soc.matrix.info.strides == (32, 4)`` -- outer*=inner_count."""
+        info = multidim_soc.matrix.info
+        assert tuple(info.strides) == (32, 4)
+
+    def test_two_d_array_info_dims(self, multidim_soc) -> None:
+        """``soc.matrix.info.dims == [4, 8]``."""
+        info = multidim_soc.matrix.info
+        assert list(info.dims) == [4, 8]
+
+
+class TestPhase5WalkDiscovery:
+    """``soc.walk(kind="array")`` yields the arrays."""
+
+    def test_walk_kind_array_yields_array(self, soc) -> None:
+        """``list(soc.walk(kind='array'))`` includes ``soc.lut``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        arrays = list(soc.walk(kind="array"))
+        assert len(arrays) == 1
+        assert isinstance(arrays[0], ArrayView)
+        # The same ArrayView we get via attribute access.
+        assert arrays[0] is soc.lut
+
+    def test_walk_unfiltered_includes_array_and_entries(self, soc) -> None:
+        """Bare ``soc.walk()`` yields the array and its 8 entries."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        nodes = list(soc.walk())
+        has_array = any(isinstance(n, ArrayView) for n in nodes)
+        assert has_array
+        # The 8 lut entries are also visited (kind="reg" filter sees them).
+        regs = list(soc.walk(kind="reg"))
+        assert len(regs) >= 8
+
+    def test_walk_kind_array_multi_arrays(self, mixed_soc) -> None:
+        """A SoC with both reg- and regfile-arrays yields both."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        arrays = list(mixed_soc.walk(kind="array"))
+        assert len(arrays) >= 2
+        assert all(isinstance(a, ArrayView) for a in arrays)
+
+
+class TestPhase5TreeRendering:
+    """``soc.tree()`` renders arrays as a single shape-suffixed line."""
+
+    def test_tree_array_single_line(self, soc) -> None:
+        """A 1-D array shows up once with ``[8]`` shape + ``[Array``."""
+        rendered = soc.tree()
+        # Shape suffix.
+        assert "[8]" in rendered
+        # ``[Array @`` bracket.
+        assert "[Array @" in rendered
+
+    def test_tree_multidim_array_line(self, multidim_soc) -> None:
+        """2-D array renders ``matrix[4][8]`` with the multi-dim shape."""
+        rendered = multidim_soc.tree()
+        assert "[4][8]" in rendered
+        assert "[Array @" in rendered
+
+    def test_dump_array_one_line_summary(self, soc) -> None:
+        """``soc.dump(read=True)`` reads and renders an array summary line."""
+        soc.lut[3].write(0x42)
+        soc.lut[5].write(0x55)
+        rendered = soc.dump(read=True)
+        # Summary line is present (e.g. ``[0x0, 0x0, 0x0, 0x42, ..., 0x0, 0x0] (8 values)``).
+        assert "(8 values)" in rendered
+
+    def test_dump_array_does_not_explode(self, soc) -> None:
+        """Default ``dump(read=True)`` does *not* expand per-entry rows."""
+        rendered = soc.dump(read=True)
+        # soc + lut = 2 lines.  Per-entry rows would be 8 extra.
+        assert rendered.count("\n") <= 2
+
+    def test_dump_array_show_entries_expands(self, soc) -> None:
+        """``dump(show_array_entries=True)`` expands per-entry rows."""
+        rendered = soc.dump(read=True, show_array_entries=True)
+        # soc + lut + 8 entries.
+        assert rendered.count("\n") >= 8
+
+
+class TestPhase5SnapshotArrayEntries:
+    """``soc.snapshot()`` synthesizes ``soc.lut[i]`` keys per entry."""
+
+    def test_snapshot_has_synthesized_array_paths(self, soc) -> None:
+        """One key per array entry."""
+        soc.lut[3].write(0x42)
+        snap = soc.snapshot()
+        # Some key under the lut prefix has the [i] suffix.
+        keys_with_index = [k for k in snap.values if "lut[" in k]
+        assert len(keys_with_index) == 8, f"expected 8 indexed keys, got: {keys_with_index}"
+
+    def test_snapshot_values_match_per_entry(self, soc) -> None:
+        """Each entry's value is captured under its synthesized path."""
+        soc.lut[0].write(0x10)
+        soc.lut[3].write(0x42)
+        soc.lut[7].write(0xFF)
+        snap = soc.snapshot()
+        keys = sorted(k for k in snap.values if "lut[" in k)
+        assert any(snap.values[k] == 0x10 for k in keys)
+        assert any(snap.values[k] == 0x42 for k in keys)
+        assert any(snap.values[k] == 0xFF for k in keys)
+
+    def test_snapshot_does_not_collapse_array_path(self, soc) -> None:
+        """The bare array path is not used as a key (would collapse entries)."""
+        snap = soc.snapshot()
+        # The unindexed "lut" path is absent (or, if present, only as a
+        # shared prefix).  Concretely: no key equals the array's
+        # info.path exactly.
+        info_path = soc.lut.info.path
+        assert info_path not in snap.values
+
+    def test_snapshot_multidim_paths(self, multidim_soc) -> None:
+        """2-D entries appear as ``soc.matrix[0,0]`` etc."""
+        snap = multidim_soc.snapshot()
+        # 4*8=32 entries.
+        keys = [k for k in snap.values if "matrix[" in k]
+        assert len(keys) == 32
+
+
+class TestPhase5SchemaArrayExport:
+    """``soc.schema()`` emits ``kind="array"`` entries with nested entry."""
+
+    def test_schema_includes_array_kind(self, soc) -> None:
+        """Top-level children list has the array entry."""
+        schema = soc.schema()
+        children = schema.get("children", [])
+        array_children = [c for c in children if c.get("kind") == "array"]
+        assert len(array_children) == 1
+        node = array_children[0]
+        # Shape + strides + entry.
+        assert node.get("dims") == [8]
+        assert node.get("shape") == [8]
+        assert node.get("strides") == [4]
+        # Nested entry surfaces the register kind.
+        entry = node.get("entry", {})
+        assert entry.get("kind") == "reg"
+
+    def test_schema_multidim_array(self, multidim_soc) -> None:
+        """2-D ``matrix`` is a single array node with dims=[4, 8]."""
+        schema = multidim_soc.schema()
+        children = schema.get("children", [])
+        matrix_nodes = [c for c in children if c.get("name") == "matrix" or "matrix" in c.get("path", "")]
+        # Either appears as a single array node or nested.
+        assert any(c.get("kind") == "array" and c.get("dims") == [4, 8] for c in matrix_nodes)
+
+
+class TestPhase5SnapshotDataframe:
+    """``snap.to_dataframe()`` renders array entries as rows."""
+
+    def test_to_dataframe_includes_array_rows(self, soc) -> None:
+        """One DataFrame row per array entry."""
+        pd = pytest.importorskip("pandas")
+        soc.lut[3].write(0x42)
+        snap = soc.snapshot()
+        df = snap.to_dataframe()
+        # 8 lut[i] rows present.
+        lut_rows = [p for p in df.index if "lut[" in str(p)]
+        assert len(lut_rows) == 8

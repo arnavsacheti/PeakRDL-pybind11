@@ -368,6 +368,8 @@ def _kind_for(node: Any) -> str:
 
     ``"Signal"`` — :class:`~peakrdl_pybind11.runtime.signals.Signal`
                    instance (metadata-only, no bus access).
+    ``"Array"`` — :class:`~peakrdl_pybind11.runtime.arrays.ArrayView`
+                   wrapper (Phase 5 of Tier 3 array support, #138).
     ``"Field"`` — has ``bits`` or ``lsb`` (and no ``read``/``write``).
     ``"Reg"``   — has ``read`` and ``write`` callables (and is not a field).
     ``"Mem"``   — type name contains ``"mem"`` (case-insensitive substring).
@@ -386,6 +388,15 @@ def _kind_for(node: Any) -> str:
 
     if isinstance(node, _Signal):
         return "Signal"
+    # Arrays: lazy-import to avoid the circularity ``arrays`` → registry
+    # → ``routing``. Tested before the duck-typed branches because an
+    # ``ArrayView`` exposes neither ``bits``/``lsb`` nor a ``read`` that
+    # returns a scalar, and we want ``soc.walk(kind="array")`` to see it
+    # rather than the (empty) duck-type fallback.
+    from .arrays import ArrayView as _ArrayView
+
+    if isinstance(node, _ArrayView):
+        return "Array"
     cls_name = type(node).__name__.lower()
     # Fields: bits/lsb take precedence over read/write because some
     # generated field types also expose a ``read()`` for typed readback.
@@ -411,7 +422,7 @@ def _kind_for(node: Any) -> str:
 def _looks_like_child(value: Any) -> bool:
     """Duck-typed check: is ``value`` a node we should descend into?
 
-    Two recognition paths:
+    Three recognition paths:
 
     1. *Leaf* nodes (registers/fields) expose at least one of the hint
        attributes from :data:`_CHILD_ATTR_HINTS` (``read``/``write`` for
@@ -421,12 +432,25 @@ def _looks_like_child(value: Any) -> bool:
        node-like child. We detect them by inspecting ``vars(value)`` and
        recursing one level — bounded recursion, since a container has
        to bottom out at leaves to be useful.
+    3. *Arrays* (Phase 5 of Tier 3 array support, #138). An
+       :class:`~peakrdl_pybind11.runtime.arrays.ArrayView` is recognised
+       directly so ``soc.walk(kind="array")`` can find it; the entries
+       inside are yielded by :func:`_walk` when it descends.
     """
 
     if value is None or isinstance(value, (str, bytes, int, float, bool)):
         return False
     if isinstance(value, (list, tuple, dict, set, frozenset)):
         return False
+    # Path 3: ArrayView -- always a container. Lazy import to keep
+    # ``arrays`` decoupled from ``routing`` at module import time.
+    try:
+        from .arrays import ArrayView as _ArrayView
+
+        if isinstance(value, _ArrayView):
+            return True
+    except ImportError:  # pragma: no cover - defensive
+        pass
     if callable(value) and not hasattr(value, "__dict__"):
         return False
     # Path 1: leaf-style node with a recognised hint attribute.
@@ -455,20 +479,60 @@ def _iter_children(node: Any) -> Iterator[Any]:
     private members, the parent back-pointer, the bus master, and any
     non-node-like values. Order matches insertion order in the dict —
     on CPython 3.7+ that's deterministic per construction.
+
+    Phase 5 (#138) adds two extensions:
+
+    * :class:`~peakrdl_pybind11.runtime.arrays.ArrayView` instances are
+      treated as containers — the array itself is yielded, and the walk
+      descends into each entry. ``walk(kind="array")`` then sees just
+      the arrays; ``walk(kind="reg")`` sees the entries.
+    * pybind11-generated SoCs have no ``__dict__`` (slotted) so
+      ``vars(node)`` raises :class:`TypeError`. Fall back to ``dir()``
+      (which exposes the class-level data descriptors installed by the
+      runtime template's ``_install_array_properties``) so the walk
+      actually sees the array attributes on a real C++ SoC.
     """
 
+    seen: set[int] = set()
     try:
         items = vars(node)
     except TypeError:
-        return
-    for name, value in items.items():
+        items = None
+
+    if items is not None:
+        for name, value in items.items():
+            if name.startswith("_"):
+                continue
+            if name in ("parent", "master", "info"):
+                continue
+            if value is node:
+                continue
+            if id(value) in seen:
+                continue
+            if _looks_like_child(value):
+                seen.add(id(value))
+                yield value
+
+    # Phase 5 (#138): always also walk class-level descriptors. Real
+    # pybind11 SoCs have an instance ``__dict__`` populated with bound
+    # methods (snapshot, tree, schema, ...), but the array attributes
+    # live only on the class -- iterating ``vars(node)`` alone would
+    # miss them. The de-dup guards against yielding an attribute that
+    # surfaces both as a bound-method instance entry and a class-level
+    # descriptor.
+    for name in dir(type(node)):
         if name.startswith("_"):
             continue
         if name in ("parent", "master", "info"):
             continue
-        if value is node:
+        try:
+            value = getattr(node, name)
+        except Exception:
+            continue
+        if value is node or callable(value) or id(value) in seen:
             continue
         if _looks_like_child(value):
+            seen.add(id(value))
             yield value
 
 
@@ -523,6 +587,12 @@ def _walk(node: Any, *, kind: str | None = None) -> Iterator[Any]:
     # loop forever.
     visited: set[int] = set()
     stack: list[Any] = [node]
+    # Lazy import: ArrayView lives in ``arrays`` which depends on this
+    # module's :func:`_walk` only transitively through ``_registry``.
+    try:
+        from .arrays import ArrayView as _ArrayView
+    except ImportError:  # pragma: no cover - defensive
+        _ArrayView = None  # type: ignore[assignment]
     while stack:
         cur = stack.pop()
         key = id(cur)
@@ -533,9 +603,19 @@ def _walk(node: Any, *, kind: str | None = None) -> Iterator[Any]:
             yield cur
         # Push children in reverse so pre-order DFS keeps the natural
         # left-to-right traversal order users see when reading vars().
-        children = list(_iter_children(cur))
-        for child in reversed(children):
-            stack.append(child)
+        # Phase 5 (#138): ArrayView is its own iterable -- the entries
+        # don't show up under ``vars(arr)`` (slotted) or ``dir(arr)``,
+        # so we have to enumerate them explicitly. Each entry is itself
+        # a generated register/regfile that descends through the
+        # standard ``_iter_children`` path.
+        if _ArrayView is not None and isinstance(cur, _ArrayView):
+            entries = list(cur._iter_elements())
+            for child in reversed(entries):
+                stack.append(child)
+        else:
+            children = list(_iter_children(cur))
+            for child in reversed(children):
+                stack.append(child)
 
 
 def _matches_kind(node: Any, kind: str | None) -> bool:
@@ -545,12 +625,20 @@ def _matches_kind(node: Any, kind: str | None) -> bool:
     (case-insensitive) against both the duck-typed classification from
     :func:`_kind_for` and the node's class name — so ``kind="reg"``
     catches a duck-typed ``"Reg"`` and a generated ``uart_control_reg_t``.
+
+    Phase 5 (#138): ``"array"`` is matched *strictly* via the duck-typed
+    classification because RDL-generated SoC class names (e.g.
+    ``simple_array_soc_t``) often contain the substring ``"array"`` —
+    the looser fallback would incorrectly match every node in the tree.
     """
 
     if not kind:
         return True
     token = kind.lower()
     duck = _kind_for(node).lower()
+    # Array kind needs a strict duck-typed match; see docstring.
+    if token == "array":
+        return duck == "array"
     if duck and token in duck:
         return True
     cls_name = type(node).__name__.lower()

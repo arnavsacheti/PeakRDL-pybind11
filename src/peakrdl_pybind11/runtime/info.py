@@ -168,6 +168,47 @@ class Info:
         return "Info(" + ", ".join(bits) + ")"
 
 
+@dataclass(frozen=True, slots=True)
+class ArrayInfo:
+    """Immutable metadata snapshot exposed via ``ArrayView.info``.
+
+    Distinct from :class:`Info` because arrays describe a *shape* over
+    entries rather than a single register/field's properties. The
+    surface mirrors :class:`Info` where it makes sense (``name``,
+    ``path``, ``address``) but adds array-specific fields:
+
+    * ``shape`` — the full multi-dim shape tuple (e.g. ``(4, 8)``).
+    * ``dims`` — list view of ``shape`` (matches the matrix sketch
+      naming; both are exposed for ergonomics).
+    * ``strides`` — per-axis byte strides (e.g. ``[32, 4]`` for a
+      ``matrix[4][8]`` of 32-bit registers).
+    * ``entry_type_name`` — the C++ entry class name (e.g. ``"lut_t"``).
+    * ``kind`` — always ``"array"`` (lowercase, matching the
+      ``walk(kind=...)`` convention).
+    """
+
+    name: str = ""
+    path: str = ""
+    address: int = 0
+    shape: tuple[int, ...] = ()
+    strides: tuple[int, ...] = ()
+    entry_type_name: str = ""
+    kind: str = "array"
+
+    @property
+    def dims(self) -> list[int]:
+        """Alias for ``list(shape)`` — matches the multi-dim sketch naming."""
+        return list(self.shape)
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial formatting
+        addr = f"0x{self.address:x}" if self.address else "0x0"
+        path = self.path or self.name or "<anon>"
+        return (
+            f"ArrayInfo(path={path!r}, @{addr}, shape={self.shape}, "
+            f"strides={self.strides}, entry={self.entry_type_name!r})"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Extraction from systemrdl nodes
 # ---------------------------------------------------------------------------

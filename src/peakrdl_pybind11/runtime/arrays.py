@@ -250,9 +250,20 @@ class ArrayView:
     a new ``shape`` and an index map onto the parent storage. Bulk
     reads/writes coalesce into ``read_many`` / ``write_many`` when a
     shared master is reachable.
+
+    Optional metadata (``path``, ``strides``, ``entry_type_name``) is
+    consumed by :attr:`info` to expose an :class:`ArrayInfo` namespace
+    consistent with the rest of the runtime's metadata surface.
     """
 
-    __slots__ = ("_elements", "_indices", "_shape")
+    __slots__ = (
+        "_elements",
+        "_entry_type_name",
+        "_indices",
+        "_path",
+        "_shape",
+        "_strides",
+    )
 
     def __init__(
         self,
@@ -260,6 +271,9 @@ class ArrayView:
         shape: tuple[int, ...] | None = None,
         *,
         _indices: Sequence[int] | None = None,
+        path: str = "",
+        strides: Sequence[int] | None = None,
+        entry_type_name: str = "",
     ) -> None:
         elements_list = list(elements)
         # Number of *visible* slots in this view: equals
@@ -285,6 +299,9 @@ class ArrayView:
             self._indices: list[int] = list(range(len(elements_list)))
         else:
             self._indices = list(_indices)
+        self._path: str = path
+        self._strides: tuple[int, ...] = tuple(int(s) for s in strides) if strides is not None else ()
+        self._entry_type_name: str = entry_type_name
 
     # ---- basic dunder/property surface ----------------------------------
 
@@ -292,6 +309,59 @@ class ArrayView:
     def shape(self) -> tuple[int, ...]:
         """The (multi-dim) shape of the view."""
         return self._shape
+
+    @property
+    def info(self) -> Any:
+        """Return an :class:`~peakrdl_pybind11.runtime.info.ArrayInfo` snapshot.
+
+        The namespace mirrors :attr:`Info <peakrdl_pybind11.runtime.info.Info>`
+        where it makes sense (``name``, ``path``, ``address``) and adds
+        array-specific fields (``shape``, ``dims``, ``strides``,
+        ``entry_type_name``, ``kind="array"``).
+
+        Defined as a real property so generated array attributes
+        (``soc.lut.info``) don't fall through to :meth:`__getattr__`
+        and surface a :class:`_FieldProjection` for a field named
+        ``"info"``.
+        """
+        # Lazy import: ``info`` imports nothing from ``arrays``, but we
+        # delay the import here to stay symmetric with ``runtime/routing``
+        # and avoid stamping every module-load with a top-level pull from
+        # ``runtime.info`` while ``arrays.py`` is also the home of the
+        # ``_registry`` integration block at the bottom of this file.
+        from peakrdl_pybind11.runtime.info import ArrayInfo as _ArrayInfo
+
+        # ``name`` is the last dotted segment of the path; if the
+        # caller never passed a path we fall back to the empty string
+        # so consumers can still rely on the field existing.
+        name = self._path.rsplit(".", 1)[-1] if self._path else ""
+        # Per-axis byte strides: explicit when the wiring layer provided
+        # them; else best-effort derive from element offsets (matches the
+        # legacy ``stride`` property for 1-D arrays).
+        strides_tuple: tuple[int, ...]
+        if self._strides:
+            strides_tuple = self._strides
+        else:
+            legacy_stride = int(self.stride)
+            strides_tuple = (legacy_stride,) if legacy_stride else ()
+
+        # Address: use the first element's offset/address when reachable.
+        address = 0
+        if self._elements and self._indices:
+            first = self._elements[self._indices[0]]
+            cand = getattr(first, "address", None) or getattr(first, "offset", None)
+            if isinstance(cand, int):
+                address = int(cand)
+
+        return _ArrayInfo(
+            name=name,
+            path=self._path,
+            address=address,
+            shape=tuple(self._shape),
+            strides=strides_tuple,
+            entry_type_name=self._entry_type_name,
+            kind="array",
+        )
 
     @property
     def stride(self) -> int:
@@ -378,6 +448,38 @@ class ArrayView:
             return self._getitem_int(int(key))
         raise TypeError(f"array indices must be int, slice, or tuple; got {type(key).__name__}")
 
+    def _subview(self, shape: tuple[int, ...], indices: Sequence[int]) -> ArrayView:
+        """Build a sub-view that inherits this view's array-level metadata.
+
+        Slicing along a leading axis preserves the path / entry-type /
+        strides of the parent view because those describe the underlying
+        RDL array node, not a particular axis. Sub-views over an inner
+        axis (after a chained integer index) drop the outermost stride
+        but keep the path -- the path always points at the canonical
+        array node, never an indexed entry.
+        """
+        # When the sub-view drops outer dimensions (chained integer
+        # indexing), the surviving strides are the tail of the parent's
+        # strides list. Bare slicing along the outer axis preserves the
+        # full strides list.
+        new_strides: tuple[int, ...]
+        if self._strides:
+            drop = len(self._shape) - len(shape)
+            if 0 <= drop <= len(self._strides):
+                new_strides = self._strides[drop:]
+            else:
+                new_strides = ()
+        else:
+            new_strides = ()
+        return type(self)(
+            self._elements,
+            shape,
+            _indices=indices,
+            path=self._path,
+            strides=new_strides,
+            entry_type_name=self._entry_type_name,
+        )
+
     def _getitem_int(self, idx: int) -> Any:
         if not self._shape:
             raise IndexError("0-d array is not indexable")
@@ -391,7 +493,7 @@ class ArrayView:
             stride *= dim
         start = normalized * stride
         sub_indices = self._indices[start : start + stride]
-        return type(self)(self._elements, sub_shape, _indices=sub_indices)
+        return self._subview(sub_shape, sub_indices)
 
     def _getitem_slice(self, sl: slice) -> ArrayView:
         if not self._shape:
@@ -407,7 +509,7 @@ class ArrayView:
             base = r * stride
             new_indices.extend(self._indices[base : base + stride])
         new_shape = (len(rows), *sub_shape_tail)
-        return type(self)(self._elements, new_shape, _indices=new_indices)
+        return self._subview(new_shape, new_indices)
 
     def _getitem_tuple(self, key: tuple[Any, ...]) -> Any:
         # NumPy-like int/slice tuple indexing. Ellipsis and newaxis are
@@ -440,7 +542,7 @@ class ArrayView:
             return self._elements[self._indices[flat_index_set[0]]]
 
         new_indices = [self._indices[i] for i in flat_index_set]
-        return type(self)(self._elements, tuple(result_shape), _indices=new_indices)
+        return self._subview(tuple(result_shape), new_indices)
 
     # ---- attribute lookup: field projection -----------------------------
 
@@ -668,6 +770,10 @@ def wrap_array(
     member_name: str,
     elements: Sequence[Any],
     shape: tuple[int, ...] | None = None,
+    *,
+    path: str = "",
+    strides: Sequence[int] | None = None,
+    entry_type_name: str = "",
 ) -> ArrayView:
     """Apply registered hooks to wrap a sequence of descriptors.
 
@@ -679,15 +785,37 @@ def wrap_array(
     2. The element class's :data:`_ARRAY_VIEW_CLS_ATTR` stamp, set by the
        seam-level enhancement when generated registers are processed.
     3. A vanilla :class:`ArrayView`.
+
+    The optional ``path`` / ``strides`` / ``entry_type_name`` arguments
+    feed :class:`ArrayInfo` (Phase 5 of Tier 3 array support, #138);
+    they're consumed by the resulting view's :attr:`ArrayView.info`
+    namespace. Defaults preserve back-compat with Phase 1-4 call sites
+    that didn't supply the metadata.
     """
     elements_list = list(elements)
     eff_shape: tuple[int, ...] = tuple(shape) if shape is not None else (len(elements_list),)
     for hook in _REGISTERED_HOOKS:
         result = hook(parent_cls, member_name, elements_list, eff_shape)
         if result is not None:
+            # Existing hooks (Phase 1-4) don't know about the array
+            # metadata kwargs. Stamp them on the result if the hook
+            # returned a vanilla ArrayView; otherwise leave it alone.
+            if isinstance(result, ArrayView):
+                if path and not result._path:
+                    object.__setattr__(result, "_path", path)
+                if strides and not result._strides:
+                    object.__setattr__(result, "_strides", tuple(int(s) for s in strides))
+                if entry_type_name and not result._entry_type_name:
+                    object.__setattr__(result, "_entry_type_name", entry_type_name)
             return result
     view_cls = _resolve_view_class(elements_list)
-    return view_cls(elements_list, eff_shape)
+    return view_cls(
+        elements_list,
+        eff_shape,
+        path=path,
+        strides=strides,
+        entry_type_name=entry_type_name,
+    )
 
 
 def _resolve_view_class(elements: Sequence[Any]) -> type[ArrayView]:
