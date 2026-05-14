@@ -22,8 +22,6 @@ from systemrdl.node import (
     SignalNode,
 )
 
-from .runtime.errors import NotSupportedError
-
 # Words that cannot be used as identifiers in either Python or C++.
 #
 # We deliberately use only ``keyword.kwlist`` (hard Python keywords) and skip
@@ -186,7 +184,7 @@ class ArrayInfo(TypedDict):
     """
 
     kind: str
-    node: RegNode | RegfileNode
+    node: RegNode | RegfileNode | AddrmapNode
     dimensions: list[int]
     stride: int
     strides: list[int]
@@ -245,10 +243,10 @@ class Nodes(TypedDict):
     #   post-create hook that swaps the raw C++ array node for an
     #   :class:`ArrayView` wrapper.
     #
-    # Phase 2 scope: 1-D register arrays + 1-D regfile arrays at the
-    # SoC root or under non-arrayed regfiles. Multi-dim, addrmap arrays,
-    # field arrays, and arrays nested inside another array still raise
-    # :class:`NotSupportedError` in ``_collect_nodes``.
+    # Current scope: 1-D and multi-dim register / regfile / addrmap
+    # arrays at the SoC root or under non-arrayed parents. Field arrays
+    # use a separate ``FieldArray`` runtime wrapper (Phase 4 of issue
+    # #138) and aren't tracked here.
     arrays: list["ArrayInfo"]
     # Phase 1 back-compat alias. Populated as the ``kind == "reg"``
     # subset of ``arrays``; downstream code that hasn't been migrated
@@ -827,20 +825,37 @@ class Pybind11Exporter:
                 "reg_arrays": [],
             }
 
-        # Tier 0 stop-gap (issue #137 / #138). Phase 2 handles 1-D
-        # register + regfile arrays; addrmap arrays remain Phase 3+ and
-        # surface a clear error so users see a useful message rather
-        # than a cryptic systemrdl crash deep in the template.
-        if isinstance(node, AddrmapNode) and node.is_array:
-            raise NotSupportedError(
-                f"Addrmap arrays are not yet supported "
-                f"({node.get_path()!r}). Tracked at "
-                f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
-                f"design at #138. Phase 3 of the Tier 3 plan lands these."
-            )
-
         if isinstance(node, AddrmapNode):
+            # Arrayed addrmap (issues #137 / #138 follow-up). Treated as
+            # the regfile-array path's twin — same ``ArrayInfo`` shape,
+            # same ``ArrayBase<entry_t>`` C++ codegen, but with
+            # ``kind="addrmap"`` so the descriptor partial routed by
+            # kind picks the right include order (after ``addrmaps.hpp``,
+            # before ``top_node.hpp``).
+            if node.is_array and node != self.top_node:
+                dims = list(node.array_dimensions or [])
+                inner_stride = node.array_stride
+                if inner_stride is None:
+                    inner_stride = int(node.size)
+                strides = _compute_per_axis_strides(dims, int(inner_stride))
+                nodes["arrays"].append(
+                    {
+                        "kind": "addrmap",
+                        "node": node,
+                        "dimensions": dims,
+                        "stride": strides[-1] if strides else int(inner_stride),
+                        "strides": strides,
+                        "relative_offset": int(node.raw_address_offset),
+                    }
+                )
+
             nodes["addrmaps"].append(node)
+            # Descend into children even when the addrmap is arrayed.
+            # ``node.children()`` on an arrayed addrmap yields child
+            # nodes with ``current_idx=0`` unrolled, so the inner
+            # registers / regfiles get a bound index for their own
+            # ``address_offset``. Required so each child's C++ class
+            # is emitted exactly once regardless of array size.
             for child in node.children():
                 # ``SignalNode`` children of an addrmap/regfile have no
                 # relevant descendants for us; track them flat and skip
