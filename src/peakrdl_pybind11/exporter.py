@@ -11,6 +11,7 @@ from typing import TypedDict
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 from systemrdl.node import (
+    AddressableNode,
     AddrmapNode,
     FieldNode,
     MemNode,
@@ -156,6 +157,29 @@ class RegArrayInfo(TypedDict):
     relative_offset: int
 
 
+class ArrayInfo(TypedDict):
+    """Unified metadata for an arrayed RDL node (register or regfile).
+
+    Phase 2 (issue #138) extends the Phase 1 ``RegArrayInfo`` shape with
+    a ``kind`` discriminator. Templates iterate ``nodes["arrays"]`` and
+    filter by ``kind`` (``"reg"`` or ``"regfile"``) when their emission
+    differs slightly between the two. ``nodes["reg_arrays"]`` remains a
+    back-compat view populated alongside this list.
+
+    ``node`` is the unrolled-shape entry view (``current_idx`` set to
+    index 0) so the pipeline can walk children at absolute addresses
+    for index 0; ``ArrayBase`` then reconstructs each entry's absolute
+    offset at runtime via ``offset_ + i * stride``. ``dimensions`` is
+    a list of ints; Phases 1+2 always have length 1.
+    """
+
+    kind: str
+    node: RegNode | RegfileNode
+    dimensions: list[int]
+    stride: int
+    relative_offset: int
+
+
 class Nodes(TypedDict):
     addrmaps: list[AddrmapNode]
     regfiles: list[RegfileNode]
@@ -183,25 +207,39 @@ class Nodes(TypedDict):
     # ``RegNode.fields()`` returns fresh ``FieldNode`` wrappers every call —
     # identity is per-iteration, but ``get_path()`` is stable.
     field_encodes: dict[str, list[tuple[str, int]]]
-    # Arrayed ``RegNode`` instantiations (RDL ``reg foo[N]``). Each entry
-    # carries the underlying entry-type RegNode (still listed in ``regs``,
-    # which emits its C++ class exactly once), plus the array shape and
-    # stride. Consumed by:
+    # Unified arrayed-node list (Phase 2 of Tier 3 array support;
+    # issue #138). Each entry carries a ``kind`` (``"reg"`` /
+    # ``"regfile"``) discriminator plus the underlying entry-type node,
+    # dimensions, stride, and relative-offset. Templates iterate
+    # ``nodes["arrays"]`` and filter by ``kind`` where their emission
+    # differs (e.g. ``descriptors/arrays.hpp.jinja`` emits only
+    # ``kind == "reg"`` because regfile-array typedefs need
+    # ``<rf>_t`` to be complete and therefore live in a separate
+    # partial included after ``regfiles.hpp.jinja``).
     #
-    # * ``descriptors/arrays.hpp.jinja`` — emits the per-array C++ class
-    #   ``<reg>_array_t : ArrayBase<<reg>_t>`` with a single-arg ctor so
-    #   parent regfiles/addrmaps construct it uniformly as
-    #   ``<reg>_array_t name{offset_};``.
+    # Consumed by:
+    #
+    # * ``descriptors/arrays.hpp.jinja`` — emits ``<reg>_array_t :
+    #   ArrayBase<<reg>_t>`` per ``kind == "reg"`` entry.
+    # * ``descriptors/regfile_arrays.hpp.jinja`` — emits
+    #   ``<rf>_array_t : ArrayBase<<rf>_t>`` per ``kind == "regfile"``
+    #   entry. Included **after** ``regfiles.hpp.jinja`` so
+    #   ``std::vector<<rf>_t>`` sees the complete type.
     # * ``bindings_main.cpp.jinja`` / ``bindings.cpp.jinja`` — emit the
     #   per-array pybind11 binding (``__len__``, int/slice ``__getitem__``,
     #   ``__iter__``, ``shape``, ``stride``).
-    # * ``runtime.py.jinja`` — emits the ``_REG_ARRAY_PATHS`` list and a
+    # * ``runtime.py.jinja`` — emits the ``_ARRAY_PATHS`` list and a
     #   post-create hook that swaps the raw C++ array node for an
     #   :class:`ArrayView` wrapper.
     #
-    # Phase 1 scope: 1-D register arrays only. Multi-dim, regfile arrays,
-    # addrmap arrays, and field arrays raise :class:`NotSupportedError`
-    # in ``_collect_nodes`` until later phases land.
+    # Phase 2 scope: 1-D register arrays + 1-D regfile arrays at the
+    # SoC root or under non-arrayed regfiles. Multi-dim, addrmap arrays,
+    # field arrays, and arrays nested inside another array still raise
+    # :class:`NotSupportedError` in ``_collect_nodes``.
+    arrays: list["ArrayInfo"]
+    # Phase 1 back-compat alias. Populated as the ``kind == "reg"``
+    # subset of ``arrays``; downstream code that hasn't been migrated
+    # to the unified list can still iterate ``reg_arrays``.
     reg_arrays: list["RegArrayInfo"]
 
 
@@ -241,6 +279,13 @@ class Pybind11Exporter:
         self.env.filters["pybind_name"] = self._pybind_name_from_node
         self.env.filters["enum_member"] = self._enum_member_name
         self.env.filters["cpp_string"] = self._cpp_string_escape
+        # Reports the array-base absolute address of a node, skipping
+        # per-entry stride contribution from any arrayed ancestor.
+        # Equivalent to ``node.absolute_address`` when nothing in the
+        # lineage is arrayed; falls back to ``raw_absolute_address`` as
+        # soon as any ancestor is. Surfaced as a filter so the runtime
+        # template can stay declarative.
+        self.env.filters["array_base_address"] = self._array_base_address
         # ``repr`` produces a properly-quoted, escape-safe Python literal
         # for any value — used by the signals block in ``runtime.py.jinja``
         # to inline RDL paths and UDP keys without re-implementing escape
@@ -403,6 +448,34 @@ class Pybind11Exporter:
             sanitized_path = path.replace(".", "__").replace("[", "_").replace("]", "_")
             self._name_cache[path] = self._sanitize_identifier(sanitized_path)
         return self._name_cache[path]
+
+    @staticmethod
+    def _array_base_address(node: AddressableNode) -> int:
+        """Return the array-base absolute address of ``node``.
+
+        Equivalent to ``node.absolute_address`` when neither ``node``
+        nor any ancestor is arrayed. As soon as any link in the
+        lineage is arrayed, ``absolute_address`` raises (it needs a
+        concrete ``current_idx`` to derive a per-entry address), so we
+        fall back to ``raw_absolute_address`` which sums the raw
+        offsets and ignores per-entry stride contribution. The C++
+        ``ArrayBase`` constructor reconstructs the per-entry absolute
+        offset at runtime; the runtime metadata only needs the base.
+
+        Used as the ``array_base_address`` Jinja filter from the
+        runtime template's ``_REGISTER_INFO`` block to handle registers
+        whose ancestor chain includes an arrayed regfile (Phase 2 of
+        Tier 3 array support, issue #138). Phase 1 was simpler — only
+        the register itself could be arrayed.
+        """
+        cur: Node | None = node
+        while cur is not None:
+            if isinstance(cur, RootNode):
+                break
+            if getattr(cur, "is_array", False):
+                return int(node.raw_absolute_address)
+            cur = cur.parent
+        return int(node.absolute_address)
 
     @staticmethod
     def _cpp_string_escape(value: object) -> str:
@@ -707,20 +780,20 @@ class Pybind11Exporter:
                 "signals": [],
                 "register_members": {},
                 "field_encodes": {},
+                "arrays": [],
                 "reg_arrays": [],
             }
 
-        # Tier 0 stop-gap (issue #137 / #138). Phase 1 of the Tier 3
-        # plan handles 1-D arrayed registers only; surface a clear error
-        # for the unsupported shapes so users see a useful message
-        # instead of a cryptic systemrdl crash deep in the template.
-        if isinstance(node, (RegfileNode, AddrmapNode)) and node.is_array:
-            kind = "regfile" if isinstance(node, RegfileNode) else "addrmap"
+        # Tier 0 stop-gap (issue #137 / #138). Phase 2 handles 1-D
+        # register + regfile arrays; addrmap arrays remain Phase 3+ and
+        # surface a clear error so users see a useful message rather
+        # than a cryptic systemrdl crash deep in the template.
+        if isinstance(node, AddrmapNode) and node.is_array:
             raise NotSupportedError(
-                f"{kind.capitalize()} arrays are not yet supported "
+                f"Addrmap arrays are not yet supported "
                 f"({node.get_path()!r}). Tracked at "
                 f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
-                f"design at #138. Phase 2 of the Tier 3 plan lands these."
+                f"design at #138. Phase 3 of the Tier 3 plan lands these."
             )
 
         if isinstance(node, AddrmapNode):
@@ -734,7 +807,40 @@ class Pybind11Exporter:
                     continue
                 self._collect_nodes(child, nodes)
         elif isinstance(node, RegfileNode):
+            # Detect arrayed regfiles (Phase 2 of Tier 3). Multi-dim is
+            # deferred to Phase 3; raise the stop-gap with a pointer to
+            # issue #138.
+            if node.is_array:
+                if len(node.array_dimensions or []) > 1:
+                    raise NotSupportedError(
+                        f"Multi-dim regfile arrays are not yet supported "
+                        f"({node.get_path()!r}). Tracked at "
+                        f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
+                        f"design at #138. Phase 3 of the Tier 3 plan lands these."
+                    )
+                stride = node.array_stride
+                if stride is None:
+                    stride = int(node.size)
+                # ``raw_address_offset`` because ``address_offset`` raises
+                # on un-indexed array nodes; the C++ ``ArrayBase`` derives
+                # each entry's absolute offset from this base + i*stride.
+                nodes["arrays"].append(
+                    {
+                        "kind": "regfile",
+                        "node": node,
+                        "dimensions": list(node.array_dimensions or []),
+                        "stride": int(stride),
+                        "relative_offset": int(node.raw_address_offset),
+                    }
+                )
+
             nodes["regfiles"].append(node)
+            # Descend into children even when the regfile is arrayed.
+            # ``node.children()`` on an arrayed regfile yields child
+            # nodes with ``current_idx=0`` unrolled, so the inner
+            # registers' ``address_offset`` works as on a non-arrayed
+            # regfile. Required so each child register's C++ class is
+            # emitted exactly once.
             for child in node.children():
                 if isinstance(child, SignalNode):
                     nodes["signals"].append(child)
@@ -769,6 +875,18 @@ class Pybind11Exporter:
                 stride = node.array_stride
                 if stride is None:
                     stride = int(node.size)
+                nodes["arrays"].append(
+                    {
+                        "kind": "reg",
+                        "node": node,
+                        "dimensions": list(node.array_dimensions or []),
+                        "stride": int(stride),
+                        "relative_offset": int(node.raw_address_offset),
+                    }
+                )
+                # Phase 1 back-compat: keep ``reg_arrays`` populated so
+                # any consumer that hasn't migrated to ``arrays`` still
+                # sees the register-array subset.
                 nodes["reg_arrays"].append(
                     {
                         "node": node,

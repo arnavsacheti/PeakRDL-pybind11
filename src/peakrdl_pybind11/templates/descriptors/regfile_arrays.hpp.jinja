@@ -1,0 +1,23 @@
+{# Per-array C++ class for regfile arrays. Mirrors
+   ``arrays.hpp.jinja`` but for ``kind == "regfile"`` entries. This
+   partial must be included **after** ``regfiles.hpp.jinja`` — the
+   ``std::vector<<rf>_t>`` inside ``ArrayBase`` needs ``<rf>_t`` to be a
+   complete type (sizeof must be known), and forward declarations
+   don't suffice.
+
+   Phase 2 of Tier 3 array support (issue #138). 1-D regfile arrays
+   only; multi-dim regfile arrays still raise ``NotSupportedError``
+   in the exporter.
+#}
+{% for array in nodes.arrays if array.kind == "regfile" %}
+// Regfile array: {{ array.node.get_path() }}
+class {{ array.node | pybind_name }}_array_t : public ArrayBase<{{ array.node | pybind_name }}_t> {
+public:
+    {{ array.node | pybind_name }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ array.node | pybind_name }}_t>(
+              "{{ array.node.inst_name | safe_id }}", base_offset,
+              0x{{ "%x" | format(array.relative_offset) }},
+              {{ array.dimensions[0] }}, {{ array.stride }}) {}
+};
+
+{% endfor %}

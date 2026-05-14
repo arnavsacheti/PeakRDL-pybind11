@@ -1,15 +1,16 @@
-"""End-to-end integration test for Phase 1 register-array support (issue #138).
+"""End-to-end integration test for register- and regfile-array support (issue #138).
 
-Builds a small RDL with a 1-D register array, compiles the C++
-extension via cmake/pybind11, then exercises the runtime surface
-(``soc.lut[i]``, slice access, iteration, ``shape``/``stride``,
-independent per-entry writes, identity stability).
+Builds RDL fixtures with 1-D register and regfile arrays, compiles
+the C++ extension via cmake/pybind11, then exercises the runtime
+surface (``soc.lut[i]``, ``soc.channel[i].config``, slice access,
+iteration, ``shape``/``stride``, independent per-entry writes,
+identity stability).
 
 Gated on cmake + pybind11 availability the same way
 ``test_encode_integration.py`` and ``test_native_masters_integration.py``
 are: missing tooling → ``pytest.skip``. The full build takes ~6 minutes
-the first time; the module-scoped fixture below makes every test share
-a single build.
+the first time; the module-scoped fixtures below make every test share
+a single build per RDL fixture.
 """
 
 from __future__ import annotations
@@ -34,11 +35,46 @@ addrmap simple_array_soc {
 };
 """
 
+# Phase 2 (#138): arrayed regfile at the SoC root. Each ``channel[i]``
+# holds two child registers (``config`` and ``stat``); the stride
+# between channels is the regfile size (8 bytes).
+REGFILE_ARRAY_RDL = """
+addrmap dma_soc {
+    regfile {
+        reg {
+            field { sw=rw; hw=r; } enable[0:0] = 0;
+        } config @ 0x0;
+        reg {
+            field { sw=r; hw=w; } status[0:0];
+        } stat @ 0x4;
+    } channel[4] @ 0x100;
+};
+"""
 
-def _build_test_module(workdir: Path, soc_name: str = "simple_array_soc"):
+# Phase 1 + Phase 2 side by side. Catches list-ordering regressions on
+# the unified ``nodes["arrays"]`` list.
+MIXED_ARRAY_RDL = """
+addrmap mixed_array_soc {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } lut[8] @ 0x0;
+    regfile {
+        reg {
+            field { sw=rw; hw=r; } enable[0:0] = 0;
+        } config @ 0x0;
+    } channel[2] @ 0x100;
+};
+"""
+
+
+def _build_test_module(
+    workdir: Path,
+    rdl_text: str = ARRAY_RDL,
+    soc_name: str = "simple_array_soc",
+):
     """Export + cmake build + import. Returns module or None on failure."""
     rdl_path = workdir / f"{soc_name}.rdl"
-    rdl_path.write_text(ARRAY_RDL)
+    rdl_path.write_text(rdl_text)
 
     rdl = RDLCompiler()
     rdl.compile_file(str(rdl_path))
@@ -121,6 +157,43 @@ def soc(soc_module):
     """A freshly-created SoC with the in-memory MockMaster attached."""
     s = soc_module.create()
     s.attach_master(soc_module.MockMaster())
+    return s
+
+
+@pytest.fixture(scope="module")
+def regfile_array_module(tmp_path_factory):
+    """Build the regfile-array fixture C++ module once per test module run."""
+    workdir = tmp_path_factory.mktemp("regfile_array_integration")
+    module = _build_test_module(workdir, rdl_text=REGFILE_ARRAY_RDL, soc_name="dma_soc")
+    if module is None:
+        pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+    return module
+
+
+@pytest.fixture
+def dma_soc(regfile_array_module):
+    """A freshly-created SoC with the in-memory MockMaster attached."""
+    s = regfile_array_module.create()
+    s.attach_master(regfile_array_module.MockMaster())
+    return s
+
+
+@pytest.fixture(scope="module")
+def mixed_array_module(tmp_path_factory):
+    """Build the mixed-array fixture C++ module."""
+    workdir = tmp_path_factory.mktemp("mixed_array_integration")
+    module = _build_test_module(
+        workdir, rdl_text=MIXED_ARRAY_RDL, soc_name="mixed_array_soc"
+    )
+    if module is None:
+        pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+    return module
+
+
+@pytest.fixture
+def mixed_soc(mixed_array_module):
+    s = mixed_array_module.create()
+    s.attach_master(mixed_array_module.MockMaster())
     return s
 
 
@@ -210,3 +283,101 @@ class TestArraySurface:
         assert isinstance(soc.lut, ArrayView), (
             f"expected ArrayView, got {type(soc.lut).__name__}"
         )
+
+
+class TestRegfileArraySurface:
+    """Phase 2 (#138) — arrayed regfile end-to-end.
+
+    Mirrors the Phase 1 register-array surface, plus per-entry member
+    access (``channel[i].config.enable.write(1)``) and per-entry
+    independence (writes to entry 1 don't disturb entry 2).
+    """
+
+    def test_length(self, dma_soc) -> None:
+        assert len(dma_soc.channel) == 4
+
+    def test_shape_is_one_dim_tuple(self, dma_soc) -> None:
+        assert tuple(dma_soc.channel.shape) == (4,)
+
+    def test_stride_is_regfile_size(self, dma_soc) -> None:
+        """Stride between channels = regfile size = 2 regs × 4 bytes = 8."""
+        assert int(dma_soc.channel.stride) == 8
+
+    def test_indexed_access_returns_same_instance(self, dma_soc) -> None:
+        """``dma_soc.channel[3] is dma_soc.channel[3]``."""
+        a = dma_soc.channel[3]
+        b = dma_soc.channel[3]
+        assert a is b
+
+    def test_iteration(self, dma_soc) -> None:
+        entries = list(dma_soc.channel)
+        assert len(entries) == 4
+
+    def test_slice_returns_subset(self, dma_soc) -> None:
+        sliced = dma_soc.channel[2:4]
+        assert len(sliced) == 2
+
+    def test_per_entry_member_access(self, dma_soc) -> None:
+        """``channel[i].config.enable.write(1)`` round-trips via the bus."""
+        dma_soc.channel[3].config.enable.write(1)
+        assert int(dma_soc.channel[3].config.enable.read()) == 1
+
+    def test_entries_are_independent(self, dma_soc) -> None:
+        """Writes to one channel don't disturb the others."""
+        dma_soc.channel[1].config.enable.write(1)
+        assert int(dma_soc.channel[1].config.enable.read()) == 1
+        # Channel 2's register stays at its reset value (0).
+        assert int(dma_soc.channel[2].config.enable.read()) == 0
+        # And channel 0/3 too.
+        assert int(dma_soc.channel[0].config.enable.read()) == 0
+        assert int(dma_soc.channel[3].config.enable.read()) == 0
+
+    def test_entry_addresses_follow_stride(self, dma_soc) -> None:
+        """``channel[i].offset == base + i * stride``."""
+        base = int(dma_soc.channel[0].offset)
+        stride = int(dma_soc.channel.stride)
+        for i in range(4):
+            assert int(dma_soc.channel[i].offset) == base + i * stride
+
+    def test_inner_register_addresses_follow_channel(self, dma_soc) -> None:
+        """The inner registers' addresses scale per channel.
+
+        ``channel[i].config.offset == channel_base + i*stride + 0x0``
+        ``channel[i].stat.offset == channel_base + i*stride + 0x4``
+        """
+        chan_base = int(dma_soc.channel[0].offset)
+        chan_stride = int(dma_soc.channel.stride)
+        for i in range(4):
+            assert int(dma_soc.channel[i].config.offset) == chan_base + i * chan_stride
+            assert int(dma_soc.channel[i].stat.offset) == chan_base + i * chan_stride + 0x4
+
+    def test_channel_is_array_view(self, dma_soc) -> None:
+        """``dma_soc.channel`` is wrapped in an :class:`ArrayView`."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        assert isinstance(dma_soc.channel, ArrayView)
+
+
+class TestMixedArraysIntegration:
+    """Phase 1 + Phase 2 side-by-side end-to-end."""
+
+    def test_both_arrays_work(self, mixed_soc) -> None:
+        """Both ``soc.lut[i]`` (reg array) and ``soc.channel[i]``
+        (regfile array) work in the same SoC.
+        """
+        # Register array: P1 surface.
+        assert len(mixed_soc.lut) == 8
+        mixed_soc.lut[3].write(0xDEAD)
+        assert int(mixed_soc.lut[3].read()) == 0xDEAD
+
+        # Regfile array: P2 surface.
+        assert len(mixed_soc.channel) == 2
+        mixed_soc.channel[1].config.enable.write(1)
+        assert int(mixed_soc.channel[1].config.enable.read()) == 1
+        # Independence across the two arrays.
+        assert int(mixed_soc.lut[3].read()) == 0xDEAD
+        assert int(mixed_soc.channel[0].config.enable.read()) == 0
+
+    def test_both_arrays_are_array_views(self, mixed_soc) -> None:
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        assert isinstance(mixed_soc.lut, ArrayView)
+        assert isinstance(mixed_soc.channel, ArrayView)

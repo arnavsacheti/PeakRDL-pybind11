@@ -39,12 +39,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from systemrdl.node import (
+    AddressableNode,
     AddrmapNode,
     FieldNode,
     MemNode,
     Node,
     RegfileNode,
     RegNode,
+    RootNode,
 )
 
 if TYPE_CHECKING:
@@ -335,6 +337,22 @@ _MEM_PROPS: tuple[str, ...] = (
 )
 
 
+def _resolve_array_base_address(node: AddressableNode) -> int:
+    """Return ``node.absolute_address`` falling back to
+    ``raw_absolute_address`` whenever any ancestor in the lineage is
+    arrayed. The systemrdl ``absolute_address`` property raises if any
+    link in the chain is arrayed without a concrete ``current_idx``.
+    """
+    cur: Node | None = node
+    while cur is not None:
+        if isinstance(cur, RootNode):
+            break
+        if getattr(cur, "is_array", False):
+            return int(node.raw_absolute_address)
+        cur = cur.parent
+    return int(node.absolute_address)
+
+
 def _safe_property(node: Node, name: str) -> Any | None:
     try:
         value = node.get_property(name)
@@ -404,11 +422,14 @@ def _field_to_dict(field_node: FieldNode) -> dict[str, Any]:
 
 
 def _reg_to_dict(reg: RegNode) -> dict[str, Any]:
-    # ``absolute_address`` raises on arrayed RegNodes (it needs a concrete
-    # ``current_idx`` to derive a per-entry address). For arrayed regs we
-    # use ``raw_absolute_address``, which is the array base address; the
-    # per-entry index is reconstructed at runtime by ``ArrayBase``.
-    absolute_address = reg.raw_absolute_address if reg.is_array else reg.absolute_address
+    # ``absolute_address`` raises on arrayed RegNodes — or on any
+    # register whose lineage contains an arrayed regfile (Phase 2 of
+    # issue #138) — because it requires a concrete ``current_idx``
+    # somewhere up the chain. Walk the ancestor chain looking for any
+    # arrayed link; if we find one, fall back to ``raw_absolute_address``
+    # (the array base; per-entry offsets are reconstructed at runtime
+    # by ``ArrayBase``).
+    absolute_address = _resolve_array_base_address(reg)
     out: dict[str, Any] = {
         "kind": "reg",
         "inst_name": reg.inst_name,
@@ -455,16 +476,30 @@ def _mem_to_dict(mem: MemNode) -> dict[str, Any]:
 
 
 def _container_to_dict(node: AddrmapNode | RegfileNode) -> dict[str, Any]:
-    return {
+    # ``absolute_address`` raises on arrayed regfile/addrmap nodes
+    # (needs a concrete ``current_idx``). ``raw_absolute_address`` is
+    # the array base address; per-entry offsets are reconstructed at
+    # runtime by ``ArrayBase``. Phase 2 of issue #138 introduced
+    # regfile arrays — without this guard ``build_schema`` would
+    # blow up the moment a user generated schema.json for an SoC
+    # carrying a regfile array.
+    is_array = bool(getattr(node, "is_array", False))
+    absolute_address = node.raw_absolute_address if is_array else node.absolute_address
+    out: dict[str, Any] = {
         "kind": "addrmap" if isinstance(node, AddrmapNode) else "regfile",
         "inst_name": node.inst_name,
         "path": node.get_path(),
-        "absolute_address": node.absolute_address,
+        "absolute_address": absolute_address,
         "size": node.size,
         "name": _safe_property(node, "name"),
         "desc": _safe_property(node, "desc"),
         "children": [_node_to_dict(c) for c in node.children()],
     }
+    if is_array:
+        out["array_dimensions"] = list(node.array_dimensions or [])
+        stride = node.array_stride
+        out["array_stride"] = int(stride) if stride is not None else int(node.size)
+    return out
 
 
 def _node_to_dict(node: Node) -> dict[str, Any]:

@@ -2,8 +2,15 @@
 // Regfile: {{ regfile.get_path() }}
 class {{ regfile | pybind_name }}_t : public NodeBase {
 public:
+    {# For an arrayed regfile, the entry class carries no relative offset of
+       its own — its absolute offset is computed by ``ArrayBase`` as
+       ``offset_ + i * stride`` (Phase 2 of Tier 3 array support, issue
+       #138). ``raw_address_offset`` isn't needed here because
+       ``address_offset`` only raises when ``is_array`` is True without a
+       ``current_idx`` — in that branch we pass 0 unconditionally.
+    #}
     {{ regfile | pybind_name }}_t(uint64_t base_offset)
-        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(regfile.address_offset) }}) {
+        : NodeBase("{{ regfile.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(0 if regfile.is_array else regfile.address_offset) }}) {
         {% for child in regfile.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);

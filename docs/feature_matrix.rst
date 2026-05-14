@@ -160,8 +160,17 @@ Arrays
        ``_wrap_arrays`` hook emitted by ``templates/runtime.py.jinja``.
    * - Regfile array (``regfile rf[N]``)
      - ``soc.dma.channel[3]``, iteration, slice
-     - planned
-     - Indexing semantics per §7.1 of the sketch.
+     - implemented
+     - Phase 2 of the Tier 3 plan (issue #138). 1-D regfile arrays at the SoC root or
+       under non-arrayed regfiles. Per-entry member access works
+       (``soc.channel[3].config.enable.write(1)``). Multi-dim and arrays
+       nested inside another array remain planned. Codegen seam: the
+       per-array typedef partial in
+       ``templates/descriptors/regfile_arrays.hpp.jinja`` (included after
+       ``regfiles.hpp.jinja`` so the entry type is complete before
+       ``std::vector<<rf>_t>`` instantiates); unified ``nodes["arrays"]``
+       list in ``exporter.py`` with a ``kind`` discriminator; runtime
+       wrapping shares ``_ARRAY_PATHS`` with register arrays.
    * - Multi-dim array (``reg r[A][B]``)
      - ``soc.regblock.my_reg[2, 5]``, ``.shape``
      - planned

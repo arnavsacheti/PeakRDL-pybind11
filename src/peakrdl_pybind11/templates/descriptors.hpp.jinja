@@ -48,6 +48,15 @@ class FieldBase;
 
 {% include "descriptors/regfiles.hpp.jinja" %}
 
+{# Regfile-array typedefs land here, *after* ``regfiles.hpp.jinja``.
+   ``ArrayBase<<rf>_t>`` contains ``std::vector<<rf>_t>`` and needs
+   ``<rf>_t`` to be a complete type — forward declarations don't
+   provide ``sizeof``. Register-array typedefs (in ``arrays.hpp.jinja``
+   above) have the same constraint with respect to register entry
+   types, but registers are defined earlier in this file.
+#}
+{% include "descriptors/regfile_arrays.hpp.jinja" %}
+
 {% include "descriptors/memories.hpp.jinja" %}
 
 {% include "descriptors/addrmaps.hpp.jinja" %}

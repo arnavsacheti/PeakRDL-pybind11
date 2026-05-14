@@ -443,14 +443,15 @@ class {{ mem | pybind_name }}_t(NodeBase):
 
 {% endfor %}
 
-{% for array in nodes.reg_arrays %}
+{% for array in nodes.arrays %}
 class {{ array.node | pybind_name }}_array_t(NodeBase):
-    """Register array: {{ array.node.get_path() }}
+    """{{ array.kind | capitalize }} array: {{ array.node.get_path() }}
 
-    1-D arrayed register (Phase 1 of Tier 3 array support). At runtime
-    ``create()`` substitutes an :class:`ArrayView` for this attribute so
-    field projection, bulk reads/writes, and tuple indexing become
-    available; the C++ class below is the underlying sequence container.
+    1-D arrayed {{ array.kind }} (Tier 3 array support, issue #138).
+    At runtime ``create()`` substitutes an :class:`ArrayView` for this
+    attribute so field projection, bulk reads/writes, and tuple
+    indexing become available; the C++ class below is the underlying
+    sequence container.
     """
 
     def __init__(self, base_offset: int) -> None: ...

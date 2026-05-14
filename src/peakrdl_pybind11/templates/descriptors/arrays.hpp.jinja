@@ -1,14 +1,19 @@
-{# Per-array C++ class. Each arrayed entry type gets a small subclass of
-   ``ArrayBase<entry_t>`` that pre-fills (name, num_entries, stride),
-   keeping the parent regfile/addrmap construction uniform with the
-   non-arrayed case: parents always pass a single ``base_offset`` to
-   their child members.
+{# Per-array C++ class for register arrays. Each arrayed entry type
+   gets a small subclass of ``ArrayBase<entry_t>`` that pre-fills
+   (name, num_entries, stride), keeping the parent regfile/addrmap
+   construction uniform with the non-arrayed case: parents always pass
+   a single ``base_offset`` to their child members.
 
-   Phase 1 (issue #138) handles 1-D register arrays; the loop below
-   walks ``nodes.reg_arrays`` exclusively. Phase 2 will add regfile
-   arrays here in the same shape.
+   This partial covers ``kind == "reg"`` entries from ``nodes.arrays``.
+   ``kind == "regfile"`` entries live in ``regfile_arrays.hpp.jinja``
+   (included **after** ``regfiles.hpp.jinja`` so the entry type is
+   complete before ``std::vector<<rf>_t>`` instantiates).
+
+   Phases 1+2 (issue #138) handle 1-D register + regfile arrays; multi-
+   dim and addrmap arrays still raise ``NotSupportedError`` in the
+   exporter.
 #}
-{% for array in nodes.reg_arrays %}
+{% for array in nodes.arrays if array.kind == "reg" %}
 // Register array: {{ array.node.get_path() }}
 class {{ array.node | pybind_name }}_array_t : public ArrayBase<{{ array.node | pybind_name }}_t> {
 public:

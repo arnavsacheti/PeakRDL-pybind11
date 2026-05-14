@@ -15,7 +15,15 @@ class {{ regfile | pybind_name }}_t;
 class {{ mem | pybind_name }}_t;
 {% endfor %}
 
-{% for array in nodes.reg_arrays %}
-// Forward declaration for register array {{ array.node.get_path() }}
+{# Forward declarations for array classes. Both register and regfile
+   arrays are referenced by parent classes (e.g. SoC class member
+   instantiation), but the *definitions* land in different partials:
+   register arrays in ``arrays.hpp.jinja`` (after registers), regfile
+   arrays in ``regfile_arrays.hpp.jinja`` (after regfiles). Forward-
+   declaring both up front keeps any parent ``<entry>_array_t`` member
+   reference well-formed regardless of include order.
+#}
+{% for array in nodes.arrays %}
+// Forward declaration for {{ array.kind }} array {{ array.node.get_path() }}
 class {{ array.node | pybind_name }}_array_t;
 {% endfor %}
