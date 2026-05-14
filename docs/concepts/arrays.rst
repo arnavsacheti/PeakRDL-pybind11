@@ -97,17 +97,37 @@ and the ``soc.batch()`` context that lets you queue many such operations.
 Field arrays
 ------------
 
-Field arrays are conceptually rare but supported — for instance, a register
-that packs sixteen single-bit mode flags as ``mode[16]``. They expose as a
-``FieldArray`` with the same indexing, slicing, and iteration semantics as
-register arrays:
+.. note::
+
+   SystemRDL has no separate ``field foo[N]`` array syntax. The
+   ``mode[16]`` shape in RDL declares a **width-16 field**, not an
+   array of sixteen fields. The Python surface therefore reaches the
+   per-bit handles through the ``bits`` accessor on the (already
+   multi-bit) field — there is no separate ``FieldArray`` class.
+
+A register that packs sixteen single-bit mode flags as ``mode[16]``
+exposes a ``BitsAccessor`` at ``field.bits``. The accessor supports the
+same indexing, slicing, iteration, and ``__setitem__`` semantics as a
+register array. Single-bit reads return ``bool``; slice reads return
+``ndarray[bool]``; bulk writes coalesce into a single read-modify-write
+on the parent register:
 
 .. code-block:: python
 
-   soc.gpio.mode               # FieldArray, len=16
-   soc.gpio.mode[5].read()     # one bit
-   soc.gpio.mode[:].read()     # ndarray[bool], shape (16,)
-   soc.gpio.mode[0:8] = 0xAA   # bitmask write across the slice
+   soc.gpio.mode.bits               # BitsAccessor, len=16
+   soc.gpio.mode.bits[5].read()     # one bit -> bool
+   soc.gpio.mode.bits[:].read()     # ndarray[bool], shape (16,)
+   soc.gpio.mode.bits[0:8].write(0xAA)  # bitmask write across the slice
+   soc.gpio.mode.bits[3:8] = 0b10101    # __setitem__ sugar
+   for bit in soc.gpio.mode.bits:   # iterate BitProxy handles
+       ...
+
+The :class:`~peakrdl_pybind11.runtime.bits.BitsAccessor` (and the
+:class:`~peakrdl_pybind11.runtime.bits.BitProxy` /
+:class:`~peakrdl_pybind11.runtime.bits.BitsRangeProxy` handles it returns)
+is wired automatically onto every multi-bit field instance via the
+``runtime/bits.py`` registration hook. The sketch's ``FieldArray`` name
+and this runtime's ``BitsAccessor`` shape describe the same feature.
 
 See also
 --------

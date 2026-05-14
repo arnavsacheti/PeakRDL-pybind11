@@ -186,9 +186,16 @@ Arrays
        ``templates/descriptors/regfile_arrays.hpp.jinja`` plus the shared
        ``_array_binding_macros.jinja`` partial.
    * - Field array (``mode[16]``)
-     - ``FieldArray`` with slice semantics
-     - planned
-     - Uncommon but supported per §7.4. Phase 4 of the Tier 3 plan (#138).
+     - ``field.bits[i]`` / ``field.bits[a:b]`` with slice semantics
+     - implemented
+     - Phase 4 of the Tier 3 plan (issue #138). SystemRDL has no separate
+       ``field foo[N]`` array syntax — ``mode[16]`` declares a **width-16
+       field**, and the per-bit handles ship through the ``BitsAccessor``
+       on the (multi-bit) field. ``runtime/bits.py:BitsAccessor`` covers
+       int / slice / iteration / ``__setitem__`` and routes writes through
+       a single RMW on the parent register. The sketch's ``FieldArray``
+       name and this runtime's ``BitsAccessor`` describe the same feature.
+       See :doc:`concepts/arrays` §"Field arrays".
    * - Address stride
      - resolved via ``info.address`` per element
      - implemented
