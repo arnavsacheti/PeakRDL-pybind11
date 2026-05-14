@@ -9,11 +9,11 @@ aspirational, and code is catching up to it. Status values mean:
 - ``partial`` — exists but does not yet match the sketch's surface or semantics.
 - ``planned`` — defined by the sketch; the exporter does not yet emit it.
 
-Most runtime-surface rows are now ``implemented``; the holdouts cluster around
-SystemRDL array instantiation, ``signal`` nodes, and a handful of metadata
-attributes (``swacc`` / ``swmod`` / ``swwe`` / ``swwel``). Rows are organized by
-SystemRDL category and reference the conceptual docs (in ``docs/concepts/``)
-where applicable.
+Nearly all runtime-surface rows are now ``implemented``; the remaining
+``partial`` rows cluster around arbitrary UDP typed-wrapper mapping and
+exhaustive ``.pyi`` stub generation. Rows are organized by SystemRDL
+category and reference the conceptual docs (in ``docs/concepts/``) where
+applicable.
 
 Structural Components
 ---------------------
@@ -50,12 +50,12 @@ Structural Components
        See :doc:`concepts/memory`.
    * - ``signal``
      - ``Signal`` node, metadata only via ``.info``
-     - planned
-     - Signals appear in the tree as metadata-only nodes per §2 of the sketch.
+     - implemented
+     - Frozen :class:`Signal` dataclasses ship via ``runtime/signals.py`` (attached to their parent node by the ``register_signals`` post-create hook emitted from ``templates/runtime.py.jinja``).
    * - ``constraint``
      - none
      - planned
-     - Out of scope for the runtime API; ignored during export.
+     - Intentionally out of scope for the register-access runtime; the RDL ``constraint`` declaration is ignored during export.
 
 Software Access (``sw``)
 ------------------------
@@ -132,9 +132,8 @@ Encoding (``encode = MyEnum``)
    * - ``encode``
      - Generated ``enum.IntEnum``; ``field.read()`` returns ``BaudRate.BAUD_19200``;
        ``field.write(BaudRate.BAUD_115200)``; ``field.choices``
-     - planned
-     - Today only the ``is_enum`` UDP triggers ``IntEnum`` generation. Native ``encode``
-       support is planned per §8.1.
+     - implemented
+     - Per-field RDL ``encode`` IntEnum classes are emitted by ``templates/runtime.py.jinja`` and threaded through :class:`FieldValue` decoding and ``field.choices`` by the ``encode`` metadata pipe in ``runtime/_default_shims.py``.
 
 Arrays
 ------
@@ -152,9 +151,10 @@ Arrays
        ``.read() -> ndarray[uint32]``, ``soc.lut.info.shape``,
        ``soc.walk(kind="array")``
      - implemented
-     - Phases 1-5 of the Tier 3 plan (issue #138). 1-D register arrays
-       (Phase 1) plus regfile (Phase 2), multi-dim (Phase 3), and field
-       (Phase 4) integration. Phase 5 wires arrays into the rest of the
+     - Phases 1-5 of the Tier 3 plan (issue #138) plus the addrmap-array
+       follow-up (PR #139). 1-D register arrays (Phase 1) plus regfile
+       (Phase 2), multi-dim (Phase 3), field (Phase 4), and addrmap
+       arrays. Phase 5 wires every array kind into the rest of the
        runtime metadata surface: :class:`ArrayInfo` on ``arr.info``;
        ``soc.walk(kind="array")``; single-line array rendering in
        ``soc.tree()`` / ``soc.dump()`` (with opt-in
@@ -163,9 +163,11 @@ Arrays
        export emits ``kind="array"`` nodes with nested entry shape.
        Codegen seam: the C++ ``ArrayBase`` template in
        ``templates/descriptors/base_classes.hpp.jinja`` plus the
-       per-array typedef partial in ``templates/descriptors/arrays.hpp.jinja``;
-       Python wrapping via ``runtime/arrays.py:wrap_array`` and the
-       ``_wrap_arrays`` hook emitted by ``templates/runtime.py.jinja``.
+       per-array typedef partials in ``templates/descriptors/arrays.hpp.jinja``
+       (registers), ``regfile_arrays.hpp.jinja`` (regfiles), and
+       ``addrmap_arrays.hpp.jinja`` (addrmaps); Python wrapping via
+       ``runtime/arrays.py:wrap_array`` and the ``_wrap_arrays`` hook
+       emitted by ``templates/runtime.py.jinja``.
    * - Regfile array (``regfile rf[N]``)
      - ``soc.dma.channel[3]``, iteration, slice
      - implemented
@@ -271,8 +273,8 @@ Interrupts (``intr``)
      - The ``--interrupt-pattern`` flag ships in ``__peakrdl__.py`` and feeds the detector; manual overrides ship as :meth:`InterruptGroup.manual` in ``runtime/interrupts.py``.
    * - ``enable`` / ``mask`` / ``haltmask`` / ``haltenable``
      - mapped onto ``InterruptGroup`` controls
-     - partial
-     - ``enable`` partners fold into the synthesized :class:`InterruptGroup` controls in ``runtime/interrupts.py``; ``mask`` / ``haltmask`` / ``haltenable`` partner detection is not yet wired.
+     - implemented
+     - All four partner registers fold into :class:`InterruptGroup` via the detector in ``exporter_plugins/feature_detection.py`` and the per-source ``mask`` / ``unmask`` / ``halt_mask`` / ``halt_enable`` verbs in ``runtime/interrupts.py``.
 
 Signals (``signal``)
 --------------------
@@ -287,12 +289,12 @@ Signals (``signal``)
      - Notes
    * - ``signal`` declaration
      - ``Signal`` node, metadata-only via ``.info``
-     - planned
-     - Signals expose location, name, desc and any UDPs; no read/write.
+     - implemented
+     - Frozen :class:`Signal` dataclasses (name, width, sw/hw access, ``activelow``, ``async``, any UDPs) ship via ``runtime/signals.py`` and are attached to their parent node by the ``register_signals`` hook emitted from ``templates/runtime.py.jinja``.
    * - Component port declarations
      - none
      - planned
-     - Out of scope for the register-access surface.
+     - Intentionally out of scope for the register-access surface; ports are ignored during export.
 
 Counters
 --------
@@ -473,16 +475,16 @@ SW notification (``swwe`` / ``swwel`` / ``swacc`` / ``swmod``)
      - Notes
    * - ``swwe`` / ``swwel`` (write enable)
      - metadata only via ``.info``
-     - planned
-     - Surface as access-mode metadata.
+     - implemented
+     - ``info.swwe`` / ``info.swwel`` ship on the uniform :class:`Info` namespace in ``runtime/info.py`` (coerced from the RDL property to ``bool`` for unconditional gates or a signal-path ``str`` for conditional ones).
    * - ``swacc``
      - ``info.swacc``
-     - planned
-     - Notification metadata.
+     - implemented
+     - ``info.swacc`` ships on the uniform :class:`Info` namespace in ``runtime/info.py`` (extracted as a bool from the RDL ``swacc`` notification property).
    * - ``swmod``
      - ``info.swmod``
-     - planned
-     - Notification metadata.
+     - implemented
+     - ``info.swmod`` ships on the uniform :class:`Info` namespace in ``runtime/info.py`` (extracted as a bool from the RDL ``swmod`` notification property).
 
 Lock
 ----
@@ -514,9 +516,8 @@ Bit ordering & widths
      - Notes
    * - ``msb0`` / ``lsb0``
      - hidden — the user always sees little-endian ints
-     - planned
-     - Per §22 decision 5: endianness/access-width are hidden, but bursts and
-       traces preserve them.
+     - implemented
+     - Hidden by design per §22 decision 5 of the sketch — the runtime always presents little-endian ints; bit ordering is preserved only on bursts and traces.
    * - ``regwidth``
      - ``info.regwidth``
      - implemented
@@ -552,8 +553,8 @@ Memory regions
      - Slicing, ``np.asarray(mem)``, ``mem.read_into(buf)``, and the buffered ``mem.window(...)`` context manager all ship via ``runtime/mem_view.py``.
    * - ``mem`` ``sw`` / ``hw`` access
      - access-mode enforcement via ``AccessError``
-     - planned
-     - Same model as register access modes; mem-specific :class:`AccessError` gating is not yet implemented.
+     - implemented
+     - Reads from write-only mems and writes to read-only mems raise :class:`AccessError` before the bus is touched via the gates in ``runtime/mem_view.py``.
 
 User-Defined Properties (UDPs)
 ------------------------------
@@ -651,8 +652,8 @@ These are the planned runtime surfaces, indexed for cross-reference.
    * - Master backends
      - ``MockMaster``, ``OpenOCDMaster``, ``SSHMaster``, ``SimMaster``,
        ``ReplayMaster``, ``RecordingMaster``, ``CallbackMaster``
-     - partial
-     - ``MockMaster`` / ``CallbackMaster`` / the new native ``MmapMaster`` (see ``templates/descriptors/base_classes.hpp.jinja`` and ``templates/bindings_main.cpp.jinja``) plus ``RecordingMaster`` / ``ReplayMaster`` (``masters/recording_replay.py``, with a configurable ``FlushPolicy``) ship; ``OpenOCDMaster`` / ``SSHMaster`` / ``SimMaster`` are still pending.
+     - implemented
+     - All seven backends ship: ``MockMaster`` / ``CallbackMaster`` / the native ``MmapMaster`` (``templates/descriptors/base_classes.hpp.jinja``, ``templates/bindings_main.cpp.jinja``), ``RecordingMaster`` / ``ReplayMaster`` (``masters/recording_replay.py`` with a configurable ``FlushPolicy``), the behavioral ``SimMaster`` (``masters/sim.py``), plus ``OpenOCDMaster`` (``masters/openocd.py``) and ``SSHMaster`` (``masters/ssh.py``).
    * - Per-region routing
      - ``soc.attach_master(master, where="peripherals.*")``
      - implemented
@@ -683,8 +684,8 @@ These are the planned runtime surfaces, indexed for cross-reference.
    * - Concurrency
      - ``with soc.lock():``, ``async with soc.async_session():`` exposing
        ``aread``/``awrite``/``amodify``
-     - partial
-     - ``async with soc.async_session() as s:`` (``aread`` / ``awrite`` / ``amodify`` / ``aiowait``) ships via ``runtime/async_session.py``; the synchronous ``with soc.lock():`` SoC-wide mutex is not yet wired.
+     - implemented
+     - ``with soc.lock():`` ships as a re-entrant per-SoC :class:`threading.RLock` via ``runtime/locking.py`` (attached by ``attach_lock``); ``async with soc.async_session() as s:`` (``aread`` / ``awrite`` / ``amodify`` / ``aiowait``) ships via ``runtime/async_session.py``.
    * - Hot reload
      - ``--watch``, ``soc.reload()``; opt-in with loud warning
      - implemented
@@ -693,7 +694,7 @@ These are the planned runtime surfaces, indexed for cross-reference.
      - exhaustive ``.pyi`` with ``Register[FieldDict]``, ``Unpack[TypedDict]``,
        ``Annotated[int, Range(...)]``, ``Literal['rclr']``
      - partial
-     - Stub generation exists; exhaustive typing per §17 is planned.
+     - ``Annotated[int, Range(0, max)]`` per-field write overloads and ``Literal[...]`` overloads ship in ``templates/stubs.pyi.jinja``; still missing per §17: ``Unpack[TypedDict]`` on ``write_fields(**fields)`` and tuple-index overloads on array ``__getitem__`` with per-axis ``Annotated[int, Range(...)]`` (deferred at the T3 P5 commit).
    * - Schema export
      - ``schema.json`` reflective tree alongside the generated module
      - implemented
@@ -720,8 +721,8 @@ Errors
      - ``runtime/values.py`` (``_coerce_field_value``) raises :class:`ValueError` with the field name, width, and ``[0, max]`` range on every ``modify`` / ``write_fields`` / ``replace``.
    * - Unknown field name in ``modify``
      - ``AttributeError`` with did-you-mean suggestion
-     - partial
-     - ``runtime/values.py`` and ``runtime/_default_shims.py`` raise on unknown fields with did-you-mean suggestions, but :class:`KeyError` is used rather than :class:`AttributeError` on the ``write_fields`` path.
+     - implemented
+     - Both the ``modify`` and ``write_fields`` shims in ``runtime/_default_shims.py`` raise :class:`AttributeError` with a ``did_you_mean`` suggestion drawn from the field spec.
    * - Side-effecting read inside ``no_side_effects()``
      - ``SideEffectError``
      - implemented
