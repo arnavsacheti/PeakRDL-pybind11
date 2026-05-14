@@ -66,6 +66,40 @@ addrmap mixed_array_soc {
 };
 """
 
+# Phase 3 (#138) — 2-D register array. The exporter now emits one
+# ``ArrayBase`` subclass per axis (innermost first); 2-D produces
+# ``inner_0_array_t`` + ``array_t``. Strides are 4 (innermost: entry
+# size) and 32 (outermost: inner_axis_size * inner_stride = 8 * 4).
+MULTIDIM_REG_RDL = """
+addrmap multidim_reg_soc {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } matrix[4][8] @ 0x100;
+};
+"""
+
+# Phase 3 (#138) — 2-D regfile array. Inner stride = regfile size
+# (4 bytes, one register); outer stride = 3 * 4 = 12 bytes.
+MULTIDIM_REGFILE_RDL = """
+addrmap multidim_rf_soc {
+    regfile {
+        reg {
+            field { sw=rw; hw=r; } enable[0:0] = 0;
+        } config @ 0x0;
+    } channel[2][3] @ 0x200;
+};
+"""
+
+# Phase 3 (#138) — 3-D register array. Strides chain:
+# innermost = 4 (entry size), middle = 4 * 4 = 16, outermost = 3 * 16 = 48.
+CUBE_REG_RDL = """
+addrmap cube_soc {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } cube[2][3][4] @ 0x100;
+};
+"""
+
 
 def _export(rdl_text: str, *, soc_name: str = "simple_array_soc", tmpdir: Path):
     """Compile + export the given RDL; return the output directory path."""
@@ -204,11 +238,11 @@ class TestStubGeneration:
 class TestStopGapErrors:
     """Tier 0 stop-gap: unsupported shapes raise ``NotSupportedError``.
 
-    Phase 2 (#138) removes the regfile-array stop-gap — that's now
-    working codegen. Remaining stop-gaps:
+    Phase 3 (#138) removes the multi-dim register and multi-dim
+    regfile array stop-gaps — those are now working codegen.
+    Remaining stop-gaps:
 
-    * addrmap arrays — Phase 3+
-    * multi-dim register / regfile arrays — Phase 3
+    * addrmap arrays — out of scope (issue #138)
     * field arrays — Phase 4
     """
 
@@ -227,34 +261,6 @@ class TestStopGapErrors:
         with pytest.raises(NotSupportedError) as exc:
             self._attempt(rdl_text, "am_array_soc", tmp_path)
         assert "addrmap arrays" in str(exc.value).lower()
-        assert "#138" in str(exc.value)
-
-    def test_multi_dim_register_array_not_supported(self, tmp_path: Path) -> None:
-        rdl_text = """
-        addrmap multi_dim_soc {
-            reg {
-                field { sw=rw; hw=r; } data[31:0] = 0;
-            } grid[2][3] @ 0x100;
-        };
-        """
-        with pytest.raises(NotSupportedError) as exc:
-            self._attempt(rdl_text, "multi_dim_soc", tmp_path)
-        assert "multi-dim" in str(exc.value).lower()
-        assert "#138" in str(exc.value)
-
-    def test_multi_dim_regfile_array_not_supported(self, tmp_path: Path) -> None:
-        """Multi-dim regfile arrays still raise (Phase 3 territory)."""
-        rdl_text = """
-        addrmap multi_dim_rf_soc {
-            regfile {
-                reg { field { sw=rw; hw=r; } data[31:0] = 0; } ctrl @ 0x0;
-            } grid[2][3] @ 0x100;
-        };
-        """
-        with pytest.raises(NotSupportedError) as exc:
-            self._attempt(rdl_text, "multi_dim_rf_soc", tmp_path)
-        assert "multi-dim" in str(exc.value).lower()
-        assert "regfile" in str(exc.value).lower()
         assert "#138" in str(exc.value)
 
 
@@ -530,3 +536,239 @@ class TestMixedArrays:
         desc = (out / "mixed_array_soc_descriptors.hpp").read_text()
         assert "class mixed_array_soc__lut_array_t :" in desc
         assert "class mixed_array_soc__channel_array_t :" in desc
+
+
+class TestMultiDimRegisterArrayCollection:
+    """Phase 3 (#138) — exporter collects multi-dim register arrays
+    into ``nodes['arrays']`` with full ``dimensions`` + per-axis
+    ``strides`` lists.
+    """
+
+    def _collect(self, rdl_text: str, soc_name: str, tmp_path: Path):
+        rdl_path = tmp_path / "x.rdl"
+        rdl_path.write_text(rdl_text)
+        rdl = RDLCompiler()
+        rdl.compile_file(str(rdl_path))
+        root = rdl.elaborate()
+
+        ex = Pybind11Exporter()
+        ex.soc_name = soc_name
+        return ex._collect_nodes(root.top)
+
+    def test_2d_reg_dimensions_and_strides(self, tmp_path: Path) -> None:
+        """``matrix[4][8]`` lands with ``dimensions=[4, 8]`` and
+        ``strides=[32, 4]`` (outer stride = inner_size * inner_stride).
+        """
+        nodes = self._collect(MULTIDIM_REG_RDL, "multidim_reg_soc", tmp_path)
+        arrays = [a for a in nodes["arrays"] if a["kind"] == "reg"]
+        assert len(arrays) == 1
+        meta = arrays[0]
+        assert meta["dimensions"] == [4, 8]
+        assert meta["strides"] == [32, 4]
+        # Back-compat: singular ``stride`` = innermost stride.
+        assert meta["stride"] == 4
+        assert meta["relative_offset"] == 0x100
+
+    def test_3d_reg_dimensions_and_strides(self, tmp_path: Path) -> None:
+        """``cube[2][3][4]`` lands with three dims + chained strides."""
+        nodes = self._collect(CUBE_REG_RDL, "cube_soc", tmp_path)
+        arrays = [a for a in nodes["arrays"] if a["kind"] == "reg"]
+        assert len(arrays) == 1
+        meta = arrays[0]
+        assert meta["dimensions"] == [2, 3, 4]
+        # Innermost = 4 (entry size); next = 4*4 = 16; outermost = 3*16 = 48.
+        assert meta["strides"] == [48, 16, 4]
+
+    def test_2d_regfile_dimensions_and_strides(self, tmp_path: Path) -> None:
+        """``channel[2][3]`` regfile: inner stride = regfile size, outer = 3*size."""
+        nodes = self._collect(MULTIDIM_REGFILE_RDL, "multidim_rf_soc", tmp_path)
+        arrays = [a for a in nodes["arrays"] if a["kind"] == "regfile"]
+        assert len(arrays) == 1
+        meta = arrays[0]
+        assert meta["dimensions"] == [2, 3]
+        # Regfile holds one 4-byte register; inner stride = 4, outer = 12.
+        assert meta["strides"] == [12, 4]
+
+
+class TestMultiDimRegisterArrayDescriptorEmission:
+    """The descriptor header carries one ``ArrayBase`` subclass per
+    axis (Phase 3 of Tier 3 array support, issue #138).
+    """
+
+    def test_2d_emits_two_array_typedefs(self, tmp_path: Path) -> None:
+        """For a 2-D array we get ``inner_0_array_t`` + ``array_t``."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        desc = (out / "multidim_reg_soc_descriptors.hpp").read_text()
+        # Innermost level: wraps the entry type.
+        assert "class multidim_reg_soc__matrix_inner_0_array_t :" in desc
+        assert "ArrayBase<multidim_reg_soc__matrix_t>" in desc
+        # Outermost level: named ``<entry>_array_t``, wraps the inner.
+        assert "class multidim_reg_soc__matrix_array_t :" in desc
+        assert "ArrayBase<multidim_reg_soc__matrix_inner_0_array_t>" in desc
+
+    def test_2d_inner_carries_innermost_stride_and_size(self, tmp_path: Path) -> None:
+        """Inner ctor: (count=8, stride=4); outer ctor: (count=4, stride=32)."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        desc = (out / "multidim_reg_soc_descriptors.hpp").read_text()
+        # Inner: 8 entries, 4-byte stride. The inner ctor's name string is
+        # empty so the outermost provides the user-facing identifier.
+        assert "8, 4" in desc
+        # Outer: 4 entries, 32-byte stride (8 * 4).
+        assert "4, 32" in desc
+
+    def test_2d_outer_carries_inst_name_and_relative_offset(self, tmp_path: Path) -> None:
+        """Outermost ctor pre-fills inst_name + RDL relative offset; inner is anonymous."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        desc = (out / "multidim_reg_soc_descriptors.hpp").read_text()
+        # Outermost: ``"matrix", base_offset, 0x100, ...``.
+        assert '"matrix", base_offset,' in desc
+        assert "0x100" in desc
+        # Inner: ``"", base_offset, 0x0, ...`` — empty name, zero offset.
+        assert '"", base_offset, 0x0' in desc
+
+    def test_3d_emits_three_array_typedefs(self, tmp_path: Path) -> None:
+        """For a 3-D array we get ``inner_0``, ``inner_1``, ``array_t``."""
+        out = _export(CUBE_REG_RDL, soc_name="cube_soc", tmpdir=tmp_path)
+        desc = (out / "cube_soc_descriptors.hpp").read_text()
+        assert "class cube_soc__cube_inner_0_array_t :" in desc
+        assert "class cube_soc__cube_inner_1_array_t :" in desc
+        assert "class cube_soc__cube_array_t :" in desc
+        # Each level wraps the next-inner: 0 wraps entry, 1 wraps 0, outer wraps 1.
+        assert "ArrayBase<cube_soc__cube_t>" in desc
+        assert "ArrayBase<cube_soc__cube_inner_0_array_t>" in desc
+        assert "ArrayBase<cube_soc__cube_inner_1_array_t>" in desc
+
+    def test_2d_regfile_emits_two_array_typedefs(self, tmp_path: Path) -> None:
+        out = _export(
+            MULTIDIM_REGFILE_RDL, soc_name="multidim_rf_soc", tmpdir=tmp_path
+        )
+        desc = (out / "multidim_rf_soc_descriptors.hpp").read_text()
+        assert "class multidim_rf_soc__channel_inner_0_array_t :" in desc
+        assert "class multidim_rf_soc__channel_array_t :" in desc
+        # Outer wraps inner; inner wraps the regfile entry type.
+        assert "ArrayBase<multidim_rf_soc__channel_t>" in desc
+        assert "ArrayBase<multidim_rf_soc__channel_inner_0_array_t>" in desc
+
+    def test_parent_instantiates_outermost_only(self, tmp_path: Path) -> None:
+        """The SoC class instantiates only ``<entry>_array_t`` — the inner
+        levels live inside the outer's ``std::vector`` and don't need to
+        be referenced by the parent.
+        """
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        desc = (out / "multidim_reg_soc_descriptors.hpp").read_text()
+        assert "multidim_reg_soc__matrix_array_t matrix{offset_};" in desc
+        # No ``inner_0_array_t`` direct member reference in the SoC class.
+        soc_class_pos = desc.index("class multidim_reg_soc_t :")
+        assert "matrix_inner_0_array_t matrix" not in desc[soc_class_pos:]
+
+
+class TestMultiDimRegisterArrayBindingEmission:
+    """The pybind11 binding emits one ``py::class_`` per axis."""
+
+    def test_2d_emits_two_bindings(self, tmp_path: Path) -> None:
+        """Both the inner and outer array classes get registered with pybind."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        bindings = (out / "multidim_reg_soc_bindings.cpp").read_text()
+        # Both py::class_ blocks emit. The inner getitem returns ``matrix_t``;
+        # the outer getitem returns ``matrix_inner_0_array_t``.
+        assert "py::class_<multidim_reg_soc__matrix_inner_0_array_t, NodeBase>" in bindings
+        assert "py::class_<multidim_reg_soc__matrix_array_t, NodeBase>" in bindings
+        # Outer's __getitem__ returns inner; inner's __getitem__ returns entry.
+        assert "-> multidim_reg_soc__matrix_inner_0_array_t&" in bindings
+        assert "-> multidim_reg_soc__matrix_t&" in bindings
+
+    def test_3d_emits_three_bindings(self, tmp_path: Path) -> None:
+        out = _export(CUBE_REG_RDL, soc_name="cube_soc", tmpdir=tmp_path)
+        bindings = (out / "cube_soc_bindings.cpp").read_text()
+        assert "py::class_<cube_soc__cube_inner_0_array_t, NodeBase>" in bindings
+        assert "py::class_<cube_soc__cube_inner_1_array_t, NodeBase>" in bindings
+        assert "py::class_<cube_soc__cube_array_t, NodeBase>" in bindings
+
+    def test_2d_regfile_emits_two_bindings(self, tmp_path: Path) -> None:
+        out = _export(
+            MULTIDIM_REGFILE_RDL, soc_name="multidim_rf_soc", tmpdir=tmp_path
+        )
+        bindings = (out / "multidim_rf_soc_bindings.cpp").read_text()
+        assert "py::class_<multidim_rf_soc__channel_inner_0_array_t, NodeBase>" in bindings
+        assert "py::class_<multidim_rf_soc__channel_array_t, NodeBase>" in bindings
+
+
+class TestMultiDimRuntimeWiring:
+    """The generated runtime carries multi-dim ``_ARRAY_PATHS`` shapes."""
+
+    def test_2d_array_paths_shape(self, tmp_path: Path) -> None:
+        """``_ARRAY_PATHS`` carries the full multi-dim shape tuple."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        runtime = (out / "multidim_reg_soc" / "__init__.py").read_text()
+        # Path has two ``[]`` suffixes for 2-D; the runtime strips both.
+        assert '("multidim_reg_soc.matrix[][]"' in runtime
+        # Full multi-dim shape: (4, 8). Note Jinja emits ``(4, 8, )``.
+        assert "(4, 8," in runtime
+
+    def test_flatten_helper_emitted(self, tmp_path: Path) -> None:
+        """``_flatten_cxx_array`` lives in the generated runtime so
+        ``_wrap_arrays`` can walk nested ``ArrayBase`` chains.
+        """
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        runtime = (out / "multidim_reg_soc" / "__init__.py").read_text()
+        assert "def _flatten_cxx_array" in runtime
+
+    def test_strip_root_handles_multidim_brackets(self, tmp_path: Path) -> None:
+        """``_strip_soc_root`` strips all trailing ``[]`` not just one."""
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        runtime = (out / "multidim_reg_soc" / "__init__.py").read_text()
+        # The runtime uses a ``while`` loop now, not a single ``if``.
+        assert "while path.endswith" in runtime
+
+
+class TestMultiDimStubGeneration:
+    """The .pyi stub exposes one class per axis."""
+
+    def test_2d_emits_inner_and_outer_stub(self, tmp_path: Path) -> None:
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        pyi = (out / "__init__.pyi").read_text()
+        assert "class multidim_reg_soc__matrix_inner_0_array_t" in pyi
+        assert "class multidim_reg_soc__matrix_array_t" in pyi
+
+    def test_2d_outer_tuple_overload_present(self, tmp_path: Path) -> None:
+        """Outermost stub has a tuple ``__getitem__`` overload for type-checkers.
+        Generic over N dimensions: ``tuple[int, ...]``.
+        """
+        out = _export(MULTIDIM_REG_RDL, soc_name="multidim_reg_soc", tmpdir=tmp_path)
+        pyi = (out / "__init__.pyi").read_text()
+        # Look at the multidim outer class only; tuple overload must be present.
+        outer_start = pyi.index("class multidim_reg_soc__matrix_array_t")
+        outer_body = pyi[outer_start : outer_start + 1500]
+        assert "tuple[int, ...]" in outer_body
+
+    def test_3d_emits_three_stubs(self, tmp_path: Path) -> None:
+        out = _export(CUBE_REG_RDL, soc_name="cube_soc", tmpdir=tmp_path)
+        pyi = (out / "__init__.pyi").read_text()
+        assert "class cube_soc__cube_inner_0_array_t" in pyi
+        assert "class cube_soc__cube_inner_1_array_t" in pyi
+        assert "class cube_soc__cube_array_t" in pyi
+
+
+class TestPhase3StopGaps:
+    """Stop-gaps that survive Phase 3."""
+
+    def test_addrmap_array_still_raises(self, tmp_path: Path) -> None:
+        """Addrmap arrays remain out of scope (P5 / followup, #138)."""
+        rdl_text = """
+        addrmap inner {
+            reg { field { sw=rw; hw=r; } data[31:0] = 0; } ctrl @ 0x0;
+        };
+        addrmap am_array_soc {
+            inner blocks[2] @ 0x0;
+        };
+        """
+        rdl_path = tmp_path / "x.rdl"
+        rdl_path.write_text(rdl_text)
+        rdl = RDLCompiler()
+        rdl.compile_file(str(rdl_path))
+        root = rdl.elaborate()
+        out = tmp_path / "out"
+        out.mkdir()
+        with pytest.raises(NotSupportedError) as exc:
+            Pybind11Exporter().export(root.top, str(out), soc_name="am_array_soc")
+        assert "addrmap arrays" in str(exc.value).lower()

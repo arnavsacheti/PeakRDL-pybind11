@@ -173,17 +173,32 @@ Arrays
        wrapping shares ``_ARRAY_PATHS`` with register arrays.
    * - Multi-dim array (``reg r[A][B]``)
      - ``soc.regblock.my_reg[2, 5]``, ``.shape``
-     - planned
-     - Tuple indexing per §7.2.
+     - implemented
+     - Phase 3 of the Tier 3 plan (issue #138). N-D register and regfile arrays
+       emit ``N`` nested ``ArrayBase`` subclasses (one per axis); the Python
+       ``ArrayView`` wraps the flattened element list and reports the full
+       multi-dim ``shape`` tuple. Tuple indexing (``soc.matrix[2, 5]``) and
+       chained indexing (``soc.matrix[2][5]``) reach the same flat entry per
+       row-major. Per-axis strides are computed from ``systemrdl``'s
+       innermost ``array_stride`` and multiplied outward by inner-axis sizes.
+       Codegen seam: the per-axis emission loop in
+       ``templates/descriptors/arrays.hpp.jinja`` /
+       ``templates/descriptors/regfile_arrays.hpp.jinja`` plus the shared
+       ``_array_binding_macros.jinja`` partial.
    * - Field array (``mode[16]``)
      - ``FieldArray`` with slice semantics
      - planned
-     - Uncommon but supported per §7.4.
+     - Uncommon but supported per §7.4. Phase 4 of the Tier 3 plan (#138).
    * - Address stride
      - resolved via ``info.address`` per element
-     - planned
-     - The exporter will respect RDL ``addressing`` so each element has a unique
-       address.
+     - implemented
+     - Phase 3 of the Tier 3 plan (issue #138). The C++ ``ArrayBase`` ctor
+       pre-fills the per-level stride from the exporter's ``strides`` list
+       and recomputes per-entry absolute addresses at construction time;
+       arrayed regfile / multi-dim register paths both walk
+       ``raw_address_offset`` because ``address_offset`` raises on
+       un-indexed array nodes. The runtime's ``_array_base_address``
+       Jinja filter feeds the same metadata into ``_REGISTER_INFO``.
 
 Aliases (``alias``)
 -------------------

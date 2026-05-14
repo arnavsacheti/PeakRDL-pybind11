@@ -22,8 +22,20 @@ class {{ mem | pybind_name }}_t;
    arrays in ``regfile_arrays.hpp.jinja`` (after regfiles). Forward-
    declaring both up front keeps any parent ``<entry>_array_t`` member
    reference well-formed regardless of include order.
+
+   Phase 3 (#138): multi-dim arrays add ``<entry>_inner_<level>_array_t``
+   intermediate types. Forward-declare all levels including the
+   intermediates so any cross-partial reference (e.g. the pybind11
+   binding partial) compiles even when the partial it sits in lands
+   before the array definition partial.
 #}
 {% for array in nodes.arrays %}
 // Forward declaration for {{ array.kind }} array {{ array.node.get_path() }}
 class {{ array.node | pybind_name }}_array_t;
+{% if array.dimensions | length > 1 %}
+{# Inner-level intermediates for multi-dim. #}
+{% for level in range(array.dimensions | length - 1) %}
+class {{ array.node | pybind_name }}_inner_{{ level }}_array_t;
+{% endfor %}
+{% endif %}
 {% endfor %}

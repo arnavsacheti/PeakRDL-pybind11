@@ -66,6 +66,39 @@ addrmap mixed_array_soc {
 };
 """
 
+# Phase 3 (#138): multi-dim register + regfile arrays in one SoC,
+# plus a 1-D register array to confirm 1-D and multi-dim coexist.
+# Sharing one fixture keeps the cmake build cost bounded (one build
+# instead of three).
+MULTIDIM_RDL = """
+addrmap multidim_soc {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } matrix[4][8] @ 0x100;
+
+    regfile {
+        reg {
+            field { sw=rw; hw=r; } enable[0:0] = 0;
+        } config @ 0x0;
+    } channel[2][3] @ 0x300;
+
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } lut[4] @ 0x500;
+};
+"""
+
+# Phase 3 (#138): 3-D register array. Exercised lightly — the 2-D
+# tests above cover the full surface; this confirms the codegen
+# extends past 2-D.
+CUBE_RDL = """
+addrmap cube_soc {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } cube[2][3][4] @ 0x100;
+};
+"""
+
 
 def _build_test_module(
     workdir: Path,
@@ -381,3 +414,235 @@ class TestMixedArraysIntegration:
         from peakrdl_pybind11.runtime.arrays import ArrayView
         assert isinstance(mixed_soc.lut, ArrayView)
         assert isinstance(mixed_soc.channel, ArrayView)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 (#138) — multi-dim register + regfile arrays.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def multidim_module(tmp_path_factory):
+    """Build the multi-dim fixture C++ module once per test module run.
+
+    Holds a 2-D register array, a 2-D regfile array, and a 1-D
+    register array side by side so the same build covers every
+    multi-dim integration assertion.
+    """
+    workdir = tmp_path_factory.mktemp("multidim_integration")
+    module = _build_test_module(
+        workdir, rdl_text=MULTIDIM_RDL, soc_name="multidim_soc"
+    )
+    if module is None:
+        pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+    return module
+
+
+@pytest.fixture
+def multidim_soc(multidim_module):
+    s = multidim_module.create()
+    s.attach_master(multidim_module.MockMaster())
+    return s
+
+
+@pytest.fixture(scope="module")
+def cube_module(tmp_path_factory):
+    """Build a 3-D register array fixture; thin coverage for ``N > 2``."""
+    workdir = tmp_path_factory.mktemp("cube_integration")
+    module = _build_test_module(
+        workdir, rdl_text=CUBE_RDL, soc_name="cube_soc"
+    )
+    if module is None:
+        pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+    return module
+
+
+@pytest.fixture
+def cube_soc(cube_module):
+    s = cube_module.create()
+    s.attach_master(cube_module.MockMaster())
+    return s
+
+
+class TestMultiDimRegisterArraySurface:
+    """``reg matrix[4][8]`` — the canonical Phase 3 surface."""
+
+    def test_shape_is_2d_tuple(self, multidim_soc) -> None:
+        """``soc.matrix.shape == (4, 8)``."""
+        assert tuple(multidim_soc.matrix.shape) == (4, 8)
+
+    def test_len_returns_outer_dim(self, multidim_soc) -> None:
+        """``len(soc.matrix) == 4`` — Python convention is outer-dim length."""
+        assert len(multidim_soc.matrix) == 4
+
+    def test_tuple_indexing_round_trip(self, multidim_soc) -> None:
+        """``soc.matrix[2, 5].write(0x42)`` then read returns 0x42."""
+        multidim_soc.matrix[2, 5].write(0x42)
+        assert int(multidim_soc.matrix[2, 5].read()) == 0x42
+
+    def test_chained_indexing_equals_tuple_indexing(self, multidim_soc) -> None:
+        """``soc.matrix[2][5] is soc.matrix[2, 5]``.
+
+        Both hit the same flat index ``2 * 8 + 5 = 21`` and the
+        underlying pybind11 ``reference_internal`` returns the same
+        entry object both times.
+        """
+        a = multidim_soc.matrix[2][5]
+        b = multidim_soc.matrix[2, 5]
+        assert a is b
+
+    def test_per_entry_address_follows_row_major(self, multidim_soc) -> None:
+        """``soc.matrix[a, b].offset == base + a * stride_a + b * stride_b``.
+
+        Base = ``0x100``; ``stride_a = 32`` (8 inner * 4 entry); ``stride_b = 4``.
+        """
+        base = int(multidim_soc.matrix[0, 0].offset)
+        for a in range(4):
+            for b in range(8):
+                assert int(multidim_soc.matrix[a, b].offset) == base + a * 32 + b * 4
+
+    def test_entries_are_independent(self, multidim_soc) -> None:
+        """Writes to ``[2, 5]`` don't disturb other entries."""
+        multidim_soc.matrix[2, 5].write(0xDEAD)
+        # Untouched entries still read 0 (their reset value).
+        assert int(multidim_soc.matrix[2, 4].read()) == 0
+        assert int(multidim_soc.matrix[2, 6].read()) == 0
+        assert int(multidim_soc.matrix[1, 5].read()) == 0
+        assert int(multidim_soc.matrix[3, 5].read()) == 0
+        # And the original write survives the reads above.
+        assert int(multidim_soc.matrix[2, 5].read()) == 0xDEAD
+
+    def test_int_indexing_returns_array_view_subset(self, multidim_soc) -> None:
+        """``soc.matrix[2]`` returns a length-8 ``ArrayView`` of the row."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        row = multidim_soc.matrix[2]
+        assert isinstance(row, ArrayView)
+        assert tuple(row.shape) == (8,)
+        assert len(row) == 8
+
+    def test_slicing_along_inner_axis(self, multidim_soc) -> None:
+        """``soc.matrix[:, 3]`` returns a length-4 1-D ``ArrayView``.
+
+        Slicing along axis 1 with a scalar on axis 0 collapses to 1-D
+        of length 4 (one element per row of the outer axis).
+        """
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        col = multidim_soc.matrix[:, 3]
+        assert isinstance(col, ArrayView)
+        assert tuple(col.shape) == (4,)
+        assert len(col) == 4
+
+    def test_slicing_along_outer_axis(self, multidim_soc) -> None:
+        """``soc.matrix[1:3, :]`` returns a 2x8 ``ArrayView``."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        sub = multidim_soc.matrix[1:3, :]
+        assert isinstance(sub, ArrayView)
+        assert tuple(sub.shape) == (2, 8)
+        assert len(sub) == 2
+
+    def test_matrix_is_array_view(self, multidim_soc) -> None:
+        """The user-facing attribute is an ``ArrayView`` (not raw C++)."""
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        assert isinstance(multidim_soc.matrix, ArrayView)
+
+    def test_install_array_properties_idempotent_multidim(
+        self, multidim_module, multidim_soc
+    ) -> None:
+        """Re-running ``_install_array_properties`` on a multi-dim module
+        stays idempotent. The ``_strip_soc_root`` change (``if`` → ``while``
+        to handle the multi-``[]`` suffix on multi-dim paths) is the
+        load-bearing piece here.
+        """
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        multidim_module._install_array_properties()
+        assert isinstance(multidim_soc.matrix, ArrayView)
+        # Round-trip still works after the second swap.
+        multidim_soc.matrix[2, 5].write(0x99)
+        assert int(multidim_soc.matrix[2, 5].read()) == 0x99
+
+
+class TestMultiDimRegfileArraySurface:
+    """``regfile channel[2][3]`` — multi-dim regfile array end-to-end."""
+
+    def test_shape_is_2d_tuple(self, multidim_soc) -> None:
+        assert tuple(multidim_soc.channel.shape) == (2, 3)
+
+    def test_tuple_indexing_into_regfile_member(self, multidim_soc) -> None:
+        """``soc.channel[0, 1].config.enable.write(1)`` round-trips."""
+        multidim_soc.channel[0, 1].config.enable.write(1)
+        assert int(multidim_soc.channel[0, 1].config.enable.read()) == 1
+
+    def test_regfile_entries_independent(self, multidim_soc) -> None:
+        """Writes to ``channel[1, 2]`` don't disturb ``channel[0, 0]``."""
+        multidim_soc.channel[1, 2].config.enable.write(1)
+        assert int(multidim_soc.channel[0, 0].config.enable.read()) == 0
+        assert int(multidim_soc.channel[1, 2].config.enable.read()) == 1
+
+    def test_chained_equals_tuple_for_regfile(self, multidim_soc) -> None:
+        """``soc.channel[0][1] is soc.channel[0, 1]``."""
+        a = multidim_soc.channel[0][1]
+        b = multidim_soc.channel[0, 1]
+        assert a is b
+
+    def test_regfile_member_addresses_follow_strides(self, multidim_soc) -> None:
+        """``channel[a, b].config.offset == base + a * stride_a + b * stride_b``.
+
+        Each channel holds one 4-byte register; ``stride_b = 4``;
+        ``stride_a = 3 * 4 = 12``. Base = 0x300.
+        """
+        base = int(multidim_soc.channel[0, 0].config.offset)
+        for a in range(2):
+            for b in range(3):
+                assert (
+                    int(multidim_soc.channel[a, b].config.offset)
+                    == base + a * 12 + b * 4
+                )
+
+    def test_channel_is_array_view(self, multidim_soc) -> None:
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        assert isinstance(multidim_soc.channel, ArrayView)
+
+
+class TestMixedDimensionsIntegration:
+    """1-D and multi-dim arrays coexist in the same SoC."""
+
+    def test_one_d_and_multi_dim_side_by_side(self, multidim_soc) -> None:
+        """A 1-D ``lut[4]`` next to a 2-D ``matrix[4][8]`` and 2-D ``channel[2][3]``."""
+        # 1-D still works.
+        assert tuple(multidim_soc.lut.shape) == (4,)
+        multidim_soc.lut[2].write(0xCAFE)
+        assert int(multidim_soc.lut[2].read()) == 0xCAFE
+        # 2-D register array works.
+        assert tuple(multidim_soc.matrix.shape) == (4, 8)
+        multidim_soc.matrix[1, 2].write(0xBEEF)
+        assert int(multidim_soc.matrix[1, 2].read()) == 0xBEEF
+        # 2-D regfile array works.
+        assert tuple(multidim_soc.channel.shape) == (2, 3)
+        multidim_soc.channel[0, 1].config.enable.write(1)
+        assert int(multidim_soc.channel[0, 1].config.enable.read()) == 1
+
+
+class TestCubeIntegration:
+    """3-D register array — thin coverage; full 2-D is the load-bearing case."""
+
+    def test_3d_shape(self, cube_soc) -> None:
+        assert tuple(cube_soc.cube.shape) == (2, 3, 4)
+
+    def test_3d_tuple_indexing_round_trip(self, cube_soc) -> None:
+        cube_soc.cube[1, 2, 3].write(0x55)
+        assert int(cube_soc.cube[1, 2, 3].read()) == 0x55
+
+    def test_3d_chained_equals_tuple(self, cube_soc) -> None:
+        """``cube[1][2][3] is cube[1, 2, 3]``."""
+        a = cube_soc.cube[1][2][3]
+        b = cube_soc.cube[1, 2, 3]
+        assert a is b
+
+    def test_3d_per_entry_address(self, cube_soc) -> None:
+        """Address chain: ``base + a*48 + b*16 + c*4``.
+
+        With base=0x100, stride_a=48 (=3*16), stride_b=16 (=4*4),
+        stride_c=4 (entry size). ``cube[1, 2, 3].offset == 0x100 + 48 + 32 + 12 = 0x100 + 92 = 0x15c``.
+        """
+        base = int(cube_soc.cube[0, 0, 0].offset)
+        assert int(cube_soc.cube[1, 2, 3].offset) == base + 48 + 2 * 16 + 3 * 4

@@ -148,7 +148,10 @@ class RegArrayInfo(TypedDict):
     addresses for index 0; the C++ ``ArrayBase`` constructor then
     reconstructs each entry's absolute offset at runtime via
     ``offset_ + i * stride``. ``dimensions`` is a list of ints (e.g.
-    ``[8]`` for ``reg foo[8]``); Phase 1 always has length 1.
+    ``[8]`` for ``reg foo[8]``); Phase 1 always has length 1. Phase 3
+    (#138) added ``strides`` for multi-dim support, but kept the
+    Phase 1 ``stride`` field populated with the innermost-axis stride
+    so back-compat consumers keep working.
     """
 
     node: RegNode
@@ -160,23 +163,33 @@ class RegArrayInfo(TypedDict):
 class ArrayInfo(TypedDict):
     """Unified metadata for an arrayed RDL node (register or regfile).
 
-    Phase 2 (issue #138) extends the Phase 1 ``RegArrayInfo`` shape with
-    a ``kind`` discriminator. Templates iterate ``nodes["arrays"]`` and
-    filter by ``kind`` (``"reg"`` or ``"regfile"``) when their emission
-    differs slightly between the two. ``nodes["reg_arrays"]`` remains a
-    back-compat view populated alongside this list.
+    Phase 2 (issue #138) extended the Phase 1 ``RegArrayInfo`` shape
+    with a ``kind`` discriminator. Phase 3 added per-axis ``strides``
+    (a list of ints, length == ``len(dimensions)``); the back-compat
+    ``stride`` (singular) field is preserved as the innermost-axis
+    stride for any consumer that still reads it. Templates iterate
+    ``nodes["arrays"]`` and filter by ``kind`` (``"reg"`` /
+    ``"regfile"``) when their emission differs.
 
     ``node`` is the unrolled-shape entry view (``current_idx`` set to
     index 0) so the pipeline can walk children at absolute addresses
     for index 0; ``ArrayBase`` then reconstructs each entry's absolute
     offset at runtime via ``offset_ + i * stride``. ``dimensions`` is
-    a list of ints; Phases 1+2 always have length 1.
+    a list of ints; Phases 1+2 always had length 1, Phase 3 allows N.
+
+    For an ``N``-dim array, ``strides[-1]`` is the innermost-axis stride
+    (entry size for register arrays, regfile size for regfile arrays)
+    and each outer entry multiplies by the next-inner dimension —
+    ``strides[i] = strides[i+1] * dimensions[i+1]``. The C++ side
+    consumes this list to construct one nested ``ArrayBase`` subclass
+    per axis, with each level's ctor pre-filling its own size + stride.
     """
 
     kind: str
     node: RegNode | RegfileNode
     dimensions: list[int]
     stride: int
+    strides: list[int]
     relative_offset: int
 
 
@@ -241,6 +254,36 @@ class Nodes(TypedDict):
     # subset of ``arrays``; downstream code that hasn't been migrated
     # to the unified list can still iterate ``reg_arrays``.
     reg_arrays: list["RegArrayInfo"]
+
+
+def _compute_per_axis_strides(dimensions: list[int], inner_stride: int) -> list[int]:
+    """Compute per-axis byte strides for a multi-dim arrayed node.
+
+    ``dimensions`` is row-major (outermost first; e.g. ``[4, 8]`` for
+    ``reg foo[4][8]``). ``inner_stride`` is the bytes between adjacent
+    elements in the innermost axis — this is what ``systemrdl``'s
+    ``array_stride`` reports for both 1-D and N-D arrays (verified
+    empirically: ``foo[4][8]`` with 32-bit entries has
+    ``array_stride == 4``, matching the inner-axis layout).
+
+    The result is a list of the same length as ``dimensions``: the
+    innermost entry is ``inner_stride``; each outer entry is the
+    product of the next-inner entry's stride and the next-inner
+    dimension. For ``[4, 8]`` with ``inner_stride=4`` the returned
+    list is ``[32, 4]`` — the C++ outer ``ArrayBase`` ctor sees
+    ``(count=4, stride=32)``, the inner sees ``(count=8, stride=4)``,
+    and ``ArrayBase<ArrayBase<entry_t>>`` walks both levels correctly.
+
+    A 1-D array reduces to ``[inner_stride]`` — back-compatible with
+    Phase 1 / Phase 2 templates that read the (singular) ``stride``.
+    """
+    if not dimensions:
+        return []
+    strides = [0] * len(dimensions)
+    strides[-1] = int(inner_stride)
+    for i in range(len(dimensions) - 2, -1, -1):
+        strides[i] = strides[i + 1] * dimensions[i + 1]
+    return strides
 
 
 # UDPs that the exporter understands. CLI users declare these in their RDL
@@ -807,20 +850,19 @@ class Pybind11Exporter:
                     continue
                 self._collect_nodes(child, nodes)
         elif isinstance(node, RegfileNode):
-            # Detect arrayed regfiles (Phase 2 of Tier 3). Multi-dim is
-            # deferred to Phase 3; raise the stop-gap with a pointer to
-            # issue #138.
+            # Detect arrayed regfiles (Phase 2 of Tier 3). Phase 3 (#138)
+            # extends to multi-dim — nested ``ArrayBase<ArrayBase<...>>``
+            # is emitted via the per-axis ``strides`` list below.
             if node.is_array:
-                if len(node.array_dimensions or []) > 1:
-                    raise NotSupportedError(
-                        f"Multi-dim regfile arrays are not yet supported "
-                        f"({node.get_path()!r}). Tracked at "
-                        f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
-                        f"design at #138. Phase 3 of the Tier 3 plan lands these."
-                    )
-                stride = node.array_stride
-                if stride is None:
-                    stride = int(node.size)
+                dims = list(node.array_dimensions or [])
+                # ``array_stride`` is the innermost axis stride (bytes
+                # between adjacent elements when the array is unrolled
+                # in row-major order). Each outer axis multiplies by
+                # the next-inner dimension to build the full chain.
+                inner_stride = node.array_stride
+                if inner_stride is None:
+                    inner_stride = int(node.size)
+                strides = _compute_per_axis_strides(dims, int(inner_stride))
                 # ``raw_address_offset`` because ``address_offset`` raises
                 # on un-indexed array nodes; the C++ ``ArrayBase`` derives
                 # each entry's absolute offset from this base + i*stride.
@@ -828,8 +870,13 @@ class Pybind11Exporter:
                     {
                         "kind": "regfile",
                         "node": node,
-                        "dimensions": list(node.array_dimensions or []),
-                        "stride": int(stride),
+                        "dimensions": dims,
+                        # Phase 1/2 back-compat: ``stride`` (singular)
+                        # = innermost-axis stride. For 1-D, this is the
+                        # only stride; for multi-dim, ``strides`` carries
+                        # the full chain.
+                        "stride": strides[-1] if strides else int(inner_stride),
+                        "strides": strides,
                         "relative_offset": int(node.raw_address_offset),
                     }
                 )
@@ -853,17 +900,13 @@ class Pybind11Exporter:
                 for child in children:
                     self._collect_nodes(child, nodes)
         elif isinstance(node, RegNode):
-            # Detect arrayed registers (Phase 1 of Tier 3). Multi-dim
-            # arrays are deferred to Phase 3; raise the stop-gap with a
-            # pointer to issue #138.
+            # Detect arrayed registers (Phase 1+3 of Tier 3). 1-D arrays
+            # produce a single ``ArrayBase<entry_t>`` subclass; N-dim
+            # arrays produce ``N`` nested ``ArrayBase<...>`` subclasses,
+            # one per axis. The per-axis ``strides`` list is the load-
+            # bearing piece — see ``ArrayInfo`` for the formula.
             if node.is_array:
-                if len(node.array_dimensions or []) > 1:
-                    raise NotSupportedError(
-                        f"Multi-dim register arrays are not yet supported "
-                        f"({node.get_path()!r}). Tracked at "
-                        f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
-                        f"design at #138. Phase 3 of the Tier 3 plan lands these."
-                    )
+                dims = list(node.array_dimensions or [])
                 # Use ``raw_address_offset`` because ``address_offset`` raises
                 # on arrayed nodes (it needs ``current_idx`` to derive a
                 # concrete entry's address). The C++ ``ArrayBase`` constructor
@@ -871,27 +914,34 @@ class Pybind11Exporter:
                 # ``array_stride`` is ``Optional[int]`` in the systemrdl
                 # type stubs, but is always set on a node where
                 # ``is_array`` is True; fall back to the entry size for
-                # the (unreachable) ``None`` branch.
-                stride = node.array_stride
-                if stride is None:
-                    stride = int(node.size)
+                # the (unreachable) ``None`` branch. For multi-dim,
+                # ``array_stride`` gives the innermost axis stride; the
+                # outer-axis strides multiply out from there.
+                inner_stride = node.array_stride
+                if inner_stride is None:
+                    inner_stride = int(node.size)
+                strides = _compute_per_axis_strides(dims, int(inner_stride))
                 nodes["arrays"].append(
                     {
                         "kind": "reg",
                         "node": node,
-                        "dimensions": list(node.array_dimensions or []),
-                        "stride": int(stride),
+                        "dimensions": dims,
+                        # Back-compat: innermost-axis stride. Multi-dim
+                        # consumers should use ``strides`` (plural).
+                        "stride": strides[-1] if strides else int(inner_stride),
+                        "strides": strides,
                         "relative_offset": int(node.raw_address_offset),
                     }
                 )
                 # Phase 1 back-compat: keep ``reg_arrays`` populated so
                 # any consumer that hasn't migrated to ``arrays`` still
-                # sees the register-array subset.
+                # sees the register-array subset. ``stride`` (singular)
+                # stays the innermost-axis stride for 1-D parity.
                 nodes["reg_arrays"].append(
                     {
                         "node": node,
-                        "dimensions": list(node.array_dimensions or []),
-                        "stride": int(stride),
+                        "dimensions": dims,
+                        "stride": strides[-1] if strides else int(inner_stride),
                         "relative_offset": int(node.raw_address_offset),
                     }
                 )

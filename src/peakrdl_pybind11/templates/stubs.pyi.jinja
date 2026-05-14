@@ -444,7 +444,11 @@ class {{ mem | pybind_name }}_t(NodeBase):
 {% endfor %}
 
 {% for array in nodes.arrays %}
-class {{ array.node | pybind_name }}_array_t(NodeBase):
+{% set _entry_name = array.node | pybind_name %}
+{% set _dims = array.dimensions %}
+{% if _dims | length == 1 %}
+{# 1-D — outermost is the only class; value type is the entry type. #}
+class {{ _entry_name }}_array_t(NodeBase):
     """{{ array.kind | capitalize }} array: {{ array.node.get_path() }}
 
     1-D arrayed {{ array.kind }} (Tier 3 array support, issue #138).
@@ -461,12 +465,12 @@ class {{ array.node | pybind_name }}_array_t(NodeBase):
         ...
 
     @overload
-    def __getitem__(self, index: int) -> {{ array.node | pybind_name }}_t: ...
+    def __getitem__(self, index: int) -> {{ _entry_name }}_t: ...
 
     @overload
-    def __getitem__(self, index: slice) -> list[{{ array.node | pybind_name }}_t]: ...
+    def __getitem__(self, index: slice) -> list[{{ _entry_name }}_t]: ...
 
-    def __iter__(self) -> Iterator[{{ array.node | pybind_name }}_t]: ...
+    def __iter__(self) -> Iterator[{{ _entry_name }}_t]: ...
 
     @property
     def shape(self) -> tuple[int, ...]: ...
@@ -474,6 +478,98 @@ class {{ array.node | pybind_name }}_array_t(NodeBase):
     @property
     def stride(self) -> int: ...
 
+{% else %}
+{# Multi-dim (Phase 3 of Tier 3 array support, #138) — emit one stub
+   per axis (innermost first). The outermost class's ``__getitem__``
+   has a tuple overload so type-checkers can recognize
+   ``soc.matrix[2, 5]`` even though the actual tuple dispatch happens
+   inside the Python ``ArrayView`` wrapper. #}
+{# Innermost level (level 0): value type = entry type. #}
+class {{ _entry_name }}_inner_0_array_t(NodeBase):
+    """{{ array.kind | capitalize }} array (innermost axis): {{ array.node.get_path() }}
+
+    Intermediate level in the nested ``ArrayBase`` chain emitted for
+    multi-dim arrays. The user-facing attribute on the SoC class is
+    the outermost level (``{{ _entry_name }}_array_t`` below).
+    """
+
+    def __init__(self, base_offset: int) -> None: ...
+
+    def __len__(self) -> int: ...
+
+    @overload
+    def __getitem__(self, index: int) -> {{ _entry_name }}_t: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[{{ _entry_name }}_t]: ...
+
+    def __iter__(self) -> Iterator[{{ _entry_name }}_t]: ...
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    @property
+    def stride(self) -> int: ...
+
+{# Intermediate levels: 1 .. N-2. Each wraps the next-inner level. #}
+{% for level in range(1, _dims | length - 1) %}
+class {{ _entry_name }}_inner_{{ level }}_array_t(NodeBase):
+    """{{ array.kind | capitalize }} array (axis {{ _dims | length - 1 - level }} of {{ _dims | length - 1 }}): {{ array.node.get_path() }}"""
+
+    def __init__(self, base_offset: int) -> None: ...
+
+    def __len__(self) -> int: ...
+
+    @overload
+    def __getitem__(self, index: int) -> {{ _entry_name }}_inner_{{ level - 1 }}_array_t: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[{{ _entry_name }}_inner_{{ level - 1 }}_array_t]: ...
+
+    def __iter__(self) -> Iterator[{{ _entry_name }}_inner_{{ level - 1 }}_array_t]: ...
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    @property
+    def stride(self) -> int: ...
+
+{% endfor %}
+{# Outermost level: named ``<entry>_array_t``. Its int ``__getitem__``
+   returns the next-inner intermediate; for type-checker friendliness
+   it also exposes a tuple overload returning the entry type. #}
+class {{ _entry_name }}_array_t(NodeBase):
+    """{{ array.kind | capitalize }} array: {{ array.node.get_path() }}
+
+    {{ _dims | length }}-D arrayed {{ array.kind }} (Phase 3 of Tier 3
+    array support, issue #138). At runtime ``create()`` substitutes an
+    :class:`ArrayView` for this attribute; ``soc.{{ array.node.inst_name }}[a, b]``
+    indexing and slicing along multiple axes (``soc.{{ array.node.inst_name }}[:, 0]``)
+    are handled by the wrapper.
+    """
+
+    def __init__(self, base_offset: int) -> None: ...
+
+    def __len__(self) -> int: ...
+
+    @overload
+    def __getitem__(self, index: int) -> {{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[{{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t]: ...
+
+    @overload
+    def __getitem__(self, index: tuple[int, ...]) -> {{ _entry_name }}_t: ...
+
+    def __iter__(self) -> Iterator[{{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t]: ...
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    @property
+    def stride(self) -> int: ...
+
+{% endif %}
 {% endfor %}
 
 class {{ soc_name }}_t(NodeBase):

@@ -5,19 +5,57 @@
    complete type (sizeof must be known), and forward declarations
    don't suffice.
 
-   Phase 2 of Tier 3 array support (issue #138). 1-D regfile arrays
-   only; multi-dim regfile arrays still raise ``NotSupportedError``
-   in the exporter.
+   Phase 3 (issue #138) extends Phase 2's 1-D path to multi-dim:
+   N-dim regfile arrays emit ``N`` nested ``ArrayBase`` subclasses,
+   one per axis. See ``arrays.hpp.jinja`` for the level-naming
+   convention; this partial duplicates the same emit shape but
+   bound to regfile entries instead of register entries.
 #}
 {% for array in nodes.arrays if array.kind == "regfile" %}
-// Regfile array: {{ array.node.get_path() }}
-class {{ array.node | pybind_name }}_array_t : public ArrayBase<{{ array.node | pybind_name }}_t> {
+{% set _entry_name = array.node | pybind_name %}
+{% set _entry_t = _entry_name ~ "_t" %}
+{% set _dims = array.dimensions %}
+{% set _strides = array.strides %}
+{% if _dims | length == 1 %}
+// Regfile array (1-D): {{ array.node.get_path() }}
+class {{ _entry_name }}_array_t : public ArrayBase<{{ _entry_t }}> {
 public:
-    {{ array.node | pybind_name }}_array_t(uint64_t base_offset)
-        : ArrayBase<{{ array.node | pybind_name }}_t>(
+    {{ _entry_name }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_t }}>(
               "{{ array.node.inst_name | safe_id }}", base_offset,
               0x{{ "%x" | format(array.relative_offset) }},
-              {{ array.dimensions[0] }}, {{ array.stride }}) {}
+              {{ _dims[0] }}, {{ _strides[0] }}) {}
 };
 
+{% else %}
+// Regfile array (multi-dim, {{ _dims | length }}-D): {{ array.node.get_path() }}
+class {{ _entry_name }}_inner_0_array_t : public ArrayBase<{{ _entry_t }}> {
+public:
+    {{ _entry_name }}_inner_0_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_t }}>(
+              "", base_offset, 0x0,
+              {{ _dims[-1] }}, {{ _strides[-1] }}) {}
+};
+
+{% for level in range(1, _dims | length - 1) %}
+{% set axis_idx = _dims | length - 1 - level %}
+class {{ _entry_name }}_inner_{{ level }}_array_t : public ArrayBase<{{ _entry_name }}_inner_{{ level - 1 }}_array_t> {
+public:
+    {{ _entry_name }}_inner_{{ level }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_name }}_inner_{{ level - 1 }}_array_t>(
+              "", base_offset, 0x0,
+              {{ _dims[axis_idx] }}, {{ _strides[axis_idx] }}) {}
+};
+
+{% endfor %}
+class {{ _entry_name }}_array_t : public ArrayBase<{{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t> {
+public:
+    {{ _entry_name }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t>(
+              "{{ array.node.inst_name | safe_id }}", base_offset,
+              0x{{ "%x" | format(array.relative_offset) }},
+              {{ _dims[0] }}, {{ _strides[0] }}) {}
+};
+
+{% endif %}
 {% endfor %}

@@ -148,11 +148,12 @@ def _strip_soc_root(path: str) -> str:
 
     Mirrors ``signals._strip_root``. ``"{{ soc_name }}.lut"`` →
     ``"lut"``; ``"{{ soc_name }}.peripherals.dma.chan"`` →
-    ``"peripherals.dma.chan"``. The trailing empty array suffix
-    ``"foo[]"`` is also stripped so the path is a plain dotted
-    Python attribute walk.
+    ``"peripherals.dma.chan"``. Trailing empty-array suffixes are
+    stripped so the path is a plain dotted Python attribute walk —
+    for a multi-dim array (Phase 3, #138) the suffix is repeated
+    (e.g. ``foo[][]``) so we loop instead of stripping just one pair.
     """
-    if path.endswith("[]"):
+    while path.endswith("[]"):
         path = path[:-2]
     if "." not in path:
         return path
@@ -251,6 +252,33 @@ def _install_array_properties() -> None:
 _install_array_properties()
 
 
+def _flatten_cxx_array(cxx_array, dims: tuple[int, ...]) -> list:
+    """Walk a nested C++ ``ArrayBase`` chain into a flat row-major list.
+
+    For a 1-D array (``len(dims) == 1``) this is just
+    ``[cxx_array[i] for i in range(dims[0])]`` — identical to what
+    Phase 1 + Phase 2 did inline. For ``len(dims) > 1`` (Phase 3 of
+    Tier 3 array support, #138) it recurses into each outer entry
+    and concatenates the results, producing the flat row-major list
+    that :class:`ArrayView` expects (its ``_indices`` and tuple
+    ``__getitem__`` both assume row-major).
+
+    The leaf elements are the same pybind11 ``reference_internal``
+    handles that direct indexing returns, so identity stability
+    survives flattening — ``soc.matrix[2, 5] is soc.matrix[2][5]``
+    holds because both hit the same underlying entry object.
+    """
+    if not dims:
+        return []
+    if len(dims) == 1:
+        return [cxx_array[i] for i in range(dims[0])]
+    inner_dims = dims[1:]
+    flat: list = []
+    for i in range(dims[0]):
+        flat.extend(_flatten_cxx_array(cxx_array[i], inner_dims))
+    return flat
+
+
 def _wrap_arrays(soc) -> None:
     """Build an :class:`ArrayView` for each arrayed child of ``soc``.
 
@@ -261,7 +289,9 @@ def _wrap_arrays(soc) -> None:
 
     Phases 1+2: arrays at the SoC root only; nested-parent paths are
     skipped here because ``_install_array_properties`` already raised
-    on them at module-import time.
+    on them at module-import time. Phase 3 (#138) adds multi-dim
+    arrays — the flattened element list keeps ``ArrayView``'s
+    row-major indexing happy.
     """
     cache: dict[str, object] = {}
     for path_with_root, shape in _ARRAY_PATHS:
@@ -280,8 +310,11 @@ def _wrap_arrays(soc) -> None:
         cxx_array = native_desc.__get__(parent, type(parent))
         # Pybind11 ``reference_internal`` ties each entry's lifetime to
         # the C++ array node (owned by the parent), so the Python refs
-        # stay valid for the SoC's life.
-        elements = [cxx_array[i] for i in range(len(cxx_array))]
+        # stay valid for the SoC's life. For multi-dim arrays the
+        # helper walks the nested ``ArrayBase`` chain and flattens to
+        # row-major; the ``ArrayView`` ``shape`` is then the full
+        # multi-dim tuple from ``_ARRAY_PATHS``.
+        elements = _flatten_cxx_array(cxx_array, shape)
         view = _peakrdl_arrays.wrap_array(type(parent), attr, elements, shape)
         cache[attr] = view
     if cache:
