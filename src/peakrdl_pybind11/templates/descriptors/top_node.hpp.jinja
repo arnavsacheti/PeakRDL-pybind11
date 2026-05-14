@@ -48,9 +48,12 @@ public:
 
     // Each child contributes its own address_offset on top of the base
     // passed here, so the SoC always passes its own offset (initially 0).
+    // Arrayed children are typed ``<entry>_array_t`` and take the same
+    // single-arg ``(base_offset)`` ctor as non-arrayed children.
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child | pybind_name }}_t {{ child.inst_name | safe_id }}{offset_};
+    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
+    {{ child | pybind_name }}{{ _child_suffix }} {{ child.inst_name | safe_id }}{offset_};
     {% endif %}
     {% endfor %}
 };

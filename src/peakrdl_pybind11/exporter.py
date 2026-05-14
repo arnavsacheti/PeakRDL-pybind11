@@ -21,6 +21,8 @@ from systemrdl.node import (
     SignalNode,
 )
 
+from .runtime.errors import NotSupportedError
+
 # Words that cannot be used as identifiers in either Python or C++.
 #
 # We deliberately use only ``keyword.kwlist`` (hard Python keywords) and skip
@@ -137,6 +139,23 @@ _RESERVED_WORDS: frozenset[str] = frozenset(
 )
 
 
+class RegArrayInfo(TypedDict):
+    """Metadata for an arrayed RDL register (Phase 1 of Tier 3 array support).
+
+    ``node`` is the unrolled-shape entry view (``current_idx`` set to
+    index 0) so the rest of the pipeline can walk fields with absolute
+    addresses for index 0; the C++ ``ArrayBase`` constructor then
+    reconstructs each entry's absolute offset at runtime via
+    ``offset_ + i * stride``. ``dimensions`` is a list of ints (e.g.
+    ``[8]`` for ``reg foo[8]``); Phase 1 always has length 1.
+    """
+
+    node: RegNode
+    dimensions: list[int]
+    stride: int
+    relative_offset: int
+
+
 class Nodes(TypedDict):
     addrmaps: list[AddrmapNode]
     regfiles: list[RegfileNode]
@@ -164,6 +183,26 @@ class Nodes(TypedDict):
     # ``RegNode.fields()`` returns fresh ``FieldNode`` wrappers every call —
     # identity is per-iteration, but ``get_path()`` is stable.
     field_encodes: dict[str, list[tuple[str, int]]]
+    # Arrayed ``RegNode`` instantiations (RDL ``reg foo[N]``). Each entry
+    # carries the underlying entry-type RegNode (still listed in ``regs``,
+    # which emits its C++ class exactly once), plus the array shape and
+    # stride. Consumed by:
+    #
+    # * ``descriptors/arrays.hpp.jinja`` — emits the per-array C++ class
+    #   ``<reg>_array_t : ArrayBase<<reg>_t>`` with a single-arg ctor so
+    #   parent regfiles/addrmaps construct it uniformly as
+    #   ``<reg>_array_t name{offset_};``.
+    # * ``bindings_main.cpp.jinja`` / ``bindings.cpp.jinja`` — emit the
+    #   per-array pybind11 binding (``__len__``, int/slice ``__getitem__``,
+    #   ``__iter__``, ``shape``, ``stride``).
+    # * ``runtime.py.jinja`` — emits the ``_REG_ARRAY_PATHS`` list and a
+    #   post-create hook that swaps the raw C++ array node for an
+    #   :class:`ArrayView` wrapper.
+    #
+    # Phase 1 scope: 1-D register arrays only. Multi-dim, regfile arrays,
+    # addrmap arrays, and field arrays raise :class:`NotSupportedError`
+    # in ``_collect_nodes`` until later phases land.
+    reg_arrays: list["RegArrayInfo"]
 
 
 # UDPs that the exporter understands. CLI users declare these in their RDL
@@ -339,9 +378,24 @@ class Pybind11Exporter:
         return name or "soc"
 
     def _pybind_name_from_node(self, value: Node | str) -> str:
-        """Return a unique, sanitized identifier for a node."""
+        """Return a unique, sanitized identifier for a node.
+
+        For arrayed nodes (``foo[]`` or ``foo[i]``), strip the empty
+        ``[]`` first so the entry-type identifier stays clean
+        (``a.lut[]`` → ``a__lut`` rather than ``a__lut__``). Concrete
+        index suffixes ``foo[3]`` collapse to ``foo_3_`` as before; those
+        only appear when something has unrolled the array and is asking
+        for a specific entry's identifier.
+        """
         if isinstance(value, Node):
-            path = value.get_path()
+            # ``get_path(empty_array_suffix="")`` drops trailing ``[]``
+            # while leaving concrete indices (``foo[3]``) intact. Falls
+            # back to plain ``get_path()`` on older systemrdl that
+            # doesn't accept the kwarg.
+            try:
+                path = value.get_path(empty_array_suffix="")
+            except TypeError:  # pragma: no cover - older systemrdl
+                path = value.get_path().replace("[]", "")
         else:
             path = str(value)
 
@@ -653,7 +707,21 @@ class Pybind11Exporter:
                 "signals": [],
                 "register_members": {},
                 "field_encodes": {},
+                "reg_arrays": [],
             }
+
+        # Tier 0 stop-gap (issue #137 / #138). Phase 1 of the Tier 3
+        # plan handles 1-D arrayed registers only; surface a clear error
+        # for the unsupported shapes so users see a useful message
+        # instead of a cryptic systemrdl crash deep in the template.
+        if isinstance(node, (RegfileNode, AddrmapNode)) and node.is_array:
+            kind = "regfile" if isinstance(node, RegfileNode) else "addrmap"
+            raise NotSupportedError(
+                f"{kind.capitalize()} arrays are not yet supported "
+                f"({node.get_path()!r}). Tracked at "
+                f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
+                f"design at #138. Phase 2 of the Tier 3 plan lands these."
+            )
 
         if isinstance(node, AddrmapNode):
             nodes["addrmaps"].append(node)
@@ -679,6 +747,37 @@ class Pybind11Exporter:
                 for child in children:
                     self._collect_nodes(child, nodes)
         elif isinstance(node, RegNode):
+            # Detect arrayed registers (Phase 1 of Tier 3). Multi-dim
+            # arrays are deferred to Phase 3; raise the stop-gap with a
+            # pointer to issue #138.
+            if node.is_array:
+                if len(node.array_dimensions or []) > 1:
+                    raise NotSupportedError(
+                        f"Multi-dim register arrays are not yet supported "
+                        f"({node.get_path()!r}). Tracked at "
+                        f"https://github.com/arnavsacheti/PeakRDL-pybind11/issues/137; "
+                        f"design at #138. Phase 3 of the Tier 3 plan lands these."
+                    )
+                # Use ``raw_address_offset`` because ``address_offset`` raises
+                # on arrayed nodes (it needs ``current_idx`` to derive a
+                # concrete entry's address). The C++ ``ArrayBase`` constructor
+                # then derives each entry's absolute address from this base.
+                # ``array_stride`` is ``Optional[int]`` in the systemrdl
+                # type stubs, but is always set on a node where
+                # ``is_array`` is True; fall back to the entry size for
+                # the (unreachable) ``None`` branch.
+                stride = node.array_stride
+                if stride is None:
+                    stride = int(node.size)
+                nodes["reg_arrays"].append(
+                    {
+                        "node": node,
+                        "dimensions": list(node.array_dimensions or []),
+                        "stride": int(stride),
+                        "relative_offset": int(node.raw_address_offset),
+                    }
+                )
+
             nodes["regs"].append(node)
             is_flag = self._get_bool_property(node, "is_flag")
             is_enum = self._get_bool_property(node, "is_enum")

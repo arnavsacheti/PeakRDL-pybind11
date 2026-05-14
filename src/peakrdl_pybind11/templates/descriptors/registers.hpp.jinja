@@ -2,8 +2,14 @@
 // Register: {{ reg.get_path() }}
 class {{ reg | pybind_name }}_t : public RegisterBase {
 public:
+    {# For an arrayed reg, the entry class carries no relative offset of
+       its own — its absolute offset is computed by ``ArrayBase`` as
+       ``offset_ + i * stride``. ``raw_address_offset`` is used as a
+       fallback on non-arrayed (where ``address_offset`` raises) but the
+       common path uses ``address_offset``.
+    #}
     {{ reg | pybind_name }}_t(uint64_t base_offset)
-        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(reg.address_offset) }}, {{ reg.size }}) {}
+        : RegisterBase("{{ reg.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(0 if reg.is_array else reg.address_offset) }}, {{ reg.size }}) {}
 
     {% for field in reg.fields() %}
     // Field: {{ field.inst_name | safe_id }}

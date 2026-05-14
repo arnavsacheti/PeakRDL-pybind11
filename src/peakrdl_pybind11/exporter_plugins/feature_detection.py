@@ -404,15 +404,28 @@ def _field_to_dict(field_node: FieldNode) -> dict[str, Any]:
 
 
 def _reg_to_dict(reg: RegNode) -> dict[str, Any]:
+    # ``absolute_address`` raises on arrayed RegNodes (it needs a concrete
+    # ``current_idx`` to derive a per-entry address). For arrayed regs we
+    # use ``raw_absolute_address``, which is the array base address; the
+    # per-entry index is reconstructed at runtime by ``ArrayBase``.
+    absolute_address = reg.raw_absolute_address if reg.is_array else reg.absolute_address
     out: dict[str, Any] = {
         "kind": "reg",
         "inst_name": reg.inst_name,
         "path": reg.get_path(),
-        "absolute_address": reg.absolute_address,
+        "absolute_address": absolute_address,
         "size": reg.size,
         "is_alias": getattr(reg, "is_alias", False),
         "fields": [_field_to_dict(f) for f in reg.fields()],
     }
+    if reg.is_array:
+        out["array_dimensions"] = list(reg.array_dimensions or [])
+        # ``array_stride`` is ``Optional[int]`` in the systemrdl type
+        # stubs (always set on arrayed nodes; the ``None`` branch is
+        # unreachable in practice). Fall back to the entry size so the
+        # value stays integer-typed for downstream consumers.
+        stride = reg.array_stride
+        out["array_stride"] = int(stride) if stride is not None else int(reg.size)
     if out["is_alias"]:
         try:
             primary = reg.alias_primary

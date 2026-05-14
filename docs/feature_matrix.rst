@@ -148,10 +148,16 @@ Arrays
      - Status
      - Notes
    * - Register array (``reg my_reg[N]``)
-     - ``soc.lut.entry[i]``, ``soc.lut.entry[:]``, ``ArrayView``,
+     - ``soc.lut[i]``, ``soc.lut[:]``, ``ArrayView``,
        ``.read() -> ndarray[uint32]``
-     - planned
-     - See :doc:`concepts/arrays`. Today array instantiation is not handled.
+     - implemented
+     - Phase 1 of the Tier 3 plan (issue #138). 1-D register arrays only;
+       multi-dim and regfile/addrmap/field arrays still raise
+       ``NotSupportedError``. Codegen seam: the C++ ``ArrayBase`` template
+       in ``templates/descriptors/base_classes.hpp.jinja`` plus the
+       per-array typedef partial in ``templates/descriptors/arrays.hpp.jinja``;
+       Python wrapping via ``runtime/arrays.py:wrap_array`` and the
+       ``_wrap_arrays`` hook emitted by ``templates/runtime.py.jinja``.
    * - Regfile array (``regfile rf[N]``)
      - ``soc.dma.channel[3]``, iteration, slice
      - planned

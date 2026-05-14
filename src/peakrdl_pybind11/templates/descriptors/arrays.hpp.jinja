@@ -1,0 +1,22 @@
+{# Per-array C++ class. Each arrayed entry type gets a small subclass of
+   ``ArrayBase<entry_t>`` that pre-fills (name, num_entries, stride),
+   keeping the parent regfile/addrmap construction uniform with the
+   non-arrayed case: parents always pass a single ``base_offset`` to
+   their child members.
+
+   Phase 1 (issue #138) handles 1-D register arrays; the loop below
+   walks ``nodes.reg_arrays`` exclusively. Phase 2 will add regfile
+   arrays here in the same shape.
+#}
+{% for array in nodes.reg_arrays %}
+// Register array: {{ array.node.get_path() }}
+class {{ array.node | pybind_name }}_array_t : public ArrayBase<{{ array.node | pybind_name }}_t> {
+public:
+    {{ array.node | pybind_name }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ array.node | pybind_name }}_t>(
+              "{{ array.node.inst_name | safe_id }}", base_offset,
+              0x{{ "%x" | format(array.relative_offset) }},
+              {{ array.dimensions[0] }}, {{ array.stride }}) {}
+};
+
+{% endfor %}

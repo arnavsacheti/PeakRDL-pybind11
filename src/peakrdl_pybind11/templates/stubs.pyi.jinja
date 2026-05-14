@@ -376,7 +376,8 @@ class {{ regfile | pybind_name }}_t(NodeBase):
 
     {% for child in regfile.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}_t
+    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
+    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}{{ _child_suffix }}
     {% endif %}
     {% endfor %}
 
@@ -391,7 +392,8 @@ class {{ addrmap | pybind_name }}_t(NodeBase):
 
     {% for child in addrmap.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}_t
+    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
+    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}{{ _child_suffix }}
     {% endif %}
     {% endfor %}
 
@@ -441,6 +443,38 @@ class {{ mem | pybind_name }}_t(NodeBase):
 
 {% endfor %}
 
+{% for array in nodes.reg_arrays %}
+class {{ array.node | pybind_name }}_array_t(NodeBase):
+    """Register array: {{ array.node.get_path() }}
+
+    1-D arrayed register (Phase 1 of Tier 3 array support). At runtime
+    ``create()`` substitutes an :class:`ArrayView` for this attribute so
+    field projection, bulk reads/writes, and tuple indexing become
+    available; the C++ class below is the underlying sequence container.
+    """
+
+    def __init__(self, base_offset: int) -> None: ...
+
+    def __len__(self) -> int:
+        """Number of array entries"""
+        ...
+
+    @overload
+    def __getitem__(self, index: int) -> {{ array.node | pybind_name }}_t: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[{{ array.node | pybind_name }}_t]: ...
+
+    def __iter__(self) -> Iterator[{{ array.node | pybind_name }}_t]: ...
+
+    @property
+    def shape(self) -> tuple[int, ...]: ...
+
+    @property
+    def stride(self) -> int: ...
+
+{% endfor %}
+
 class {{ soc_name }}_t(NodeBase):
     """Top-level SoC register map"""
 
@@ -456,7 +490,8 @@ class {{ soc_name }}_t(NodeBase):
 
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}_t
+    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
+    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}{{ _child_suffix }}
     {% endif %}
     {% endfor %}
 

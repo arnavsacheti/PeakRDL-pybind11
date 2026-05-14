@@ -14,3 +14,8 @@ class {{ regfile | pybind_name }}_t;
 // Forward declaration for memory {{ mem.get_path() }}
 class {{ mem | pybind_name }}_t;
 {% endfor %}
+
+{% for array in nodes.reg_arrays %}
+// Forward declaration for register array {{ array.node.get_path() }}
+class {{ array.node | pybind_name }}_array_t;
+{% endfor %}

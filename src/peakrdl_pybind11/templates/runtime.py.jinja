@@ -71,9 +71,195 @@ if 'MmapMaster' in dir():
 def create():
     """Create a new instance of the {{ soc_name }} register map."""
     soc = {{ soc_name }}_t()
+    # Wrap RDL array members in :class:`ArrayView` before any post-create
+    # hook fires. Sibling hooks (observers, snapshot tooling, etc.) that
+    # walk ``soc`` then see the typed ``ArrayView`` surface for arrayed
+    # children rather than the raw C++ ``ArrayBase`` binding.
+    {% if nodes.reg_arrays %}
+    _wrap_arrays(soc)
+    {% endif %}
     # Sibling units can attach observers, snapshot tooling, etc.
     _peakrdl_registry.fire_post_create_hooks(soc)
     return soc
+
+
+{% if nodes.reg_arrays %}
+# ---------------------------------------------------------------------------
+# Per-SoC array metadata (Phase 1 of Tier 3 RDL array support; issue #138).
+#
+# ``_REG_ARRAY_PATHS`` lists every arrayed register's RDL path (with the
+# leading SoC-root segment stripped, mirroring ``Signal`` paths in
+# ``runtime/signals.py``). ``_wrap_arrays`` walks the path on a freshly
+# created SoC, collects the entry references via the C++ binding's
+# sequence protocol, builds an :class:`ArrayView` from them, and stashes
+# the wrapper in a per-instance cache.
+#
+# A class-level property (installed once at module import) routes
+# ``parent.<array>`` lookups through the cache, falling back to the
+# original pybind11 ``def_readonly`` getter when the wrapper has not
+# been installed yet. Pybind11's ``def_readonly`` creates a *data*
+# descriptor that wins over instance ``__dict__``; replacing it with
+# our own data descriptor is the way to let user-facing attribute
+# access return the ``ArrayView`` instead of the raw C++ array.
+# ---------------------------------------------------------------------------
+from peakrdl_pybind11.runtime import arrays as _peakrdl_arrays
+
+# (rdl_path_with_root, shape_tuple)
+_REG_ARRAY_PATHS: list[tuple[str, tuple[int, ...]]] = [
+{% for array in nodes.reg_arrays %}
+    ("{{ array.node.get_path() }}", ({% for d in array.dimensions %}{{ d }}, {% endfor %})),
+{% endfor %}
+]
+
+# Per-instance ArrayView cache: ``id(parent) -> {attr_name: ArrayView}``.
+# Keyed by ``id`` so the property doesn't have to hash arbitrary
+# pybind11 objects (and so we don't accidentally extend their
+# lifetime). Entries are cleared by :func:`_wrap_arrays` on every
+# ``create()``, which is the only place we'd see a stale id (the prior
+# SoC at that address has already been garbage-collected by the time
+# the new one shares its id).
+_ARRAY_VIEW_CACHE: dict[int, dict[str, object]] = {}
+
+# ``(parent_cls, attr_name) -> original pybind11 descriptor``. Captured
+# by :func:`_install_array_properties` before we overwrite the class
+# attribute, so :func:`_wrap_arrays` can still reach the C++ array
+# through the original ``def_readonly`` getter.
+_NATIVE_ARRAY_DESCRIPTORS: dict[tuple[type, str], object] = {}
+
+
+def _strip_soc_root(path: str) -> str:
+    """Drop the leading SoC-root segment from an RDL path.
+
+    Mirrors ``signals._strip_root``. ``"{{ soc_name }}.lut"`` →
+    ``"lut"``; ``"{{ soc_name }}.peripherals.dma.chan"`` →
+    ``"peripherals.dma.chan"``. The trailing empty array suffix
+    ``"foo[]"`` is also stripped so the path is a plain dotted
+    Python attribute walk.
+    """
+    if path.endswith("[]"):
+        path = path[:-2]
+    if "." not in path:
+        return path
+    _, _, rest = path.partition(".")
+    return rest
+
+
+def _array_property(attr: str, native_getter):
+    """Build a data descriptor for an arrayed child attribute.
+
+    ``attr`` is the Python attribute name (e.g. ``"lut"``). The
+    returned property's getter consults :data:`_ARRAY_VIEW_CACHE`
+    first and falls back to ``native_getter`` (the original pybind11
+    ``def_readonly`` accessor) when no wrapper has been installed —
+    handy if a user looks up the attribute before ``create()`` has
+    fired the post-create hook chain.
+
+    The ``_peakrdl_array_wrapper`` marker on ``_fget`` lets
+    :func:`_install_array_properties` detect a previously-installed
+    wrapper and skip re-wrapping (idempotency under hot reload /
+    duplicate module import).
+    """
+    def _fget(self):
+        cache = _ARRAY_VIEW_CACHE.get(id(self))
+        if cache is not None and attr in cache:
+            return cache[attr]
+        return native_getter(self)
+
+    _fget._peakrdl_array_wrapper = True
+
+    def _fset(self, value):
+        cache = _ARRAY_VIEW_CACHE.setdefault(id(self), {})
+        cache[attr] = value
+
+    return property(_fget, _fset)
+
+
+def _install_array_properties() -> None:
+    """Swap pybind11 ``def_readonly`` accessors for cache-routing properties.
+
+    Runs once at module import. Captures the original pybind11
+    descriptor in :data:`_NATIVE_ARRAY_DESCRIPTORS` (keyed by parent
+    class + attribute name) before replacing the class attribute with
+    a Python data descriptor that consults :data:`_ARRAY_VIEW_CACHE`.
+
+    Idempotent: ``_array_property`` stamps the getter with
+    ``_peakrdl_array_wrapper = True``; a second invocation (hot
+    reload, dual ``__init__.py`` import paths) skips already-wrapped
+    attributes rather than chaining a new layer.
+
+    For Phase 1 every arrayed register is a direct child of the SoC
+    class. Phase 2 (regfile arrays) will need to recurse into nested
+    parent classes; that loop body is left for the next phase.
+    """
+    soc_cls = {{ soc_name }}_t
+    for path_with_root, _shape in _REG_ARRAY_PATHS:
+        rel_path = _strip_soc_root(path_with_root)
+        parent_path, _, attr = rel_path.rpartition(".")
+        if parent_path:
+            # Phase 2 territory — regfile arrays land here. The
+            # generated runtime intentionally raises rather than
+            # silently doing the wrong thing.
+            raise NotImplementedError(
+                "Nested-parent array wrapping is Phase 2 (issue #138)."
+            )
+        parent_cls = soc_cls
+
+        native_descriptor = vars(parent_cls).get(attr)
+        if native_descriptor is None:
+            continue
+        existing_fget = getattr(native_descriptor, "fget", None)
+        if getattr(existing_fget, "_peakrdl_array_wrapper", False):
+            # Already installed — preserve the originally-captured
+            # pybind11 descriptor and move on. Idempotent under
+            # duplicate import (the exporter writes the runtime to both
+            # ``out/__init__.py`` and ``out/<soc>/__init__.py``).
+            continue
+        _NATIVE_ARRAY_DESCRIPTORS[(parent_cls, attr)] = native_descriptor
+
+        # Bind the descriptor into the closure so the swap is
+        # idempotent (rerunning ``_install_array_properties`` keeps
+        # using the same fallback rather than chaining a new layer).
+        def _native_getter(self, _desc=native_descriptor):
+            return _desc.__get__(self, type(self))
+
+        setattr(parent_cls, attr, _array_property(attr, _native_getter))
+
+
+_install_array_properties()
+
+
+def _wrap_arrays(soc) -> None:
+    """Build an :class:`ArrayView` for each arrayed child of ``soc``.
+
+    The view is stashed in :data:`_ARRAY_VIEW_CACHE` so the
+    class-level data descriptor returns it on attribute access. The
+    raw C++ binding remains reachable through the original pybind11
+    descriptor — only the user-facing attribute switches.
+    """
+    cache: dict[str, object] = {}
+    for path_with_root, shape in _REG_ARRAY_PATHS:
+        rel_path = _strip_soc_root(path_with_root)
+        parent_path, _, attr = rel_path.rpartition(".")
+        parent = soc
+        if parent_path:
+            for segment in parent_path.split("."):
+                parent = getattr(parent, segment)
+        # Reach through the captured pybind11 descriptor to get the
+        # raw C++ array — bypassing our cache-routing property, which
+        # would otherwise loop back into the (still-empty) cache.
+        native_desc = _NATIVE_ARRAY_DESCRIPTORS.get((type(parent), attr))
+        if native_desc is None:
+            continue
+        cxx_array = native_desc.__get__(parent, type(parent))
+        # Pybind11 ``reference_internal`` ties each entry's lifetime to
+        # the C++ array node (owned by the parent), so the Python refs
+        # stay valid for the SoC's life.
+        elements = [cxx_array[i] for i in range(len(cxx_array))]
+        view = _peakrdl_arrays.wrap_array(type(parent), attr, elements, shape)
+        cache[attr] = view
+    if cache:
+        _ARRAY_VIEW_CACHE[id(soc)] = cache
+{% endif %}
 
 
 {% if nodes.signals %}
@@ -294,10 +480,15 @@ _FIELD_ENCODE_TYPES: dict[type, dict[str, type]] = {
 # ``Info`` without an RDL node attached.
 _REGISTER_INFO: dict[type, dict] = {
 {% for reg in nodes.regs %}
+    {# For arrayed registers, ``absolute_address`` raises because it
+       requires a concrete ``current_idx``. ``raw_absolute_address`` is
+       the array-base address; the entry's index-specific offset is
+       layered on by ``ArrayBase`` at runtime.
+    #}
     {{ reg | pybind_name }}_t: {
         "name": "{{ reg.inst_name }}",
         "path": "{{ reg.get_path() }}",
-        "address": {{ reg.absolute_address }},
+        "address": {{ reg.raw_absolute_address if reg.is_array else reg.absolute_address }},
         "regwidth": {{ reg.get_property('regwidth') }},
         "desc": {% if reg.get_property('desc') %}"{{ reg.get_property('desc') | replace('"', '\\"') | replace('\n', ' ') }}"{% else %}None{% endif %},
     },

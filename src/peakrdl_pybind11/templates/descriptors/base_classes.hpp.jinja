@@ -876,3 +876,104 @@ protected:
     size_t num_entries_;
     size_t entry_size_;
 };
+
+/**
+ * Base class for register / regfile / addrmap arrays.
+ *
+ * Models the RDL ``inst[N]`` instantiation. Each entry has its own typed
+ * ``read()``/``write()`` (registers) or sub-tree of children
+ * (regfiles/addrmaps), so unlike :class:`MemoryBase` there are no
+ * burst-style ``read_block``/``write_block`` helpers — bulk operations
+ * are exposed through the Python ``ArrayView`` wrapper instead.
+ *
+ * The constructor pre-allocates the entries in a single vector with
+ * absolute offsets ``offset_ + i * stride``. ``set_offset()`` updates
+ * each entry in place (no destruction/reassignment) so pybind11
+ * ``reference_internal`` handles remain valid across address-base
+ * relocations.
+ *
+ * The C++ binding only knows its own dimension; the Python ``ArrayView``
+ * walks the nested types to assemble multi-dim ``shape`` tuples (Phase 3).
+ */
+template<typename EntryType>
+class ArrayBase : public NodeBase {
+public:
+    ArrayBase(const std::string& name, uint64_t base_offset,
+              uint64_t relative_offset, size_t num_entries,
+              uint64_t stride)
+        : NodeBase(name, base_offset, relative_offset),
+          num_entries_(num_entries), stride_(stride) {
+        entries_.reserve(num_entries);
+        for (size_t i = 0; i < num_entries; ++i) {
+            entries_.emplace_back(offset_ + i * stride);
+        }
+    }
+
+    virtual ~ArrayBase() = default;
+
+    void set_master(Master* master) override {
+        NodeBase::set_master(master);
+        for (auto& entry : entries_) {
+            entry.set_master(master);
+        }
+    }
+
+    void set_offset(uint64_t base_offset) override {
+        NodeBase::set_offset(base_offset);
+        for (size_t i = 0; i < entries_.size(); ++i) {
+            entries_[i].set_offset(offset_ + i * stride_);
+        }
+    }
+
+    /**
+     * Get entry at specific index
+     */
+    EntryType& operator[](size_t index) {
+        if (index >= num_entries_) {
+            throw std::out_of_range("Array index out of range: " + std::to_string(index));
+        }
+        return entries_[index];
+    }
+
+    const EntryType& operator[](size_t index) const {
+        if (index >= num_entries_) {
+            throw std::out_of_range("Array index out of range: " + std::to_string(index));
+        }
+        return entries_[index];
+    }
+
+    /**
+     * Get number of entries
+     */
+    size_t size() const { return num_entries_; }
+
+    /**
+     * Stride between entries (in bytes). Set at construction from RDL
+     * ``array_stride``; reported through the Python binding so user code
+     * can derive each entry's address without re-querying the master.
+     */
+    uint64_t stride() const { return stride_; }
+
+    /**
+     * Iterator support
+     */
+    typename std::vector<EntryType>::iterator begin() { return entries_.begin(); }
+    typename std::vector<EntryType>::iterator end() { return entries_.end(); }
+    typename std::vector<EntryType>::const_iterator begin() const { return entries_.begin(); }
+    typename std::vector<EntryType>::const_iterator end() const { return entries_.end(); }
+
+    /**
+     * String representation
+     */
+    std::string __repr__() const override {
+        std::ostringstream oss;
+        oss << "<Array '" << name_ << "' @ 0x" << std::hex << std::setfill('0')
+            << std::setw(4) << offset_ << " [" << std::dec << num_entries_ << " entries]>";
+        return oss.str();
+    }
+
+protected:
+    std::vector<EntryType> entries_;
+    size_t num_entries_;
+    uint64_t stride_;
+};

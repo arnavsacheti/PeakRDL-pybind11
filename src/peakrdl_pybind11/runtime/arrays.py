@@ -293,6 +293,34 @@ class ArrayView:
         """The (multi-dim) shape of the view."""
         return self._shape
 
+    @property
+    def stride(self) -> int:
+        """Byte stride between consecutive entries.
+
+        Derived from the first two elements' ``offset`` properties when
+        available (the standard shape for generated register / regfile
+        descriptors). Returns 0 for a length-0 or length-1 view, since
+        the stride is meaningless without two elements to compare.
+
+        Defined as a real property so generated array attributes
+        (``soc.lut.stride``) don't fall through to :meth:`__getattr__`
+        and surface a :class:`_FieldProjection` for a field named
+        ``"stride"``.
+        """
+
+        if len(self._elements) < 2:
+            return 0
+        first = self._elements[self._indices[0]] if self._indices else self._elements[0]
+        if len(self._indices) >= 2:
+            second = self._elements[self._indices[1]]
+        else:
+            second = self._elements[1]
+        a = getattr(first, "offset", None)
+        b = getattr(second, "offset", None)
+        if a is None or b is None:
+            return 0
+        return int(b) - int(a)
+
     def __len__(self) -> int:
         return self._shape[0] if self._shape else 0
 
