@@ -3,8 +3,12 @@
 // Addrmap: {{ addrmap.get_path() }}
 class {{ addrmap | pybind_name }}_t : public NodeBase {
 public:
+    {# An arrayed addrmap's entry class carries no relative offset of its
+       own — its absolute offset is computed by ``ArrayBase`` as
+       ``offset_ + i * stride``. Mirrors the regfiles partial.
+    #}
     {{ addrmap | pybind_name }}_t(uint64_t base_offset)
-        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(addrmap.address_offset) }}) {
+        : NodeBase("{{ addrmap.inst_name | safe_id }}", base_offset, 0x{{ "%x" | format(0 if addrmap.is_array else addrmap.address_offset) }}) {
         {% for child in addrmap.children() %}
         {% if child.inst_name %}
         {{ child.inst_name | safe_id }}.set_master(master_);

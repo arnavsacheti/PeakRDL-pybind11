@@ -99,6 +99,20 @@ addrmap cube_soc {
 };
 """
 
+# Addrmap-array fixture (issues #137 / #138 follow-up). The inner
+# addrmap holds a single register; arraying it produces two
+# addressable blocks that each own their own ``ctrl`` register.
+ADDRMAP_ARRAY_RDL = """
+addrmap inner {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } ctrl @ 0x0;
+};
+addrmap am_array_soc {
+    inner blocks[2] @ 0x100;
+};
+"""
+
 
 def _build_test_module(
     workdir: Path,
@@ -227,6 +241,25 @@ def mixed_array_module(tmp_path_factory):
 def mixed_soc(mixed_array_module):
     s = mixed_array_module.create()
     s.attach_master(mixed_array_module.MockMaster())
+    return s
+
+
+@pytest.fixture(scope="module")
+def addrmap_array_module(tmp_path_factory):
+    """Build the addrmap-array fixture C++ module."""
+    workdir = tmp_path_factory.mktemp("addrmap_array_integration")
+    module = _build_test_module(
+        workdir, rdl_text=ADDRMAP_ARRAY_RDL, soc_name="am_array_soc"
+    )
+    if module is None:
+        pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+    return module
+
+
+@pytest.fixture
+def am_soc(addrmap_array_module):
+    s = addrmap_array_module.create()
+    s.attach_master(addrmap_array_module.MockMaster())
     return s
 
 
@@ -388,6 +421,59 @@ class TestRegfileArraySurface:
         """``dma_soc.channel`` is wrapped in an :class:`ArrayView`."""
         from peakrdl_pybind11.runtime.arrays import ArrayView
         assert isinstance(dma_soc.channel, ArrayView)
+
+
+class TestAddrmapArraySurface:
+    """Addrmap-array end-to-end (issues #137 / #138 follow-up).
+
+    Twin of :class:`TestRegfileArraySurface`. Confirms that an arrayed
+    addrmap exposes the same sequence-protocol surface plus per-entry
+    member access through to its register children.
+    """
+
+    def test_length(self, am_soc) -> None:
+        assert len(am_soc.blocks) == 2
+
+    def test_shape_is_one_dim_tuple(self, am_soc) -> None:
+        assert tuple(am_soc.blocks.shape) == (2,)
+
+    def test_stride_is_addrmap_size(self, am_soc) -> None:
+        """Stride between blocks = addrmap size = single 4-byte register."""
+        assert int(am_soc.blocks.stride) == 4
+
+    def test_indexed_access_returns_same_instance(self, am_soc) -> None:
+        a = am_soc.blocks[1]
+        b = am_soc.blocks[1]
+        assert a is b
+
+    def test_iteration(self, am_soc) -> None:
+        entries = list(am_soc.blocks)
+        assert len(entries) == 2
+
+    def test_slice_returns_subset(self, am_soc) -> None:
+        sliced = am_soc.blocks[0:2]
+        assert len(sliced) == 2
+
+    def test_per_entry_member_access(self, am_soc) -> None:
+        """``blocks[i].ctrl.write(...)`` round-trips via the bus."""
+        am_soc.blocks[1].ctrl.write(0xBBBB)
+        assert int(am_soc.blocks[1].ctrl.read()) == 0xBBBB
+
+    def test_entries_are_independent(self, am_soc) -> None:
+        am_soc.blocks[0].ctrl.write(0xAAAA)
+        am_soc.blocks[1].ctrl.write(0xBBBB)
+        assert int(am_soc.blocks[0].ctrl.read()) == 0xAAAA
+        assert int(am_soc.blocks[1].ctrl.read()) == 0xBBBB
+
+    def test_entry_addresses_follow_stride(self, am_soc) -> None:
+        base = int(am_soc.blocks[0].ctrl.offset)
+        stride = int(am_soc.blocks.stride)
+        for i in range(2):
+            assert int(am_soc.blocks[i].ctrl.offset) == base + i * stride
+
+    def test_blocks_is_array_view(self, am_soc) -> None:
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        assert isinstance(am_soc.blocks, ArrayView)
 
 
 class TestMixedArraysIntegration:

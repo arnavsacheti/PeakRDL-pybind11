@@ -61,6 +61,14 @@ class FieldBase;
 
 {% include "descriptors/addrmaps.hpp.jinja" %}
 
+{# Addrmap-array typedefs land here, *after* ``addrmaps.hpp.jinja``.
+   Same complete-type constraint as ``regfile_arrays.hpp.jinja``:
+   ``ArrayBase<<am>_t>`` carries ``std::vector<<am>_t>`` and needs
+   ``<am>_t`` to be complete. Emitted *before* ``top_node.hpp.jinja``
+   so the SoC class can reference ``<am>_array_t`` member types.
+#}
+{% include "descriptors/addrmap_arrays.hpp.jinja" %}
+
 {% include "descriptors/top_node.hpp.jinja" %}
 
 } // namespace {{ soc_name }}

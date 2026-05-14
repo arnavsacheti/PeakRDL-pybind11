@@ -1,27 +1,18 @@
-"""Unit tests for register- and regfile-array codegen (issue #138).
+"""Unit tests for register / regfile / addrmap array codegen (issue #138).
 
 These exercise the exporter and Jinja templates without building any
 C++. The companion ``test_array_integration.py`` builds the generated
 module and validates the runtime surface; that one is gated on cmake +
 pybind11 availability and may skip in CI.
-
-Stop-gap coverage (addrmap / multi-dim / field arrays) is included
-here because the ``NotSupportedError`` raises directly from the
-exporter — no build needed. Phase 2 (issue #138) flips the regfile-
-array stop-gap from ``NotSupportedError`` to working codegen; the
-unit assertions for that live in :class:`TestRegfileArrayDescriptorEmission`
-and :class:`TestRegfileArrayBindingEmission` below.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from systemrdl import RDLCompiler
 
 from peakrdl_pybind11 import Pybind11Exporter
-from peakrdl_pybind11.runtime.errors import NotSupportedError
 
 
 SIMPLE_ARRAY_RDL = """
@@ -97,6 +88,33 @@ addrmap cube_soc {
     reg {
         field { sw=rw; hw=r; } data[31:0] = 0;
     } cube[2][3][4] @ 0x100;
+};
+"""
+
+# Addrmap array (issues #137 / #138 follow-up). The inner addrmap holds
+# a single register; arraying it produces two indistinguishable blocks
+# with their own ``ctrl`` register at index*stride.
+ADDRMAP_ARRAY_RDL = """
+addrmap inner {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } ctrl @ 0x0;
+};
+addrmap am_array_soc {
+    inner blocks[2] @ 0x100;
+};
+"""
+
+# 2-D addrmap array. Inner stride = addrmap size = 4 bytes; outer
+# stride = 3 * 4 = 12 bytes.
+MULTIDIM_ADDRMAP_RDL = """
+addrmap inner_mdim {
+    reg {
+        field { sw=rw; hw=r; } data[31:0] = 0;
+    } ctrl @ 0x0;
+};
+addrmap am_multidim_soc {
+    inner_mdim blocks[2][3] @ 0x200;
 };
 """
 
@@ -233,35 +251,6 @@ class TestStubGeneration:
         out = _export(SIMPLE_ARRAY_RDL, tmpdir=tmp_path)
         pyi = (out / "__init__.pyi").read_text()
         assert "lut: simple_array_soc__lut_array_t" in pyi
-
-
-class TestStopGapErrors:
-    """Tier 0 stop-gap: unsupported shapes raise ``NotSupportedError``.
-
-    Phase 3 (#138) removes the multi-dim register and multi-dim
-    regfile array stop-gaps — those are now working codegen.
-    Remaining stop-gaps:
-
-    * addrmap arrays — out of scope (issue #138)
-    * field arrays — Phase 4
-    """
-
-    def _attempt(self, rdl_text: str, soc_name: str, tmpdir: Path) -> None:
-        _export(rdl_text, soc_name=soc_name, tmpdir=tmpdir)
-
-    def test_addrmap_array_not_supported(self, tmp_path: Path) -> None:
-        rdl_text = """
-        addrmap inner {
-            reg { field { sw=rw; hw=r; } data[31:0] = 0; } ctrl @ 0x0;
-        };
-        addrmap am_array_soc {
-            inner blocks[2] @ 0x0;
-        };
-        """
-        with pytest.raises(NotSupportedError) as exc:
-            self._attempt(rdl_text, "am_array_soc", tmp_path)
-        assert "addrmap arrays" in str(exc.value).lower()
-        assert "#138" in str(exc.value)
 
 
 class TestCollectNodes:
@@ -754,29 +743,141 @@ class TestMultiDimStubGeneration:
         assert "class cube_soc__cube_array_t" in pyi
 
 
-class TestPhase3StopGaps:
-    """Stop-gaps that survive Phase 3."""
+# ---------------------------------------------------------------------------
+# Addrmap arrays (issues #137 / #138 follow-up). The exporter now treats
+# arrayed ``AddrmapNode``s the same way it treats arrayed ``RegfileNode``s
+# — the same ``ArrayInfo`` shape, the same ``ArrayBase<entry_t>`` C++
+# wrapper, the same ``_ARRAY_PATHS`` runtime metadata. These tests
+# mirror the regfile-array suite.
+# ---------------------------------------------------------------------------
 
-    def test_addrmap_array_still_raises(self, tmp_path: Path) -> None:
-        """Addrmap arrays remain out of scope (P5 / followup, #138)."""
-        rdl_text = """
-        addrmap inner {
-            reg { field { sw=rw; hw=r; } data[31:0] = 0; } ctrl @ 0x0;
-        };
-        addrmap am_array_soc {
-            inner blocks[2] @ 0x0;
-        };
-        """
-        rdl_path = tmp_path / "x.rdl"
+
+class TestAddrmapArrayCollection:
+    def _collect(self, rdl_text: str, soc_name: str, tmpdir: Path):
+        rdl_path = tmpdir / f"{soc_name}.rdl"
         rdl_path.write_text(rdl_text)
         rdl = RDLCompiler()
         rdl.compile_file(str(rdl_path))
         root = rdl.elaborate()
-        out = tmp_path / "out"
-        out.mkdir()
-        with pytest.raises(NotSupportedError) as exc:
-            Pybind11Exporter().export(root.top, str(out), soc_name="am_array_soc")
-        assert "addrmap arrays" in str(exc.value).lower()
+        ex = Pybind11Exporter()
+        ex.soc_name = soc_name
+        ex.top_node = root.top
+        return ex._collect_nodes(root.top)
+
+    def test_addrmap_array_recorded(self, tmp_path: Path) -> None:
+        nodes = self._collect(ADDRMAP_ARRAY_RDL, "am_array_soc", tmp_path)
+        addrmap_arrays = [a for a in nodes["arrays"] if a["kind"] == "addrmap"]
+        assert len(addrmap_arrays) == 1
+        meta = addrmap_arrays[0]
+        assert meta["dimensions"] == [2]
+        # Stride: addrmap size = single 4-byte register = 4.
+        assert meta["stride"] == 4
+        assert meta["relative_offset"] == 0x100
+
+    def test_addrmap_array_entry_in_addrmaps_list(self, tmp_path: Path) -> None:
+        """Arrayed addrmap's entry type is emitted as a regular ``<am>_t``."""
+        nodes = self._collect(ADDRMAP_ARRAY_RDL, "am_array_soc", tmp_path)
+        # ``addrmaps`` carries the inner addrmap (entry type) plus the
+        # top addrmap; the top is filtered out by template guards.
+        inner_paths = {a.get_path() for a in nodes["addrmaps"]}
+        assert any("blocks" in p for p in inner_paths)
+        # Children of the arrayed addrmap walked once (current_idx=0).
+        reg_paths = {r.get_path() for r in nodes["regs"]}
+        assert any("ctrl" in p for p in reg_paths)
+
+
+class TestAddrmapArrayDescriptorEmission:
+    def test_addrmap_array_class_emitted(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        desc = (out / "am_array_soc_descriptors.hpp").read_text()
+        assert "class am_array_soc__blocks_array_t;" in desc
+        assert "class am_array_soc__blocks_array_t :" in desc
+        # Entry-type class emitted exactly once.
+        assert desc.count("class am_array_soc__blocks_t :") == 1
+        # Inherits from ArrayBase<entry_t>.
+        assert "ArrayBase<am_array_soc__blocks_t>" in desc
+
+    def test_addrmap_array_constructor_uses_stride_and_size(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        desc = (out / "am_array_soc_descriptors.hpp").read_text()
+        assert '"blocks", base_offset,' in desc
+        assert "0x100," in desc
+        # 2 entries, 4-byte stride.
+        assert "2, 4" in desc
+
+    def test_addrmap_array_definition_after_entry(self, tmp_path: Path) -> None:
+        """``<am>_array_t`` class body lands *after* its ``<am>_t`` entry."""
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        desc = (out / "am_array_soc_descriptors.hpp").read_text()
+        entry_pos = desc.index("class am_array_soc__blocks_t :")
+        array_pos = desc.index("class am_array_soc__blocks_array_t :")
+        assert entry_pos < array_pos
+
+    def test_parent_instantiates_addrmap_array_type(self, tmp_path: Path) -> None:
+        """The SoC class member is ``<am>_array_t``, not ``<am>_t``."""
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        desc = (out / "am_array_soc_descriptors.hpp").read_text()
+        assert "am_array_soc__blocks_array_t blocks{offset_};" in desc
+
+    def test_addrmap_entry_uses_zero_relative_offset(self, tmp_path: Path) -> None:
+        """Arrayed addrmap entry class passes ``0`` to ``NodeBase``."""
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        desc = (out / "am_array_soc_descriptors.hpp").read_text()
+        assert 'NodeBase("blocks", base_offset, 0x0)' in desc
+
+
+class TestAddrmapArrayBindingEmission:
+    def test_addrmap_array_binding_present(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        bindings = (out / "am_array_soc_bindings.cpp").read_text()
+        assert "py::class_<am_array_soc__blocks_array_t, NodeBase>" in bindings
+        assert '"am_array_soc__blocks_array_t"' in bindings
+
+    def test_addrmap_array_binding_exposes_indexing(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        bindings = (out / "am_array_soc_bindings.cpp").read_text()
+        assert "am_array_soc__blocks_array_t::size" in bindings
+        assert "am_array_soc__blocks_array_t::stride" in bindings
+
+
+class TestAddrmapArrayRuntimeWiring:
+    def test_array_paths_metadata_includes_addrmap(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        runtime = (out / "am_array_soc" / "__init__.py").read_text()
+        assert "_ARRAY_PATHS" in runtime
+        assert '("am_array_soc.blocks[]"' in runtime
+        assert "(2," in runtime
+
+
+class TestAddrmapArrayStubGeneration:
+    def test_addrmap_array_class_stub_emitted(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        pyi = (out / "__init__.pyi").read_text()
+        assert "class am_array_soc__blocks_array_t" in pyi
+        assert "def __len__(self) -> int" in pyi
+
+    def test_parent_attribute_uses_addrmap_array_type(self, tmp_path: Path) -> None:
+        out = _export(ADDRMAP_ARRAY_RDL, soc_name="am_array_soc", tmpdir=tmp_path)
+        pyi = (out / "__init__.pyi").read_text()
+        assert "blocks: am_array_soc__blocks_array_t" in pyi
+
+
+class TestMultiDimAddrmapArray:
+    def test_2d_descriptors_emit_two_levels(self, tmp_path: Path) -> None:
+        out = _export(MULTIDIM_ADDRMAP_RDL, soc_name="am_multidim_soc", tmpdir=tmp_path)
+        desc = (out / "am_multidim_soc_descriptors.hpp").read_text()
+        # 2-D arrays emit one inner-axis subclass plus the outer.
+        assert "class am_multidim_soc__blocks_inner_0_array_t :" in desc
+        assert "class am_multidim_soc__blocks_array_t :" in desc
+
+    def test_2d_strides_chain_correctly(self, tmp_path: Path) -> None:
+        nodes = TestAddrmapArrayCollection()._collect(
+            MULTIDIM_ADDRMAP_RDL, "am_multidim_soc", tmp_path
+        )
+        meta = [a for a in nodes["arrays"] if a["kind"] == "addrmap"][0]
+        assert meta["dimensions"] == [2, 3]
+        # Inner stride = entry size (4); outer stride = inner_size * inner = 3*4 = 12.
+        assert meta["strides"] == [12, 4]
 
 
 # ---------------------------------------------------------------------------
