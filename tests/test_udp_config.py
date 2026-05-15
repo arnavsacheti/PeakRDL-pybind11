@@ -15,12 +15,23 @@ without standing up the full code-generation pipeline.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 
 from peakrdl_pybind11.cli.udp_config import UDPConfigError, parse_udp_config
 from peakrdl_pybind11.exporter import Pybind11Exporter
+
+# The parser uses stdlib ``tomllib`` which only ships on Python 3.11+.
+# On 3.10 the parser raises a clear ``ImportError`` with an upgrade
+# hint, and the rest of the package keeps working — the tests below
+# can't exercise the happy path without ``tomllib`` so we skip the
+# whole module on 3.10.
+pytestmark = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="--udp-config requires Python 3.11+ (stdlib tomllib)",
+)
 
 
 class TestParseUDPConfig:
