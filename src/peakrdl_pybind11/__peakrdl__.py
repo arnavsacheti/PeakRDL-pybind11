@@ -120,6 +120,20 @@ class Exporter(ExporterSubcommandPlugin):
                 "with re.fullmatch."
             ),
         )
+        arg_group.add_argument(
+            "--udp-config",
+            dest="udp_config",
+            metavar="PATH",
+            default=None,
+            help=(
+                "Path to a TOML file declaring typed wrappers for user-defined "
+                "properties (UDPs), per sketch §8.2 / §18. The file maps UDP names "
+                "to one of {int, bool, str, float}; declared types replace the "
+                "default Any on info.tags.<udp_name> for type-checkers. Undeclared "
+                "UDPs fall back to the permissive TagsNamespace. Requires Python "
+                "3.11+ (uses stdlib tomllib)."
+            ),
+        )
 
         # Sibling-unit CLI extensions (Unit 24 and friends) discover
         # themselves under :mod:`peakrdl_pybind11.cli`. Each registers
@@ -149,6 +163,7 @@ class Exporter(ExporterSubcommandPlugin):
         split_bindings = getattr(options, "split_bindings", 100)
         split_by_hierarchy = getattr(options, "split_by_hierarchy", False)
         interrupt_pattern = getattr(options, "interrupt_pattern", None)
+        udp_config = getattr(options, "udp_config", None)
 
         exporter.export(
             top_node,
@@ -159,6 +174,7 @@ class Exporter(ExporterSubcommandPlugin):
             split_bindings=split_bindings,
             split_by_hierarchy=split_by_hierarchy,
             interrupt_pattern=interrupt_pattern,
+            udp_config=udp_config,
         )
 
         # Run sibling-unit CLI handlers after the primary export. Order

@@ -348,6 +348,12 @@ class Pybind11Exporter:
         self.top_node: AddrmapNode | None = None
         self.output_dir: Path | None = None
         self._name_cache: dict[str, str] = {}
+        # ``--udp-config`` declared-type map (sketch §8.2 / §18). Keys are
+        # UDP attribute names; values are the *string* type name the user
+        # declared (one of ``{"int", "bool", "str", "float"}``). Empty by
+        # default — undeclared UDPs continue to fall back to ``Any`` on
+        # the stub side and the permissive ``TagsNamespace`` at runtime.
+        self._udp_type_map: dict[str, str] = {}
 
         # Discover sibling-unit exporter plugins. Each plugin's
         # ``register(self)`` runs immediately so it can install Jinja
@@ -367,6 +373,7 @@ class Pybind11Exporter:
         split_bindings: int = 100,
         split_by_hierarchy: bool = False,
         interrupt_pattern: object | None = None,
+        udp_config: str | Path | None = None,
     ) -> None:
         """
         Export SystemRDL to PyBind11 modules
@@ -386,6 +393,12 @@ class Pybind11Exporter:
             interrupt_pattern: Optional override for the interrupt-state-register matcher used by
                                the feature_detection exporter plugin. Accepts a regex string,
                                compiled ``re.Pattern``, or a callable ``(name: str) -> bool``.
+            udp_config: Optional path to a TOML file declaring typed wrappers for user-defined
+                        properties (UDPs), per sketch §8.2 / §18. The file maps UDP names to one
+                        of ``{"int", "bool", "str", "float"}``; declared types replace the
+                        default ``Any`` on ``info.tags.<udp_name>`` for type-checkers. Undeclared
+                        UDPs fall back to today's permissive ``TagsNamespace``. Requires Python
+                        3.11+ (uses :mod:`tomllib`); the rest of the package works on 3.10.
         """
         self.top_node = top_node.top if isinstance(top_node, RootNode) else top_node
         self.output_dir = Path(output_dir)
@@ -394,6 +407,17 @@ class Pybind11Exporter:
         self.split_bindings = split_bindings
         self.split_by_hierarchy = split_by_hierarchy
         self.interrupt_pattern = interrupt_pattern
+
+        # Parse the ``--udp-config`` TOML once and stash the declared-type
+        # map on ``self`` so downstream consumers (currently: planned
+        # .pyi stub generation; see TODO in ``runtime/info.py``) can pick
+        # it up without re-parsing. ``None`` clears any previous map.
+        if udp_config is None:
+            self._udp_type_map = {}
+        else:
+            from .cli.udp_config import parse_udp_config
+
+            self._udp_type_map = parse_udp_config(udp_config)
 
         # Sanitize soc_name for use as identifier
         self.soc_name = self._sanitize_identifier(self.soc_name)

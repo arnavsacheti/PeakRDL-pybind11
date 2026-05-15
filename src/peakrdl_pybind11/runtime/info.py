@@ -67,7 +67,30 @@ class TagsNamespace(SimpleNamespace):
     returns ``None`` for unset attribute access instead of raising
     :class:`AttributeError`. This matches the spec: ``info.tags`` should
     let consumers probe for arbitrary UDP names without try/except.
+
+    The optional ``_typed_keys`` kwarg accepts a mapping ``{udp_name:
+    type}`` populated from the exporter's ``--udp-config`` flag (sketch
+    §8.2 / §18). It is **metadata-only**: this commit does not coerce
+    or validate UDP values against the declared types; the map is
+    surfaced so downstream stub generation can annotate
+    ``info.tags.<udp_name>`` with a real Python type instead of falling
+    back to :data:`typing.Any`.
+
+    TODO(sketch §8.2 / §18): wire stub-side typing. The ``.pyi``
+    generator should read ``info.tags._typed_keys`` and emit
+    ``info.tags.my_udp: int`` for each declared key, leaving undeclared
+    keys at the default ``Any`` from this permissive namespace. The
+    runtime metadata is here; the template-side change is the next
+    follow-up.
     """
+
+    def __init__(self, _typed_keys: dict[str, type] | None = None, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        # Stored via ``object.__setattr__`` to bypass any descriptor that
+        # a future subclass might add and to make the intent explicit:
+        # ``_typed_keys`` is metadata, not a UDP. Defaults to an empty
+        # dict so consumers can always do ``ns._typed_keys.get(...)``.
+        object.__setattr__(self, "_typed_keys", dict(_typed_keys) if _typed_keys else {})
 
     def __getattr__(self, name: str) -> object | None:
         # Dunder lookups must keep raising so copy/pickle/etc. work normally.
