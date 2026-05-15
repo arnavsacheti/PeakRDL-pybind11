@@ -577,8 +577,8 @@ User-Defined Properties (UDPs)
      - Today's mechanism. Planned to subsume into ``encode`` per §8.1.
    * - Arbitrary UDPs
      - ``info.tags.<name>``; ``--udp-config`` mapping for typed wrappers
-     - partial
-     - ``info.tags.<name>`` ships as a permissive ``TagsNamespace`` on the uniform :class:`Info` in ``runtime/info.py``; the ``--udp-config`` typed-wrapper mapping is not yet wired in the CLI.
+     - implemented
+     - ``info.tags.<name>`` ships as a permissive ``TagsNamespace`` on the uniform :class:`Info` in ``runtime/info.py``. ``--udp-config PATH`` ships as a CLI flag (``__peakrdl__.py``) that parses a TOML mapping ``udp_name -> {int, bool, str, float}`` via ``cli/udp_config.py`` and threads the declared types through to ``TagsNamespace._typed_keys`` as metadata. Stub-side annotation of ``info.tags.<udp>: int`` from that metadata is a deferred polish step (TODO in ``runtime/info.py``).
 
 Generated API surface
 ---------------------
@@ -693,8 +693,8 @@ These are the planned runtime surfaces, indexed for cross-reference.
    * - Generated stubs
      - exhaustive ``.pyi`` with ``Register[FieldDict]``, ``Unpack[TypedDict]``,
        ``Annotated[int, Range(...)]``, ``Literal['rclr']``
-     - partial
-     - ``Annotated[int, Range(0, max)]`` per-field write overloads and ``Literal[...]`` overloads ship in ``templates/stubs.pyi.jinja``; still missing per §17: ``Unpack[TypedDict]`` on ``write_fields(**fields)`` and tuple-index overloads on array ``__getitem__`` with per-axis ``Annotated[int, Range(...)]`` (deferred at the T3 P5 commit).
+     - implemented
+     - All four §17 patterns ship in ``templates/stubs.pyi.jinja``: ``Annotated[int, Range(0, max)]`` per-field write parameters; ``Literal[...]`` field-name overloads; per-register ``_<reg>_Fields(TypedDict)`` with ``write_fields(**fields: Unpack[_<reg>_Fields])`` (the loose ``**fields: int`` form is kept only for zero-field registers); per-axis ``Annotated[int, Range(0, dim-1)]`` tuple-index overloads on multi-dim array ``__getitem__`` (1-D arrays skip the tuple form). Mixed ``int | slice`` tuple overloads aren't emitted — the existing loose ``tuple[int, ...]`` fallback covers them.
    * - Schema export
      - ``schema.json`` reflective tree alongside the generated module
      - implemented
