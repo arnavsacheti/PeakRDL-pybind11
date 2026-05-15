@@ -438,6 +438,97 @@ addrmap hierarchical_soc {
         # FieldBase.write must stay unconstrained (plain ``int``).
         assert "def write(self, value: int, *, raw: bool = ...) -> None:" in rendered
 
+    def test_write_fields_stub_uses_unpack_typeddict(self) -> None:
+        """Per-register ``write_fields`` declares ``**fields: Unpack[_<reg>_Fields]``.
+
+        Renders ``stubs.pyi.jinja`` directly (no C++ build) and asserts the
+        TypedDict + Unpack signature land for a register with 3 fields.
+        """
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
+        rdl_src = """
+        addrmap unpack_soc {
+            reg {
+                field { sw = rw; hw = r; } enable[0:0];
+                field { sw = rw; hw = r; } mode[2:1];
+                field { sw = rw; hw = r; } prio[7:4];
+            } control @ 0x0000;
+        };
+        """
+
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(rdl_src))
+        root = rdl.elaborate()
+
+        exporter = Pybind11Exporter()
+        nodes = exporter._collect_nodes(root.top)
+
+        env = Environment(
+            loader=PackageLoader("peakrdl_pybind11", "templates"),
+            autoescape=select_autoescape(),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        env.filters["pybind_name"] = exporter._pybind_name_from_node
+        env.filters["safe_id"] = exporter._sanitize_identifier
+        env.filters["members"] = exporter._members_for_node
+        env.filters["field_encode_members"] = exporter._field_encode_members_for_node
+        template = env.get_template("stubs.pyi.jinja")
+        rendered = template.render(
+            soc_name="unpack_soc",
+            top_node=root.top,
+            nodes=nodes,
+        )
+
+        # Per-register TypedDict body must be emitted at module scope.
+        assert "_control_Fields(TypedDict" in rendered
+        # The Unpack-based write_fields signature must reference it.
+        assert "def write_fields(self, **fields: Unpack[" in rendered
+
+    def test_multidim_array_stub_has_tuple_overload(self) -> None:
+        """Multi-dim array outermost class emits a tight tuple overload.
+
+        Renders the stub for ``reg foo[2][4];`` and asserts that the
+        outermost-array ``__getitem__`` overload set includes a
+        per-axis ``tuple[Annotated[int, Range(0, A-1)], ...]`` form.
+        """
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
+        rdl_src = """
+        addrmap matrix_soc {
+            reg {
+                field { sw = rw; hw = r; } val[31:0];
+            } foo[2][4] @ 0x0000;
+        };
+        """
+
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(rdl_src))
+        root = rdl.elaborate()
+
+        exporter = Pybind11Exporter()
+        nodes = exporter._collect_nodes(root.top)
+
+        env = Environment(
+            loader=PackageLoader("peakrdl_pybind11", "templates"),
+            autoescape=select_autoescape(),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        env.filters["pybind_name"] = exporter._pybind_name_from_node
+        env.filters["safe_id"] = exporter._sanitize_identifier
+        env.filters["members"] = exporter._members_for_node
+        env.filters["field_encode_members"] = exporter._field_encode_members_for_node
+        template = env.get_template("stubs.pyi.jinja")
+        rendered = template.render(
+            soc_name="matrix_soc",
+            top_node=root.top,
+            nodes=nodes,
+        )
+
+        # Per-axis tight tuple overload: 2 axes -> Range(0, 1) and Range(0, 3).
+        assert "tuple[Annotated[int, Range(0, 1)], Annotated[int, Range(0, 3)]]" in rendered
+
     @staticmethod
     def _write_rdl(content):
         """Write RDL content to a temporary file"""
