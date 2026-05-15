@@ -8,12 +8,18 @@ aspirational, and code is catching up to it. Status values mean:
 - ``implemented`` — shipped today and behaves as the sketch describes.
 - ``partial`` — exists but does not yet match the sketch's surface or semantics.
 - ``planned`` — defined by the sketch; the exporter does not yet emit it.
+- ``n/a`` — deliberate non-feature for the register-access runtime, either
+  because the underlying RDL construct is not exposed by
+  ``systemrdl-compiler`` (e.g. ``constraint``, whose visitor in
+  ``systemrdl/core/ComponentVisitor.py`` is a documented TODO/no-op) or
+  because the construct lies outside the software register-access surface
+  this exporter targets.
 
-Nearly all runtime-surface rows are now ``implemented``; the remaining
-``partial`` rows cluster around arbitrary UDP typed-wrapper mapping and
-exhaustive ``.pyi`` stub generation. Rows are organized by SystemRDL
-category and reference the conceptual docs (in ``docs/concepts/``) where
-applicable.
+All runtime-surface rows are ``implemented``; the only non-implemented
+rows are the two ``n/a`` entries below (``constraint`` and component
+port declarations), which are deliberate non-features rather than open
+work. Rows are organized by SystemRDL category and reference the
+conceptual docs (in ``docs/concepts/``) where applicable.
 
 Structural Components
 ---------------------
@@ -54,8 +60,16 @@ Structural Components
      - Frozen :class:`Signal` dataclasses ship via ``runtime/signals.py`` (attached to their parent node by the ``register_signals`` post-create hook emitted from ``templates/runtime.py.jinja``).
    * - ``constraint``
      - none
-     - planned
-     - Intentionally out of scope for the register-access runtime; the RDL ``constraint`` declaration is ignored during export.
+     - n/a
+     - Upstream ``systemrdl-compiler`` does not implement the RDL
+       ``constraint`` construct: its parse visitor
+       (``systemrdl/core/ComponentVisitor.py::visitConstraint_def``) is
+       a documented TODO that drops the declaration on the floor, so the
+       compiled tree carries no constraint metadata we could surface.
+       Outside the register-access surface this exporter targets in any
+       case — constraints are a verification/randomization concept, not
+       a runtime register-access one. Will be reconsidered if/when
+       systemrdl-compiler exposes a constraint API.
 
 Software Access (``sw``)
 ------------------------
@@ -293,8 +307,17 @@ Signals (``signal``)
      - Frozen :class:`Signal` dataclasses (name, width, sw/hw access, ``activelow``, ``async``, any UDPs) ship via ``runtime/signals.py`` and are attached to their parent node by the ``register_signals`` hook emitted from ``templates/runtime.py.jinja``.
    * - Component port declarations
      - none
-     - planned
-     - Intentionally out of scope for the register-access surface; ports are ignored during export.
+     - n/a
+     - SystemRDL 2.0 does not define a separate component-port construct
+       distinct from ``signal``: hardware-facing connections (resets,
+       interrupt strobes, ``cpuif_reset``, etc.) are modeled as
+       ``signal`` instances with ``external`` / ``hw`` access, which the
+       ``signal`` row above already covers via ``runtime/signals.py``.
+       ``systemrdl-compiler`` correspondingly exposes ``.signals()`` per
+       node but has no port concept (``dir(SignalNode)`` /
+       ``dir(AddrmapNode)`` contain no port-related members). Treated as
+       a non-feature: the surface is the existing :class:`Signal`
+       metadata.
 
 Counters
 --------
