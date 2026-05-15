@@ -286,6 +286,14 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
             "Iterate over memory entries");
     {% endfor %}
 
+    // Mem array classes (issues #137 / #138 follow-up). Wraps the
+    // mem entry class (itself a ``MemoryBase<...>``) so users see
+    // ``soc.mymem[i]`` as a memory and ``soc.mymem[i][j]`` as a
+    // memory entry.
+    {% for array in nodes.arrays if array.kind == "mem" %}
+    {{ array_levels_binding(array) }}
+    {% endfor %}
+
     // Register array classes (Phase 1+3 of Tier 3 RDL array support, issue #138).
     // Each arrayed entry type ``foo`` gets a binding ``foo_array_t``
     // exposing the sequence-protocol surface (``__len__``,

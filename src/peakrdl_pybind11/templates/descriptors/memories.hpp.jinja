@@ -4,10 +4,16 @@
 
 class {{ mem | pybind_name }}_t : public MemoryBase<{{ entry_reg | pybind_name }}_t> {
 public:
+    {# An arrayed mem's relative offset is contributed by ``ArrayBase``
+       at construction (``offset_ + i * stride``). When the mem itself
+       is arrayed, pass 0 here; ``address_offset`` would otherwise
+       raise on the un-indexed array node. Mirrors the regfiles /
+       addrmaps partials' pattern.
+    #}
     {{ mem | pybind_name }}_t(uint64_t base_offset)
         : MemoryBase<{{ entry_reg | pybind_name }}_t>(
               "{{ mem.inst_name | safe_id }}", base_offset,
-              0x{{ "%x" | format(mem.address_offset) }},
+              0x{{ "%x" | format(0 if mem.is_array else mem.address_offset) }},
               {{ mem.get_property('mementries') }}, {{ entry_reg.size }}) {}
 };
 

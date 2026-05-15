@@ -59,6 +59,14 @@ class FieldBase;
 
 {% include "descriptors/memories.hpp.jinja" %}
 
+{# Mem-array typedefs land here, *after* ``memories.hpp.jinja``.
+   ``ArrayBase<<mem>_t>`` carries ``std::vector<<mem>_t>`` and needs
+   ``<mem>_t`` to be complete. Emitted *before* ``addrmaps.hpp.jinja``
+   so any addrmap that contains an arrayed mem can reference
+   ``<mem>_array_t`` as a member type.
+#}
+{% include "descriptors/mem_arrays.hpp.jinja" %}
+
 {% include "descriptors/addrmaps.hpp.jinja" %}
 
 {# Addrmap-array typedefs land here, *after* ``addrmaps.hpp.jinja``.

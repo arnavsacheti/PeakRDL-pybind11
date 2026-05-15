@@ -184,7 +184,7 @@ class ArrayInfo(TypedDict):
     """
 
     kind: str
-    node: RegNode | RegfileNode | AddrmapNode
+    node: RegNode | RegfileNode | AddrmapNode | MemNode
     dimensions: list[int]
     stride: int
     strides: list[int]
@@ -911,6 +911,27 @@ class Pybind11Exporter:
         elif isinstance(node, MemNode):
             children = list(node.children())
             if children:
+                # Arrayed mem (issues #137 / #138 follow-up). Same
+                # ``ArrayInfo`` shape as the addrmap / regfile paths;
+                # downstream templates emit ``<mem>_array_t :
+                # ArrayBase<<mem>_t>`` after the mem class is defined.
+                if node.is_array:
+                    dims = list(node.array_dimensions or [])
+                    inner_stride = node.array_stride
+                    if inner_stride is None:
+                        inner_stride = int(node.size)
+                    strides = _compute_per_axis_strides(dims, int(inner_stride))
+                    nodes["arrays"].append(
+                        {
+                            "kind": "mem",
+                            "node": node,
+                            "dimensions": dims,
+                            "stride": strides[-1] if strides else int(inner_stride),
+                            "strides": strides,
+                            "relative_offset": int(node.raw_address_offset),
+                        }
+                    )
+
                 nodes["mems"].append(node)
                 for child in children:
                     self._collect_nodes(child, nodes)

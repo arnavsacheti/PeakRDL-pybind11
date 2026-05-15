@@ -1,0 +1,56 @@
+{# Per-array C++ class for mem arrays. Twin of
+   ``regfile_arrays.hpp.jinja`` / ``addrmap_arrays.hpp.jinja`` but
+   bound to ``kind == "mem"`` entries. Must be included **after**
+   ``memories.hpp.jinja`` — the ``std::vector<<mem>_t>`` inside
+   ``ArrayBase`` needs the mem entry type to be complete. ``<mem>_t``
+   is itself a ``MemoryBase<entry_reg_t>`` derivative; ``ArrayBase``
+   wraps the public mem class.
+#}
+{% for array in nodes.arrays if array.kind == "mem" %}
+{% set _entry_name = array.node | pybind_name %}
+{% set _entry_t = _entry_name ~ "_t" %}
+{% set _dims = array.dimensions %}
+{% set _strides = array.strides %}
+{% if _dims | length == 1 %}
+// Mem array (1-D): {{ array.node.get_path() }}
+class {{ _entry_name }}_array_t : public ArrayBase<{{ _entry_t }}> {
+public:
+    {{ _entry_name }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_t }}>(
+              "{{ array.node.inst_name | safe_id }}", base_offset,
+              0x{{ "%x" | format(array.relative_offset) }},
+              {{ _dims[0] }}, {{ _strides[0] }}) {}
+};
+
+{% else %}
+// Mem array (multi-dim, {{ _dims | length }}-D): {{ array.node.get_path() }}
+class {{ _entry_name }}_inner_0_array_t : public ArrayBase<{{ _entry_t }}> {
+public:
+    {{ _entry_name }}_inner_0_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_t }}>(
+              "", base_offset, 0x0,
+              {{ _dims[-1] }}, {{ _strides[-1] }}) {}
+};
+
+{% for level in range(1, _dims | length - 1) %}
+{% set axis_idx = _dims | length - 1 - level %}
+class {{ _entry_name }}_inner_{{ level }}_array_t : public ArrayBase<{{ _entry_name }}_inner_{{ level - 1 }}_array_t> {
+public:
+    {{ _entry_name }}_inner_{{ level }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_name }}_inner_{{ level - 1 }}_array_t>(
+              "", base_offset, 0x0,
+              {{ _dims[axis_idx] }}, {{ _strides[axis_idx] }}) {}
+};
+
+{% endfor %}
+class {{ _entry_name }}_array_t : public ArrayBase<{{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t> {
+public:
+    {{ _entry_name }}_array_t(uint64_t base_offset)
+        : ArrayBase<{{ _entry_name }}_inner_{{ _dims | length - 2 }}_array_t>(
+              "{{ array.node.inst_name | safe_id }}", base_offset,
+              0x{{ "%x" | format(array.relative_offset) }},
+              {{ _dims[0] }}, {{ _strides[0] }}) {}
+};
+
+{% endif %}
+{% endfor %}

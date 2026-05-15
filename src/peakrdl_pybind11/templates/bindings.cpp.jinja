@@ -298,6 +298,14 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
             "in a single batched master call.");
     {% endfor %}
 
+    // Mem array classes (issues #137 / #138 follow-up). Wraps the
+    // mem entry class (itself a ``MemoryBase<...>``) so users see
+    // ``soc.mymem[i]`` as a memory and ``soc.mymem[i][j]`` as a
+    // memory entry.
+    {% for array in nodes.arrays if array.kind == "mem" %}
+    {{ array_levels_binding(array) }}
+    {% endfor %}
+
     // Register array classes (Phase 1+3 of Tier 3 RDL array support, issue #138).
     // See ``bindings_main.cpp.jinja`` for the shape commentary; the
     // binding is identical for the single-file and split-mode paths.

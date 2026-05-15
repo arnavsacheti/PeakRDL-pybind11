@@ -118,6 +118,34 @@ addrmap am_multidim_soc {
 };
 """
 
+# Mem array (issues #137 / #138 follow-up). Each mem has 8 entries of
+# 32-bit words, so stride between mems = 8 * 4 = 32 bytes.
+MEM_ARRAY_RDL = """
+addrmap mem_array_soc {
+    external mem {
+        mementries = 8;
+        memwidth = 32;
+        reg { field { sw=rw; hw=r; } data[31:0] = 0; } entry;
+    } mymem[4] @ 0x100;
+};
+"""
+
+# Mem inside an arrayed addrmap. Surfaces the schema-builder bug
+# where ``mem.absolute_address`` raises because its addrmap parent
+# is arrayed.
+ADDRMAP_ARRAY_WITH_MEM_RDL = """
+addrmap inner_with_mem {
+    external mem {
+        mementries = 8;
+        memwidth = 32;
+        reg { field { sw=rw; hw=r; } data[31:0] = 0; } entry;
+    } m @ 0x0;
+};
+addrmap am_with_mem_soc {
+    inner_with_mem blocks[2] @ 0x100;
+};
+"""
+
 
 def _export(rdl_text: str, *, soc_name: str = "simple_array_soc", tmpdir: Path):
     """Compile + export the given RDL; return the output directory path."""
@@ -878,6 +906,117 @@ class TestMultiDimAddrmapArray:
         assert meta["dimensions"] == [2, 3]
         # Inner stride = entry size (4); outer stride = inner_size * inner = 3*4 = 12.
         assert meta["strides"] == [12, 4]
+
+
+# ---------------------------------------------------------------------------
+# Mem arrays (issues #137 / #138 follow-up). Treated the same way as
+# addrmap arrays — same ``ArrayInfo`` shape, same ``ArrayBase<entry_t>``
+# C++ wrapper. The mem entry type is itself a ``MemoryBase<reg_t>``
+# derivative, so the array layers ``ArrayBase`` on top of ``MemoryBase``.
+# ---------------------------------------------------------------------------
+
+
+class TestMemArrayCollection:
+    def _collect(self, rdl_text: str, soc_name: str, tmpdir: Path):
+        rdl_path = tmpdir / f"{soc_name}.rdl"
+        rdl_path.write_text(rdl_text)
+        rdl = RDLCompiler()
+        rdl.compile_file(str(rdl_path))
+        root = rdl.elaborate()
+        ex = Pybind11Exporter()
+        ex.soc_name = soc_name
+        ex.top_node = root.top
+        return ex._collect_nodes(root.top)
+
+    def test_mem_array_recorded(self, tmp_path: Path) -> None:
+        nodes = self._collect(MEM_ARRAY_RDL, "mem_array_soc", tmp_path)
+        mem_arrays = [a for a in nodes["arrays"] if a["kind"] == "mem"]
+        assert len(mem_arrays) == 1
+        meta = mem_arrays[0]
+        assert meta["dimensions"] == [4]
+        # Stride: mem size = 8 entries * 4 bytes = 32.
+        assert meta["stride"] == 32
+        assert meta["relative_offset"] == 0x100
+
+    def test_mem_entry_in_mems_list(self, tmp_path: Path) -> None:
+        nodes = self._collect(MEM_ARRAY_RDL, "mem_array_soc", tmp_path)
+        # The arrayed mem's entry type appears in ``mems`` so
+        # ``memories.hpp.jinja`` emits its ``MemoryBase<...>`` class
+        # exactly once.
+        assert len(nodes["mems"]) == 1
+
+
+class TestMemArrayDescriptorEmission:
+    def test_mem_array_class_emitted(self, tmp_path: Path) -> None:
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        desc = (out / "mem_array_soc_descriptors.hpp").read_text()
+        assert "class mem_array_soc__mymem_array_t;" in desc
+        assert "class mem_array_soc__mymem_array_t :" in desc
+        # Entry type (the mem itself) emitted once.
+        assert desc.count("class mem_array_soc__mymem_t :") == 1
+        # The array wraps the mem class.
+        assert "ArrayBase<mem_array_soc__mymem_t>" in desc
+
+    def test_mem_array_constructor_uses_stride_and_size(self, tmp_path: Path) -> None:
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        desc = (out / "mem_array_soc_descriptors.hpp").read_text()
+        assert '"mymem", base_offset,' in desc
+        assert "0x100," in desc
+        # 4 entries, 32-byte stride.
+        assert "4, 32" in desc
+
+    def test_mem_array_definition_after_entry(self, tmp_path: Path) -> None:
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        desc = (out / "mem_array_soc_descriptors.hpp").read_text()
+        entry_pos = desc.index("class mem_array_soc__mymem_t :")
+        array_pos = desc.index("class mem_array_soc__mymem_array_t :")
+        assert entry_pos < array_pos
+
+    def test_parent_instantiates_mem_array_type(self, tmp_path: Path) -> None:
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        desc = (out / "mem_array_soc_descriptors.hpp").read_text()
+        assert "mem_array_soc__mymem_array_t mymem{offset_};" in desc
+
+    def test_mem_entry_uses_zero_relative_offset(self, tmp_path: Path) -> None:
+        """Arrayed mem's MemoryBase ctor takes 0 for its own relative offset."""
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        desc = (out / "mem_array_soc_descriptors.hpp").read_text()
+        # The mem class passes (name, base, 0x0, count, entry_size) to MemoryBase.
+        assert 'MemoryBase<mem_array_soc__mymem__entry_t>(\n              "mymem", base_offset,\n              0x0,' in desc
+
+
+class TestMemArrayBindingEmission:
+    def test_mem_array_binding_present(self, tmp_path: Path) -> None:
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        bindings = (out / "mem_array_soc_bindings.cpp").read_text()
+        assert "py::class_<mem_array_soc__mymem_array_t, NodeBase>" in bindings
+
+
+class TestSchemaBuilderArrayedScopes:
+    """The schema builder's ``absolute_address`` lookup must tolerate
+    arrayed lineages. Pre-fix, ``_mem_to_dict`` and (for non-arrayed
+    nodes whose ancestors are arrayed) ``_container_to_dict`` raised
+    ``ValueError: Index of array element must be known to derive
+    address``. Now both walk the ancestor chain via
+    ``_resolve_array_base_address`` and fall back to the array base.
+    """
+
+    def test_addrmap_array_with_mem_exports(self, tmp_path: Path) -> None:
+        """Arrayed addrmap containing a mem child exports without error."""
+        # ``_export`` runs the schema-builder plugin, so a successful
+        # call implicitly verifies ``_mem_to_dict`` doesn't crash.
+        out = _export(
+            ADDRMAP_ARRAY_WITH_MEM_RDL,
+            soc_name="am_with_mem_soc",
+            tmpdir=tmp_path,
+        )
+        # Schema file written to disk.
+        assert (out / "schema.json").exists()
+
+    def test_arrayed_mem_exports(self, tmp_path: Path) -> None:
+        """A literal arrayed mem (``mem mymem[N]``) exports."""
+        out = _export(MEM_ARRAY_RDL, soc_name="mem_array_soc", tmpdir=tmp_path)
+        assert (out / "schema.json").exists()
 
 
 # ---------------------------------------------------------------------------

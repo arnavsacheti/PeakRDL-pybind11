@@ -113,6 +113,18 @@ addrmap am_array_soc {
 };
 """
 
+# Mem-array fixture. Each mem has 8 entries of 32-bit words, so the
+# stride between mems is 8 * 4 = 32 bytes.
+MEM_ARRAY_RDL = """
+addrmap mem_array_soc {
+    external mem {
+        mementries = 8;
+        memwidth = 32;
+        reg { field { sw=rw; hw=r; } data[31:0] = 0; } entry;
+    } mymem[4] @ 0x100;
+};
+"""
+
 
 def _build_test_module(
     workdir: Path,
@@ -260,6 +272,25 @@ def addrmap_array_module(tmp_path_factory):
 def am_soc(addrmap_array_module):
     s = addrmap_array_module.create()
     s.attach_master(addrmap_array_module.MockMaster())
+    return s
+
+
+@pytest.fixture(scope="module")
+def mem_array_module(tmp_path_factory):
+    """Build the mem-array fixture C++ module."""
+    workdir = tmp_path_factory.mktemp("mem_array_integration")
+    module = _build_test_module(
+        workdir, rdl_text=MEM_ARRAY_RDL, soc_name="mem_array_soc"
+    )
+    if module is None:
+        pytest.skip("Could not build test module (cmake/pybind11 unavailable)")
+    return module
+
+
+@pytest.fixture
+def mem_soc(mem_array_module):
+    s = mem_array_module.create()
+    s.attach_master(mem_array_module.MockMaster())
     return s
 
 
@@ -474,6 +505,52 @@ class TestAddrmapArraySurface:
     def test_blocks_is_array_view(self, am_soc) -> None:
         from peakrdl_pybind11.runtime.arrays import ArrayView
         assert isinstance(am_soc.blocks, ArrayView)
+
+
+class TestMemArraySurface:
+    """Mem-array end-to-end (issues #137 / #138 follow-up).
+
+    Each ``soc.mymem[i]`` is itself a memory exposing the existing
+    ``MemoryBase`` surface (``__len__`` over entries, indexed read/write).
+    Confirms the array layer composes cleanly with the mem layer.
+    """
+
+    def test_outer_length(self, mem_soc) -> None:
+        """``len(soc.mymem)`` returns the array dimension."""
+        assert len(mem_soc.mymem) == 4
+
+    def test_outer_shape_and_stride(self, mem_soc) -> None:
+        assert tuple(mem_soc.mymem.shape) == (4,)
+        # Stride between mems = mementries * memwidth/8 = 8 * 4 = 32.
+        assert int(mem_soc.mymem.stride) == 32
+
+    def test_inner_length(self, mem_soc) -> None:
+        """Each ``soc.mymem[i]`` is itself a mem with 8 entries."""
+        assert len(mem_soc.mymem[0]) == 8
+
+    def test_per_mem_indexed_read_write(self, mem_soc) -> None:
+        mem_soc.mymem[0][3].write(0xAAAA)
+        mem_soc.mymem[2][5].write(0xBBBB)
+        assert int(mem_soc.mymem[0][3].read()) == 0xAAAA
+        assert int(mem_soc.mymem[2][5].read()) == 0xBBBB
+
+    def test_mems_are_independent(self, mem_soc) -> None:
+        """A write to one mem entry doesn't disturb the same index in another."""
+        mem_soc.mymem[0][3].write(0xCAFE)
+        mem_soc.mymem[1][3].write(0xBEEF)
+        assert int(mem_soc.mymem[0][3].read()) == 0xCAFE
+        assert int(mem_soc.mymem[1][3].read()) == 0xBEEF
+
+    def test_entry_addresses_follow_outer_stride(self, mem_soc) -> None:
+        """``mymem[i][j].offset == base + i*outer_stride + j*entry_size``."""
+        base = int(mem_soc.mymem[0][0].offset)
+        for i in range(4):
+            for j in range(8):
+                assert int(mem_soc.mymem[i][j].offset) == base + i * 32 + j * 4
+
+    def test_mymem_is_array_view(self, mem_soc) -> None:
+        from peakrdl_pybind11.runtime.arrays import ArrayView
+        assert isinstance(mem_soc.mymem, ArrayView)
 
 
 class TestMixedArraysIntegration:
