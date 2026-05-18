@@ -123,3 +123,84 @@ class TestParseUDPConfig:
             "secure_field": "bool",
             "max_value": "int",
         }
+
+
+class TestStubUDPNamespace:
+    """The stub generator emits a ``_UDPNamespace`` class with the
+    declared types when ``udp_type_map`` is non-empty, so type-checkers
+    see ``info.tags.<udp_name>: <type>`` (via ``cast``) instead of
+    falling back to :data:`typing.Any`. Empty map → zero new stub
+    content (no ``_UDPNamespace`` declaration at all)."""
+
+    def _render_stub(self, udp_type_map: dict[str, str]) -> str:
+        """Render ``stubs.pyi.jinja`` directly with a minimal RDL.
+
+        Mirrors the pattern used by
+        ``tests/test_exporter.py::test_field_write_stub_annotates_range``
+        so the assertions target the template change alone (no C++
+        build, no plugin post-processing)."""
+        import os
+        import tempfile
+
+        from jinja2 import Environment, PackageLoader, select_autoescape
+        from systemrdl import RDLCompiler
+
+        rdl_src = """
+        addrmap udp_stub_soc {
+            reg {
+                field { sw = rw; hw = r; } enable[0:0];
+            } control @ 0x0000;
+        };
+        """
+        fd, path = tempfile.mkstemp(suffix=".rdl")
+        try:
+            os.write(fd, rdl_src.encode("utf-8"))
+            os.close(fd)
+
+            rdl = RDLCompiler()
+            rdl.compile_file(path)
+            root = rdl.elaborate()
+
+            exporter = Pybind11Exporter()
+            nodes = exporter._collect_nodes(root.top)
+
+            env = Environment(
+                loader=PackageLoader("peakrdl_pybind11", "templates"),
+                autoescape=select_autoescape(),
+                trim_blocks=True,
+                lstrip_blocks=True,
+            )
+            env.filters["pybind_name"] = exporter._pybind_name_from_node
+            env.filters["safe_id"] = exporter._sanitize_identifier
+            env.filters["members"] = exporter._members_for_node
+            env.filters["field_encode_members"] = exporter._field_encode_members_for_node
+            template = env.get_template("stubs.pyi.jinja")
+            return template.render(
+                soc_name="udp_stub_soc",
+                top_node=root.top,
+                nodes=nodes,
+                udp_type_map=udp_type_map,
+            )
+        finally:
+            os.unlink(path)
+
+    def test_stub_emits_udp_namespace(self) -> None:
+        """A non-empty ``udp_type_map`` produces a ``_UDPNamespace``
+        class with one ``<name>: <type>`` annotation per entry. The
+        class sits near the top of the stub (before per-node class
+        declarations) so consumers can ``cast(_UDPNamespace, info.tags)``
+        without forward-reference gymnastics."""
+        rendered = self._render_stub(
+            {"secure_field": "bool", "max_value": "int"},
+        )
+        assert "class _UDPNamespace:" in rendered
+        assert "secure_field: bool" in rendered
+        assert "max_value: int" in rendered
+
+    def test_stub_omits_udp_namespace_when_empty(self) -> None:
+        """An empty ``udp_type_map`` produces zero new stub content —
+        the ``_UDPNamespace`` class is gated behind a Jinja
+        ``{% if udp_type_map %}`` so SoCs built without ``--udp-config``
+        get exactly the same stub they got before the flag landed."""
+        rendered = self._render_stub({})
+        assert "_UDPNamespace" not in rendered

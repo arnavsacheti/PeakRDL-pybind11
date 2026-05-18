@@ -821,6 +821,12 @@ class Pybind11Exporter:
             soc_name=self.soc_name,
             top_node=self.top_node,
             nodes=nodes,
+            # ``--udp-config`` declared-type map (sketch §8.2 / §18).
+            # Empty when no config was supplied — the template guards
+            # the typed-UDP namespace emission with ``{% if udp_type_map %}``
+            # so SoCs built without ``--udp-config`` produce zero new
+            # stub content.
+            udp_type_map=self._udp_type_map,
         )
 
         assert self.output_dir is not None

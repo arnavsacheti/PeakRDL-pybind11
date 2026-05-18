@@ -70,18 +70,12 @@ class TagsNamespace(SimpleNamespace):
 
     The optional ``_typed_keys`` kwarg accepts a mapping ``{udp_name:
     type}`` populated from the exporter's ``--udp-config`` flag (sketch
-    §8.2 / §18). It is **metadata-only**: this commit does not coerce
-    or validate UDP values against the declared types; the map is
-    surfaced so downstream stub generation can annotate
-    ``info.tags.<udp_name>`` with a real Python type instead of falling
-    back to :data:`typing.Any`.
-
-    TODO(sketch §8.2 / §18): wire stub-side typing. The ``.pyi``
-    generator should read ``info.tags._typed_keys`` and emit
-    ``info.tags.my_udp: int`` for each declared key, leaving undeclared
-    keys at the default ``Any`` from this permissive namespace. The
-    runtime metadata is here; the template-side change is the next
-    follow-up.
+    §8.2 / §18). It is **metadata-only**: the runtime does not coerce
+    or validate UDP values against the declared types. The exporter's
+    stub generator emits a ``_UDPNamespace`` class in ``.pyi`` files
+    so type-checkers see ``info.tags.<udp_name>: <type>`` (via
+    ``cast(_UDPNamespace, info.tags)`` on the consumer side) instead
+    of falling back to :data:`typing.Any`.
     """
 
     def __init__(self, _typed_keys: dict[str, type] | None = None, **kwargs: object) -> None:

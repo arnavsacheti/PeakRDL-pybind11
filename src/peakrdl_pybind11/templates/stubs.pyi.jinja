@@ -11,6 +11,20 @@ from typing_extensions import Unpack
 from peakrdl_pybind11 import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
 
 
+{% if udp_type_map %}
+class _UDPNamespace:
+    """User-defined RDL properties declared in the --udp-config file.
+
+    Attribute access is dynamic at runtime; the declarations below
+    only affect type-checking. For typed access to ``info.tags`` use
+    ``cast(_UDPNamespace, info.tags)`` -- the runtime object is a
+    ``TagsNamespace`` (subclass of ``types.SimpleNamespace``) and
+    these declarations are the type-checker hint surface."""
+{% for udp_name, type_name in udp_type_map.items() %}
+    {{ udp_name }}: {{ type_name }}
+{% endfor %}
+
+{% endif %}
 class Range:
     """Marker used inside ``Annotated[int, Range(low, high)]`` to declare an
     inclusive numeric range for type-checkers/IDEs. Has no runtime effect."""
