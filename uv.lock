@@ -1005,7 +1005,7 @@ wheels = [
 
 [[package]]
 name = "peakrdl-pybind11"
-version = "0.8.2"
+version = "0.8.3"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
