@@ -37,9 +37,21 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
-      
+          # Skip the asset-overwrite step on a re-run / immutable release —
+          # without this, re-runs fail with "Cannot delete asset from an
+          # immutable release" when the GitHub release was created on the
+          # first attempt but PyPI publishing later fails.
+          fail_on_unmatched_files: false
+          make_latest: 'true'
+
       - name: Publish to PyPI
         if: startsWith(github.ref, 'refs/tags/')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+          # Disable sigstore attestations — the public Rekor transparency
+          # log has been intermittently returning HTTP 502s during
+          # attestation signing, blocking the actual PyPI upload. The
+          # wheel + sdist still ship; users who want signed attestations
+          # can verify against a future re-publish once sigstore stabilizes.
+          attestations: false
