@@ -4,12 +4,19 @@ Property-based tests using Hypothesis for PeakRDL-pybind11.
 
 import re
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
+from hypothesis.stateful import (
+    Bundle,
+    RuleBasedStateMachine,
+    invariant,
+    rule,
+)
 
 from peakrdl_pybind11 import FieldInt, RegisterInt
 from peakrdl_pybind11.exporter import _RESERVED_WORDS
 from peakrdl_pybind11.masters import MockMaster
+from peakrdl_pybind11.masters.base import AccessOp
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -284,3 +291,178 @@ class TestSanitizeIdentifier:
         """Non-reserved valid identifiers should pass through unchanged."""
         result = self._sanitize(name)
         assert result == name
+
+
+# ---------------------------------------------------------------------------
+# S1 -- MockMaster random-op state machine
+# ---------------------------------------------------------------------------
+
+
+def _mask_for_width(width: int) -> int:
+    return (1 << (width * 8)) - 1
+
+
+# Address pool the state machine writes to. Reads against "never written"
+# addresses come from a disjoint pool so the corresponding invariant never
+# becomes vacuous as Hypothesis fills in addresses.
+_WRITE_ADDR_MIN = 0
+_WRITE_ADDR_MAX = 0xFFFF
+_UNWRITTEN_POOL = tuple(range(0x100000, 0x100010))
+
+
+class MockMasterStateMachine(RuleBasedStateMachine):
+    """Random-op state machine exercising :class:`MockMaster`.
+
+    Rules drive single and batched reads/writes; the shadow dict mirrors the
+    masking semantics of ``MockMaster.write`` (mask at write time).
+    Invariants check (a) every written address still reads back what the
+    shadow expects (under arbitrary read widths) and (b) addresses in a
+    disjoint pool that the test never touches still read zero.
+    """
+
+    written_addrs: Bundle[int] = Bundle("written_addrs")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.master = MockMaster()
+        # shadow[addr] = value-masked-at-write-time (mirrors MockMaster)
+        self.shadow: dict[int, int] = {}
+
+    # ---- single-op rules ------------------------------------------------
+
+    @rule(
+        target=written_addrs,
+        addr=st.integers(min_value=_WRITE_ADDR_MIN, max_value=_WRITE_ADDR_MAX),
+        val=st.integers(min_value=0, max_value=(1 << 32) - 1),
+        width=register_width_bytes,
+    )
+    def do_write(self, addr: int, val: int, width: int) -> int:
+        masked = val & _mask_for_width(width)
+        self.master.write(addr, val, width)
+        self.shadow[addr] = masked
+        return addr
+
+    @rule(
+        addr=st.integers(min_value=_WRITE_ADDR_MIN, max_value=_WRITE_ADDR_MAX),
+        width=register_width_bytes,
+    )
+    def do_read(self, addr: int, width: int) -> None:
+        got = self.master.read(addr, width)
+        expected = self.shadow.get(addr, 0) & _mask_for_width(width)
+        assert got == expected, f"read({addr:#x}, {width}) -> {got:#x}; expected {expected:#x}"
+
+    # Re-read addresses we previously wrote -- catches "cache corruption"
+    # style regressions where an unrelated op clobbers a stored value.
+    @rule(addr=written_addrs, width=register_width_bytes)
+    def reread_written(self, addr: int, width: int) -> None:
+        got = self.master.read(addr, width)
+        expected = self.shadow.get(addr, 0) & _mask_for_width(width)
+        assert got == expected, f"reread({addr:#x}, {width}) -> {got:#x}; expected {expected:#x}"
+
+    # ---- batched-op rules ----------------------------------------------
+
+    @rule(
+        ops=st.lists(
+            st.tuples(
+                st.integers(min_value=_WRITE_ADDR_MIN, max_value=_WRITE_ADDR_MAX),
+                st.integers(min_value=0, max_value=(1 << 32) - 1),
+                register_width_bytes,
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    def do_write_many(self, ops: list[tuple[int, int, int]]) -> None:
+        access_ops = [AccessOp(address=a, value=v, width=w) for a, v, w in ops]
+        self.master.write_many(access_ops)
+        for a, v, w in ops:
+            self.shadow[a] = v & _mask_for_width(w)
+
+    @rule(
+        ops=st.lists(
+            st.tuples(
+                st.integers(min_value=_WRITE_ADDR_MIN, max_value=_WRITE_ADDR_MAX),
+                register_width_bytes,
+            ),
+            min_size=1,
+            max_size=5,
+        )
+    )
+    def do_read_many(self, ops: list[tuple[int, int]]) -> None:
+        access_ops = [AccessOp(address=a, width=w) for a, w in ops]
+        got_list = self.master.read_many(access_ops)
+        assert len(got_list) == len(ops)
+        for (a, w), got in zip(ops, got_list, strict=True):
+            expected = self.shadow.get(a, 0) & _mask_for_width(w)
+            assert got == expected, f"read_many[{a:#x},{w}] -> {got:#x}; expected {expected:#x}"
+
+    # ---- invariants -----------------------------------------------------
+
+    @invariant()
+    def shadow_matches_master_for_written_addrs(self) -> None:
+        """Every written address still reads back the shadow value (masked)."""
+        # Use width=4 as the canonical full-width read (covers all 32-bit
+        # values written by the rules). The width-vs-write-width interaction
+        # is exercised by do_read/do_read_many themselves.
+        for addr, stored in self.shadow.items():
+            got = self.master.read(addr, 4)
+            expected = stored & _mask_for_width(4)
+            assert got == expected, f"invariant: read({addr:#x}, 4) -> {got:#x}; expected {expected:#x}"
+
+    @invariant()
+    def unwritten_pool_reads_zero(self) -> None:
+        """A disjoint pool the test never touches always reads zero."""
+        for addr in _UNWRITTEN_POOL:
+            for w in (1, 2, 4, 8):
+                got = self.master.read(addr, w)
+                assert got == 0, f"invariant: unwritten read({addr:#x}, {w}) -> {got:#x}; expected 0"
+
+
+MockMasterStateMachine.TestCase.settings = settings(
+    max_examples=200,
+    stateful_step_count=50,
+    deadline=None,
+)
+TestMockMasterStateMachine = MockMasterStateMachine.TestCase
+
+
+# ---------------------------------------------------------------------------
+# P5 -- _sanitize_identifier injectivity property (Shape 1)
+# ---------------------------------------------------------------------------
+
+
+# Historical collision under the alphabet {L, N, _}:
+#   _sanitize_identifier("class")  -> "class_"
+#   _sanitize_identifier("class_") -> "class_"
+# Both inputs are valid Python identifiers (string-shape-wise; "class" is a
+# valid IDENTIFIER even though it's a keyword), so the sanitizer was not
+# injective on this space. The collision was induced by the reserved-word
+# trailing underscore: any reserved word `R` collided with `R + "_"`.
+#
+# Fixed by switching the reserved-word disambiguator from "_" to "_kw"
+# (no Python/C++ keyword ends in "_kw", so `keyword` -> `keyword_kw` cannot
+# itself coincide with a stem-keyword output). The strategy is scoped to
+# the ASCII alphabet the sanitizer actually targets — non-ASCII letters
+# collapse to `_` by design (the regex `[a-zA-Z0-9_]` filters them out),
+# which is a separate property orthogonal to the keyword-disambiguation
+# fix exercised here.
+class TestSanitizeInjectivity:
+    """Bounded injectivity over the valid-identifier alphabet."""
+
+    @staticmethod
+    def _sanitize(name: str) -> str:
+        from peakrdl_pybind11 import Pybind11Exporter
+
+        return Pybind11Exporter()._sanitize_identifier(name)
+
+    @settings(deadline=None, max_examples=300)
+    @given(
+        a=st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]*", fullmatch=True).filter(lambda s: 1 <= len(s) <= 20),
+        b=st.from_regex(r"[a-zA-Z_][a-zA-Z0-9_]*", fullmatch=True).filter(lambda s: 1 <= len(s) <= 20),
+    )
+    def test_sanitize_injective_on_valid_identifiers(self, a: str, b: str) -> None:
+        """Two distinct valid-identifier inputs must not collide."""
+        assume(a != b)
+        assert self._sanitize(a) != self._sanitize(b), (
+            f"Collision: sanitize({a!r}) == sanitize({b!r}) == {self._sanitize(a)!r}"
+        )
