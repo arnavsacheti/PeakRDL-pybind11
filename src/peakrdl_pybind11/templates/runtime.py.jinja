@@ -594,6 +594,51 @@ _REGISTER_INFO: dict[type, dict] = {
 {% endfor %}
 }
 
+{# Per-field metadata (lsb / width / on_read / on_write / singlepulse / path)
+   threaded through ``apply_field_enhancements``. Issue #140 Gap 1: this is
+   what the runtime ``_info_factory`` reads to populate
+   ``field.info.on_read`` etc. on generated SoCs (the unit tests for
+   ``SimMaster.attach_soc`` hand-built ``info`` namespaces; nothing was
+   wiring them on real bindings). Keys mirror the names ``Info``'s
+   constructor accepts so the shim can pass them straight through. #}
+_FIELD_META: dict[type, dict] = {
+{% for reg in nodes.regs %}
+{% for field in reg.fields() %}
+    {{ reg | pybind_name }}_{{ field.inst_name | safe_id }}_field: {
+        "name": "{{ field.inst_name | safe_id }}",
+        "path": "{{ field.get_path() }}",
+        "lsb": {{ field.low }},
+        "field_width": {{ field.width }},
+        {% set _onread = field.get_property('onread') %}
+        {% set _onwrite = field.get_property('onwrite') %}
+        "on_read": {% if _onread is not none %}"{{ _onread.name }}"{% else %}None{% endif %},
+        "on_write": {% if _onwrite is not none %}"{{ _onwrite.name }}"{% else %}None{% endif %},
+        "singlepulse": {{ 'True' if field.get_property('singlepulse') else 'False' }},
+    },
+{% endfor %}
+{% endfor %}
+}
+
+# Per-register field-info map — wired through the register metadata so the
+# ``_info_factory`` can populate ``reg.info.fields[<name>].on_read`` etc.
+# without needing the field instance to be touched first.
+_REGISTER_FIELD_INFO: dict[type, dict[str, dict]] = {
+{% for reg in nodes.regs %}
+    {{ reg | pybind_name }}_t: {
+        {% for field in reg.fields() %}
+        "{{ field.inst_name | safe_id }}": {
+            "path": "{{ field.get_path() }}",
+            {% set _onread = field.get_property('onread') %}
+            {% set _onwrite = field.get_property('onwrite') %}
+            "on_read": {% if _onread is not none %}"{{ _onread.name }}"{% else %}None{% endif %},
+            "on_write": {% if _onwrite is not none %}"{{ _onwrite.name }}"{% else %}None{% endif %},
+            "singlepulse": {{ 'True' if field.get_property('singlepulse') else 'False' }},
+        },
+        {% endfor %}
+    },
+{% endfor %}
+}
+
 for _reg_cls, _spec in _REGISTER_FIELDS.items():
     _peakrdl_registry.apply_register_enhancements(
         _reg_cls,
@@ -603,6 +648,7 @@ for _reg_cls, _spec in _REGISTER_FIELDS.items():
             "flag_type": _FLAG_REG_TYPES.get(_reg_cls),
             "enum_type": _ENUM_REG_TYPES.get(_reg_cls),
             "encode_types": _FIELD_ENCODE_TYPES.get(_reg_cls, {}),
+            "field_info": _REGISTER_FIELD_INFO.get(_reg_cls, {}),
             **_REGISTER_INFO.get(_reg_cls, {}),
         },
     )
@@ -610,7 +656,10 @@ for _reg_cls, _spec in _REGISTER_FIELDS.items():
 for _field_cls in _FIELD_CLASSES:
     _peakrdl_registry.apply_field_enhancements(
         _field_cls,
-        {"encode": _FIELD_ENCODES.get(_field_cls)},
+        {
+            "encode": _FIELD_ENCODES.get(_field_cls),
+            **_FIELD_META.get(_field_cls, {}),
+        },
     )
 
 # Wire any registered lazy node attributes (e.g. ``.info``) onto every

@@ -52,6 +52,7 @@ def test_info_supports_bare_default_construction() -> None:
     assert info.is_hw_writable is False
     assert info.on_read is None
     assert info.on_write is None
+    assert info.singlepulse is False
     assert info.alias_kind is None
     assert info.swwe is None
     assert info.swwel is None
@@ -93,6 +94,7 @@ def test_info_exposes_all_documented_fields() -> None:
         "is_hw_writable",
         "on_read",
         "on_write",
+        "singlepulse",
         "alias_kind",
         "swwe",
         "swwel",

@@ -149,6 +149,7 @@ class Info:
     is_hw_writable: bool = False  # hw can write the field
     on_read: str | None = None  # "rclr" | "rset" | "ruser" | None
     on_write: str | None = None  # "woclr" | "woset" | "wzc" | "wzs" | "wclr" | "wset" | "wuser" | None
+    singlepulse: bool = False  # ``singlepulse`` field: write-through then self-clear
     alias_kind: str | None = None  # "full" | "sw_view" | "hw_view" | "scrambled" | None
 
     # Software-write-enable gate metadata. ``bool`` for a static True/False
@@ -291,6 +292,11 @@ def _extract_on_write(node: Any) -> str | None:
     val = _safe_get_property(node, "onwrite")
     token = _coerce_str(val)
     return token if token in _ON_WRITE_VALUES else None
+
+
+def _extract_singlepulse(node: Any) -> bool:
+    """Return True when the RDL ``singlepulse`` property is set on the field."""
+    return bool(_safe_get_property(node, "singlepulse", False))
 
 
 def _extract_is_volatile(node: Any) -> bool:
@@ -526,6 +532,7 @@ def from_rdl_node(rdl_node: object | None) -> Info:
         is_hw_writable=_extract_is_hw_writable(rdl_node),
         on_read=_extract_on_read(rdl_node),
         on_write=_extract_on_write(rdl_node),
+        singlepulse=_extract_singlepulse(rdl_node),
         alias_kind=_extract_alias_kind(rdl_node),
         swwe=_extract_swwe(rdl_node),
         swwel=_extract_swwel(rdl_node),
@@ -569,32 +576,78 @@ else:
         Build order:
 
         1. If the class has ``__peakrdl_meta__`` (stashed by the default
-           register shim from the metadata the runtime template passes in),
-           build ``Info`` from that.
+           register or field shim from the metadata the runtime template
+           passes in), build ``Info`` from that. The factory recognises
+           both shapes — a register-level meta dict carries a ``"fields"``
+           sub-dict, and a field-level meta dict carries an ``"lsb"``/
+           ``"width"`` pair plus the optional ``on_read``/``on_write``/
+           ``singlepulse`` tokens.
         2. Else if the instance has ``_rdl_node`` / ``rdl_node``, use
            :func:`from_rdl_node`.
         3. Else fall back to a default ``Info``.
+
+        For array entries (issue #140 Gap 2), the per-instance C++
+        ``offset`` attribute is the entry's absolute address — distinct
+        from the class-level ``"address"`` which is the array base.
+        When the instance exposes a non-zero ``offset`` and the class
+        meta describes a register, prefer the instance value so
+        ``soc.lut[i].info.address`` resolves to the per-entry address.
         """
         meta = getattr(type(node_instance), "__peakrdl_meta__", None)
         if isinstance(meta, dict):
-            fields = {}
+            # Field-level meta carries ``lsb`` (or ``"width"``) instead of
+            # the register-level ``"fields"`` sub-dict. Detect by presence
+            # of an ``"lsb"`` key; that's what the template emits for
+            # fields and never for registers.
+            if "lsb" in meta or "field_width" in meta:
+                return Info(
+                    name=meta.get("name", ""),
+                    desc=meta.get("desc"),
+                    path=meta.get("path", ""),
+                    offset=int(meta.get("lsb", 0)),
+                    regwidth=meta.get("field_width")
+                    if meta.get("field_width") is not None
+                    else meta.get("regwidth"),
+                    on_read=meta.get("on_read"),
+                    on_write=meta.get("on_write"),
+                    singlepulse=bool(meta.get("singlepulse", False)),
+                )
+            fields: dict[str, Info] = {}
             spec = meta.get("fields", {})
+            field_info_meta = meta.get("field_info", {}) if isinstance(meta.get("field_info"), dict) else {}
+            reg_path = meta.get("path", "")
             if isinstance(spec, dict):
                 for fname, fspec in spec.items():
                     if isinstance(fspec, tuple) and len(fspec) == 2:
                         lsb, width = fspec
+                        fmeta = field_info_meta.get(fname, {}) if isinstance(field_info_meta, dict) else {}
                         fields[fname] = Info(
                             name=fname,
-                            path=f"{meta.get('path', '')}.{fname}",
+                            path=fmeta.get("path", f"{reg_path}.{fname}"),
                             offset=lsb,
                             regwidth=width,
+                            on_read=fmeta.get("on_read"),
+                            on_write=fmeta.get("on_write"),
+                            singlepulse=bool(fmeta.get("singlepulse", False)),
                         )
+            # Per-instance address override for array entries (Gap 2):
+            # the class-level meta carries the array BASE address, but the
+            # entry exposes its own absolute address via ``offset``. Prefer
+            # the instance's ``offset`` so consumers keyed on
+            # ``info.address`` (SimMaster's ``_models`` map, snapshot path
+            # keys, observers) see distinct values per entry.
+            class_address = meta.get("address", 0)
+            address = class_address
+            instance_offset = getattr(node_instance, "offset", None)
+            if isinstance(instance_offset, int) and instance_offset != 0:
+                address = instance_offset
             return Info(
                 name=meta.get("name", ""),
                 desc=meta.get("desc"),
-                address=meta.get("address", 0),
+                address=address,
+                offset=instance_offset if isinstance(instance_offset, int) else 0,
                 regwidth=meta.get("regwidth"),
-                path=meta.get("path", ""),
+                path=reg_path,
                 fields=fields,
             )
         rdl_node = getattr(node_instance, "_rdl_node", None) or getattr(node_instance, "rdl_node", None)

@@ -361,6 +361,102 @@ def _default_register_shim(cls: type, metadata: dict) -> None:
 
         cls.modify = modify  # type: ignore[method-assign]
 
+    # Install the ``strict_fields=False`` attribute-assignment shim.
+    # Issue #140 Gap 3: when the generated module is built with
+    # ``--strict-fields=false`` the bare ``reg.field = value`` idiom must
+    # fire a per-assignment :class:`DeprecationWarning` and dispatch
+    # through ``modify(field=value)`` (sketch §22.8). Under the default
+    # strict mode (the flag is True or absent) the shim is a thin
+    # passthrough that delegates straight to ``object.__setattr__`` so we
+    # don't pay any extra cost on the hot path.
+    _install_setattr_shim(cls, fields_spec)
+
+
+def _resolve_strict_fields(cls: type) -> bool:
+    """Return the effective ``_PEAKRDL_STRICT_FIELDS`` flag for ``cls``.
+
+    The generated runtime emits the flag on the Python wrapper module
+    (e.g. ``loose_check``), but ``cls.__module__`` resolves to the *native*
+    pybind11 module (e.g. ``loose_check._loose_check_native``). Walk
+    upward through dotted parent modules and return the first
+    ``_PEAKRDL_STRICT_FIELDS`` we find, defaulting to ``True`` (strict)
+    when no ancestor exposes the flag. This keeps non-generated stub
+    classes from accidentally entering the loose path.
+    """
+    import sys
+
+    module_path = getattr(cls, "__module__", "") or ""
+    if not module_path:
+        return True
+    parts = module_path.split(".")
+    while parts:
+        candidate = ".".join(parts)
+        mod = sys.modules.get(candidate)
+        if mod is not None:
+            flag = getattr(mod, "_PEAKRDL_STRICT_FIELDS", None)
+            if isinstance(flag, bool):
+                return flag
+        parts.pop()
+    return True
+
+
+def _install_setattr_shim(cls: type, fields_spec: dict[str, tuple[int, int]]) -> None:
+    """Install a ``__setattr__`` that honours ``--strict-fields=false``.
+
+    The shim does nothing different in strict mode — but in loose mode it
+    intercepts assignments whose name matches a known field, fires a
+    :class:`DeprecationWarning`, and routes through ``modify(**{name:
+    value})`` so the legacy "attribute-assign = RMW" idiom keeps working
+    on a porting build (issue #140 Gap 3).
+
+    The strict-fields flag lives on the generated module
+    (``_PEAKRDL_STRICT_FIELDS``); ``_resolve_strict_fields`` walks the
+    dotted module path so the lookup happens at call time and picks up
+    the value the generated Python wrapper loaded, even though pybind11
+    reports the *native* module on the class.
+    """
+    import warnings
+
+    field_names = frozenset(fields_spec)
+    # Bail when the class can't accept method assignment (e.g. a slotted
+    # stub used in unit tests). The shim isn't useful there anyway.
+    try:
+        original_setattr = cls.__setattr__  # type: ignore[attr-defined]
+    except AttributeError:
+        return
+
+    def _peakrdl_setattr(self: Any, name: str, value: Any) -> None:
+        # Fast-path: anything starting with ``_``, a known method, or
+        # an attribute that's not in the field set — fall through.
+        if name in field_names:
+            strict = _resolve_strict_fields(type(self))
+            if not strict:
+                # Resolve the path for the warning so the user can locate
+                # the offending line without spelunking the SoC.
+                reg_path = getattr(self, "name", None) or type(self).__name__
+                warnings.warn(
+                    f"Bare field assignment {reg_path!r}.{name} = {value!r} is "
+                    "deprecated and falls back to modify(...); use "
+                    f"{reg_path!r}.modify({name}=...) explicitly. See "
+                    "IDEAL_API_SKETCH.md §22.8.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                modify = getattr(self, "modify", None)
+                if callable(modify):
+                    modify(**{name: value})
+                    return
+        original_setattr(self, name, value)  # pyrefly: ignore[bad-argument-count]
+
+    try:
+        cls.__setattr__ = _peakrdl_setattr  # type: ignore[assignment,method-assign]
+    except (AttributeError, TypeError):
+        # Slotted / built-in classes that don't accept attribute
+        # injection: leave the original ``__setattr__`` in place. The
+        # ``strict_fields=False`` shim is a best-effort feature; the
+        # rest of the API still works.
+        return
+
 
 @_registry.register_field_enhancement
 def _default_field_shim(cls: type, metadata: dict | None = None) -> None:
@@ -391,6 +487,15 @@ def _default_field_shim(cls: type, metadata: dict | None = None) -> None:
         candidate = metadata.get("encode")
         if isinstance(candidate, type) and issubclass(candidate, IntEnum):
             encode_type = candidate
+        # Stash field-level metadata on the class so the default ``.info``
+        # factory can build an :class:`Info` carrying the RDL side-effect
+        # tokens (``on_read`` / ``on_write`` / ``singlepulse``) plus
+        # ``lsb`` / ``field_width`` / ``path`` / ``name``. Issue #140 Gap 1.
+        # Use ``setdefault`` semantics so a re-apply doesn't clobber a
+        # richer meta dict left by a sibling unit.
+        existing_meta = getattr(cls, "__peakrdl_meta__", None)
+        if not isinstance(existing_meta, dict):
+            cls.__peakrdl_meta__ = dict(metadata)  # type: ignore[attr-defined]
 
     cls.read = _enhanced_field_read(raw_read, encode_type)  # type: ignore[method-assign]
     cls.write = _enhanced_field_write(raw_write)  # type: ignore[method-assign]

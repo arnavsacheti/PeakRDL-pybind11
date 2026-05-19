@@ -546,12 +546,29 @@ class ArrayView:
 
     # ---- attribute lookup: field projection -----------------------------
 
+    # Names that look like field tokens but really belong to :class:`ArrayView`
+    # itself (or its private internals) — guarded so a missed attribute on the
+    # view doesn't silently project onto each element as a field walk. Issue
+    # #140 minor: ``view.write(value)`` used to misroute through
+    # :class:`_FieldProjection`; reserving the name surfaces an
+    # :class:`AttributeError` (callers go through ``view[:] = value`` instead)
+    # rather than silently building a projection that fails later.
+    _RESERVED_NAMES = frozenset({"read", "write", "modify", "info", "shape", "stride", "structured_read"})
+
     def __getattr__(self, name: str) -> _FieldProjection:
         # ``__getattr__`` only fires when ordinary lookup misses, so
         # ``__slots__`` reads are unaffected. The leading-underscore
         # guard catches typos on private internals.
         if name.startswith("_"):
             raise AttributeError(name)
+        if name in self._RESERVED_NAMES:
+            raise AttributeError(
+                f"{type(self).__name__!r} object has no attribute {name!r}. "
+                "(Reserved name; field projection is suppressed to avoid "
+                "silently mis-routing through ``_FieldProjection``. Use "
+                "``view[:] = value`` for bulk write or call the method on a "
+                "specific entry like ``view[i].{name}(...)``.)".format(name=name)
+            )
         return _FieldProjection(self, (name,))
 
     # ---- bulk read / write ---------------------------------------------

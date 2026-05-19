@@ -712,6 +712,14 @@ def take_snapshot(
         if path is None:
             # Skip nodes that have no path — there's nothing to key on.
             continue
+        # Skip nodes whose path carries unindexed array brackets (``foo[]``
+        # or ``foo[].bar``). Those are the array container's RDL path
+        # before per-entry index resolution; ``_capture_array_entries``
+        # has already emitted synthesized indexed paths for each entry,
+        # so capturing the bracketed bare path again would shadow them
+        # under an ambiguous key.
+        if "[]" in path:
+            continue
         if not _matches_where(path, where):
             continue
         values[path] = _peek_or_read(node, allow_destructive=allow_destructive)

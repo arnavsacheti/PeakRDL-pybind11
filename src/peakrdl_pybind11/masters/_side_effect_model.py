@@ -449,24 +449,66 @@ def _iter_field_instances(register: Any) -> Iterable[Any]:
     lives on field instance ``info`` attributes -- *not* in
     ``register.info.fields`` (which carries only ``name``/``path``/
     ``offset``/``regwidth`` per the runtime ``_info_factory`` shim).
+
+    Real pybind11-generated registers have no Python ``__dict__`` (their
+    ``vars()`` raises :class:`TypeError`) or have only the cache-key
+    sub-entries that ``_node_attributes`` stamps; their child fields
+    live as ``def_readonly`` properties on the class. Fall back to
+    ``dir()`` so the walker sees those fields too. Issue #140 Gap 1
+    surfaces this: without the ``dir()`` fallback the per-field
+    ``on_read`` / ``on_write`` tokens stay invisible to the side-effect
+    model even after the metadata pipeline carries them.
+
+    De-dup is keyed on the **attribute name** rather than ``id(value)``:
+    pybind11 returns a fresh Python wrapper for ``def_readonly`` on each
+    ``getattr`` call, and the previous wrapper can be garbage-collected
+    between yields — its address is then reused by the next ``getattr``,
+    which would make an ``id()``-based dedup silently drop a real field.
+    Attribute names are stable per-class and per-instance.
     """
+    seen_names: set[str] = set()
+
     try:
         members = vars(register)
     except TypeError:
-        return
-    for name, val in members.items():
+        members = None
+
+    if members:
+        for name, val in members.items():
+            if name.startswith("_"):
+                continue
+            if name in ("parent", "master", "info"):
+                continue
+            if val is register:
+                continue
+            info = getattr(val, "info", None)
+            if info is None:
+                continue
+            seen_names.add(name)
+            yield val
+
+    # Pybind11-generated SoCs expose register fields as class-level
+    # descriptors; ``vars()`` alone misses them. ``dir(register)`` reaches
+    # the class attributes, and we filter to anything that exposes a
+    # plausible ``.info`` namespace (the same check the ``vars()`` branch
+    # uses) so we never yield unrelated bound methods.
+    for name in dir(register):
         if name.startswith("_"):
             continue
         if name in ("parent", "master", "info"):
             continue
-        if val is register:
+        if name in seen_names:
+            continue
+        try:
+            val = getattr(register, name)
+        except Exception:
+            continue
+        if val is register or callable(val):
             continue
         info = getattr(val, "info", None)
         if info is None:
             continue
-        # A field has on_read/on_write/singlepulse OR an lsb/offset+width pair.
-        # We accept anything with an info; field_side_effect_from_info
-        # will return None for pass-through fields.
+        seen_names.add(name)
         yield val
 
 

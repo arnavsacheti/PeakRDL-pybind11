@@ -302,24 +302,6 @@ def _make_counting_master(soc_module):
 # ===========================================================================
 
 
-@pytest.mark.xfail(
-    reason=(
-        "SOURCE-SIDE SURPRISE (general, not array-specific): on generated "
-        "SoCs the per-field ``info.on_read`` / ``info.on_write`` are "
-        "``None`` and ``info.name`` is empty -- the field-info builder "
-        "doesn't extract the RDL side-effect properties onto the runtime "
-        "Info object. Smoke check on a *non-arrayed* register reproduces "
-        "this. Until the field-info pipeline carries on_read/on_write, "
-        "``SimMaster.attach_soc(soc)`` builds an empty ``_models`` dict "
-        "and side-effects never fire on a generated SoC. ``SimMaster`` "
-        "works in unit tests (``tests/runtime/test_sim_master.py``) only "
-        "because those tests hand-craft ``SimpleNamespace`` field info "
-        "with on_read/on_write set. Separate from the array-interaction "
-        "seam this class was meant to probe -- per-entry independence "
-        "would be checkable here if the field info were wired."
-    ),
-    strict=False,
-)
 class TestArrayWithSimMasterSideEffects:
     """``onread=rclr`` / ``onwrite=woclr`` / ``singlepulse`` fire **per array
     entry** without corrupting neighbouring entries.
@@ -876,18 +858,6 @@ class TestArrayWithStrictFieldsFalse:
         # Independence preserved.
         assert int(soc.lut[0].read()) == 0
 
-    @pytest.mark.xfail(
-        reason=(
-            "Per-assignment ``__setattr__`` interceptor that falls back to "
-            "modify(field=value) and emits DeprecationWarning is not yet "
-            "implemented in src/peakrdl_pybind11/runtime/. Only the "
-            "import-time DeprecationWarning is wired today. See "
-            "templates/runtime.py.jinja:34-46 for the import warning, and "
-            "note the absence of any __setattr__ shim in "
-            "runtime/_default_shims.py or runtime/arrays.py."
-        ),
-        strict=False,
-    )
     def test_bare_field_assignment_falls_back_to_modify_with_warning(
         self, loose_module
     ) -> None:
