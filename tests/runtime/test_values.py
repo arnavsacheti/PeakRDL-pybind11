@@ -7,6 +7,8 @@ import pickle
 from enum import IntEnum
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from peakrdl_pybind11.runtime.values import (
     FieldValue,
@@ -169,14 +171,43 @@ class TestFieldAccess:
 
 
 class TestReplace:
-    def test_replace_returns_new_value(self) -> None:
-        v = RegisterValue(0x00, fields=UART_FIELDS)
-        v2 = v.replace(enable=1)
-        # New value has bit set; original is unchanged.
-        assert int(v2) == 0x01
-        assert int(v) == 0x00
-        # Different objects.
-        assert v is not v2
+    @pytest.mark.parametrize(
+        "field_name,field_lsb,field_width",
+        [
+            ("enable", 0, 1),
+            ("baudrate", 1, 3),
+            ("parity", 4, 2),
+        ],
+    )
+    @given(
+        initial=st.integers(min_value=0, max_value=2**32 - 1),
+        field_value=st.data(),
+    )
+    def test_replace_returns_new_value(
+        self,
+        field_name: str,
+        field_lsb: int,
+        field_width: int,
+        initial: int,
+        field_value: st.DataObject,
+    ) -> None:
+        """Property: ``replace(field=v)`` returns a fresh ``RegisterValue`` whose
+        bits in the replaced field equal ``v << lsb`` and whose bits outside
+        the field's mask are bit-identical to the original.
+        """
+        fval = field_value.draw(st.integers(min_value=0, max_value=2**field_width - 1))
+        original = RegisterValue(initial, fields=UART_FIELDS)
+        new_value = original.replace(**{field_name: fval})
+
+        # A fresh object.
+        assert new_value is not original
+        # The replaced field's bits in the register equal fval shifted to lsb.
+        field_mask = ((1 << field_width) - 1) << field_lsb
+        assert int(new_value) & field_mask == fval << field_lsb
+        # All bits OUTSIDE the field mask survive.
+        assert int(new_value) & ~field_mask == int(original) & ~field_mask
+        # Original is unchanged.
+        assert int(original) == (initial & ((1 << original.width) - 1))
 
     def test_replace_preserves_metadata(self) -> None:
         v = RegisterValue(
@@ -213,14 +244,81 @@ class TestReplace:
         with pytest.raises(ValueError):
             v.replace(baudrate=8)
 
-    def test_replace_clears_then_sets(self) -> None:
-        # Start with parity=ODD (2) then set to EVEN (1) — must clear bits.
-        v = RegisterValue(0b10_0001, fields=UART_FIELDS)
-        # bits 5:4 = 0b10 = ODD, enable=1
-        assert int(v.parity) == 2
-        v2 = v.replace(parity=1)
-        assert int(v2.parity) == 1
-        assert int(v2.enable) == 1
+    @pytest.mark.parametrize(
+        "field_name,field_lsb,field_width",
+        [
+            ("enable", 0, 1),
+            ("baudrate", 1, 3),
+            ("parity", 4, 2),
+        ],
+    )
+    @given(
+        initial=st.integers(min_value=0, max_value=2**32 - 1),
+        field_value=st.data(),
+    )
+    def test_replace_clears_then_sets(
+        self,
+        field_name: str,
+        field_lsb: int,
+        field_width: int,
+        initial: int,
+        field_value: st.DataObject,
+    ) -> None:
+        """Property: ``replace`` overwrites — it does not OR with the prior bits.
+
+        After replace, reading the field back through attribute access yields
+        exactly the supplied value, regardless of what bits were already set in
+        that field's region.
+        """
+        fval = field_value.draw(st.integers(min_value=0, max_value=2**field_width - 1))
+        v = RegisterValue(initial, fields=UART_FIELDS)
+        v2 = v.replace(**{field_name: fval})
+
+        # The replaced field reads back to the supplied value (not OR'd in).
+        assert int(getattr(v2, field_name)) == fval
+        # Every other field reads back the same as on the original.
+        for other_name in UART_FIELDS:
+            if other_name == field_name:
+                continue
+            assert int(getattr(v2, other_name)) == int(getattr(v, other_name))
+
+    @given(
+        initial=st.integers(min_value=0, max_value=2**32 - 1),
+        replacements=st.fixed_dictionaries(
+            {},
+            optional={
+                "enable": st.integers(min_value=0, max_value=2**1 - 1),
+                "baudrate": st.integers(min_value=0, max_value=2**3 - 1),
+                "parity": st.integers(min_value=0, max_value=2**2 - 1),
+            },
+        ),
+    )
+    def test_replace_preserves_unmentioned_bits(
+        self,
+        initial: int,
+        replacements: dict[str, int],
+    ) -> None:
+        """Property: every bit not covered by a mentioned field survives ``replace``.
+
+        Pick a random subset of the known fields and random per-field values
+        (each bounded by that field's width). After ``replace(**subset)``, the
+        bits in the resulting register that are NOT inside any of those
+        fields' masks must equal the same bits in the original.
+        """
+        v = RegisterValue(initial, fields=UART_FIELDS)
+        v2 = v.replace(**replacements)
+
+        # Build the union of the masks of every mentioned field.
+        replaced_mask = 0
+        for name in replacements:
+            meta = UART_FIELDS[name]
+            replaced_mask |= ((1 << meta["width"]) - 1) << meta["lsb"]
+
+        # Bits NOT in any mentioned field's mask must match exactly.
+        assert int(v2) & ~replaced_mask == int(v) & ~replaced_mask
+        # Each replaced field reads back to the supplied value.
+        for name, fval in replacements.items():
+            assert int(getattr(v2, name)) == fval
 
 
 # --------------------------------------------------------------------------- #

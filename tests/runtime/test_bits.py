@@ -19,6 +19,8 @@ from dataclasses import field as dc_field
 
 import numpy as np
 import pytest
+from hypothesis import assume, given
+from hypothesis import strategies as st
 
 from peakrdl_pybind11.runtime import _registry
 from peakrdl_pybind11.runtime.bits import (
@@ -165,21 +167,6 @@ def test_single_bit_write_sets_bit_to_one(setup: tuple[MockMaster, MockRegister,
     assert value == 1 << 5
 
 
-def test_single_bit_write_respects_field_lsb() -> None:
-    """A field offset to a non-zero lsb must shift the bit index correctly."""
-    master = MockMaster()
-    reg = MockRegister(master, address=0x200, width=4)
-    field = MockField(parent=reg, lsb=8, width=16, name="upper")
-    master.storage[0x200] = 0x0000
-
-    BitsAccessor(field)[2].write(1)
-
-    addr, value, _width = master.writes[0]
-    assert addr == 0x200
-    # bit 2 of the field == bit 8 + 2 == bit 10 of the register.
-    assert value == 1 << (8 + 2)
-
-
 def test_slice_read_returns_ndarray_of_bool(setup: tuple[MockMaster, MockRegister, MockField]) -> None:
     master, _reg, field = setup
     master.storage[0x100] = 0x0000
@@ -227,30 +214,57 @@ def test_full_slice_write_with_int_bitmask(setup: tuple[MockMaster, MockRegister
     assert value == 0xFF00
 
 
-def test_full_slice_write_preserves_bits_outside_field() -> None:
-    """Writing through the field slice must not stomp on bits outside it."""
+@given(
+    prior=st.integers(min_value=0, max_value=2**32 - 1),
+    lsb=st.integers(min_value=0, max_value=24),
+    width=st.integers(min_value=1, max_value=8),
+    slice_start=st.integers(min_value=0, max_value=7),
+    slice_len=st.integers(min_value=1, max_value=8),
+    payload=st.integers(min_value=0, max_value=2**8 - 1),
+)
+def test_bits_slice_write_preserves_unrelated_bits(
+    prior: int,
+    lsb: int,
+    width: int,
+    slice_start: int,
+    slice_len: int,
+    payload: int,
+) -> None:
+    """RMW property: a ``bits[a:b].write(p)`` flips only the targeted bits.
+
+    Consolidates the hand-picked single-bit-write-with-lsb,
+    full-slice-write-preserves-bits-outside-field, and
+    partial-slice-write-bitmask tests into one property:
+
+    * Bits outside the slice (whether inside or outside the field) keep
+      their prior values.
+    * Bits inside the slice equal ``payload & ((1 << slice_len) - 1)``,
+      shifted to their register-level position.
+    """
+    # Constrain inputs so the slice fits inside the field and the field
+    # fits inside the 32-bit register.
+    assume(lsb + width <= 32)
+    assume(slice_start + slice_len <= width)
+
     master = MockMaster()
-    reg = MockRegister(master, address=0x300, width=4)
-    field = MockField(parent=reg, lsb=0, width=16, name="lower")
-    master.storage[0x300] = 0xAAAA_5555  # upper half should survive
+    reg = MockRegister(master, address=0x400, width=4)
+    field = MockField(parent=reg, lsb=lsb, width=width, name="prop")
+    master.storage[0x400] = prior
 
-    BitsAccessor(field)[:].write(0xFF00)
+    BitsAccessor(field)[slice_start : slice_start + slice_len].write(payload)
 
-    _addr, value, _width = master.writes[0]
-    assert value == 0xAAAA_FF00
+    assert len(master.writes) == 1
+    addr, value, _width = master.writes[0]
+    assert addr == 0x400
 
+    register_shift = lsb + slice_start
+    slice_mask = ((1 << slice_len) - 1) << register_shift
+    expected_slice_payload = (payload & ((1 << slice_len) - 1)) << register_shift
 
-def test_partial_slice_write_bitmask(setup: tuple[MockMaster, MockRegister, MockField]) -> None:
-    """``bits[8:16].write(0xFF)`` flips the upper byte of the field."""
-    master, _reg, field = setup
-    master.storage[0x100] = 0x0000
-
-    BitsAccessor(field)[8:16].write(0xFF)
-
-    _addr, value, _width = master.writes[0]
-    # Slice starts at bit 8 of the field, eight bits wide; LSB of 0xFF lands
-    # at bit 8 of the field == bit 8 of the register (lsb=0).
-    assert value == 0xFF00
+    # Bits inside the slice match the (masked & shifted) payload.
+    assert value & slice_mask == expected_slice_payload
+    # Bits outside the slice are bit-identical to the prior value.
+    assert value & ~slice_mask & 0xFFFFFFFF == prior & ~slice_mask & 0xFFFFFFFF
 
 
 def test_slice_write_with_ndarray(setup: tuple[MockMaster, MockRegister, MockField]) -> None:
