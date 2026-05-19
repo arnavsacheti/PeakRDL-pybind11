@@ -23,9 +23,23 @@ import sys
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 from systemrdl import RDLCompiler
 
 from peakrdl_pybind11 import Pybind11Exporter
+
+# Shared Hypothesis settings for the array round-trip properties below.
+# These tests use *function*-scoped fixtures wrapping a *module*-scoped
+# cmake build, so Hypothesis would normally warn about the function
+# fixture being re-used across examples. Suppress that check: the
+# property is robust to prior-example state because each example reads
+# the neighbour's value *before* mutating the target index.
+_ARRAY_PROPERTY_SETTINGS = settings(
+    max_examples=40,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 
 ARRAY_RDL = """
 addrmap simple_array_soc {
@@ -270,22 +284,6 @@ class TestArraySurface:
         """``len(soc.lut)`` returns the array size."""
         assert len(soc.lut) == 8
 
-    def test_indexed_write_then_read_round_trip(self, soc) -> None:
-        """``soc.lut[3].write(0x42)`` followed by ``read()`` round-trips."""
-        soc.lut[3].write(0x42)
-        assert int(soc.lut[3].read()) == 0x42
-
-    def test_entries_are_independent(self, soc) -> None:
-        """A write to one entry doesn't affect any other entry."""
-        soc.lut[0].write(0xAAAA)
-        soc.lut[1].write(0xBBBB)
-        soc.lut[7].write(0xCCCC)
-        assert int(soc.lut[0].read()) == 0xAAAA
-        assert int(soc.lut[1].read()) == 0xBBBB
-        assert int(soc.lut[7].read()) == 0xCCCC
-        # Untouched entries stay at the field's reset value (0).
-        assert int(soc.lut[2].read()) == 0
-
     def test_indexed_access_returns_same_instance(self, soc) -> None:
         """``soc.lut[3] is soc.lut[3]`` — pybind11 ``reference_internal``."""
         a = soc.lut[3]
@@ -383,21 +381,6 @@ class TestRegfileArraySurface:
         sliced = dma_soc.channel[2:4]
         assert len(sliced) == 2
 
-    def test_per_entry_member_access(self, dma_soc) -> None:
-        """``channel[i].config.enable.write(1)`` round-trips via the bus."""
-        dma_soc.channel[3].config.enable.write(1)
-        assert int(dma_soc.channel[3].config.enable.read()) == 1
-
-    def test_entries_are_independent(self, dma_soc) -> None:
-        """Writes to one channel don't disturb the others."""
-        dma_soc.channel[1].config.enable.write(1)
-        assert int(dma_soc.channel[1].config.enable.read()) == 1
-        # Channel 2's register stays at its reset value (0).
-        assert int(dma_soc.channel[2].config.enable.read()) == 0
-        # And channel 0/3 too.
-        assert int(dma_soc.channel[0].config.enable.read()) == 0
-        assert int(dma_soc.channel[3].config.enable.read()) == 0
-
     def test_entry_addresses_follow_stride(self, dma_soc) -> None:
         """``channel[i].offset == base + i * stride``."""
         base = int(dma_soc.channel[0].offset)
@@ -454,17 +437,6 @@ class TestAddrmapArraySurface:
         sliced = am_soc.blocks[0:2]
         assert len(sliced) == 2
 
-    def test_per_entry_member_access(self, am_soc) -> None:
-        """``blocks[i].ctrl.write(...)`` round-trips via the bus."""
-        am_soc.blocks[1].ctrl.write(0xBBBB)
-        assert int(am_soc.blocks[1].ctrl.read()) == 0xBBBB
-
-    def test_entries_are_independent(self, am_soc) -> None:
-        am_soc.blocks[0].ctrl.write(0xAAAA)
-        am_soc.blocks[1].ctrl.write(0xBBBB)
-        assert int(am_soc.blocks[0].ctrl.read()) == 0xAAAA
-        assert int(am_soc.blocks[1].ctrl.read()) == 0xBBBB
-
     def test_entry_addresses_follow_stride(self, am_soc) -> None:
         base = int(am_soc.blocks[0].ctrl.offset)
         stride = int(am_soc.blocks.stride)
@@ -477,24 +449,12 @@ class TestAddrmapArraySurface:
 
 
 class TestMixedArraysIntegration:
-    """Phase 1 + Phase 2 side-by-side end-to-end."""
+    """Phase 1 + Phase 2 side-by-side end-to-end.
 
-    def test_both_arrays_work(self, mixed_soc) -> None:
-        """Both ``soc.lut[i]`` (reg array) and ``soc.channel[i]``
-        (regfile array) work in the same SoC.
-        """
-        # Register array: P1 surface.
-        assert len(mixed_soc.lut) == 8
-        mixed_soc.lut[3].write(0xDEAD)
-        assert int(mixed_soc.lut[3].read()) == 0xDEAD
-
-        # Regfile array: P2 surface.
-        assert len(mixed_soc.channel) == 2
-        mixed_soc.channel[1].config.enable.write(1)
-        assert int(mixed_soc.channel[1].config.enable.read()) == 1
-        # Independence across the two arrays.
-        assert int(mixed_soc.lut[3].read()) == 0xDEAD
-        assert int(mixed_soc.channel[0].config.enable.read()) == 0
+    Round-trip + independence for the lut / channel arrays is covered
+    by :class:`TestArrayRoundTrips` below; this class keeps the
+    smoke-test that both kinds of array coexist as :class:`ArrayView`.
+    """
 
     def test_both_arrays_are_array_views(self, mixed_soc) -> None:
         from peakrdl_pybind11.runtime.arrays import ArrayView
@@ -561,11 +521,6 @@ class TestMultiDimRegisterArraySurface:
         """``len(soc.matrix) == 4`` — Python convention is outer-dim length."""
         assert len(multidim_soc.matrix) == 4
 
-    def test_tuple_indexing_round_trip(self, multidim_soc) -> None:
-        """``soc.matrix[2, 5].write(0x42)`` then read returns 0x42."""
-        multidim_soc.matrix[2, 5].write(0x42)
-        assert int(multidim_soc.matrix[2, 5].read()) == 0x42
-
     def test_chained_indexing_equals_tuple_indexing(self, multidim_soc) -> None:
         """``soc.matrix[2][5] is soc.matrix[2, 5]``.
 
@@ -586,17 +541,6 @@ class TestMultiDimRegisterArraySurface:
         for a in range(4):
             for b in range(8):
                 assert int(multidim_soc.matrix[a, b].offset) == base + a * 32 + b * 4
-
-    def test_entries_are_independent(self, multidim_soc) -> None:
-        """Writes to ``[2, 5]`` don't disturb other entries."""
-        multidim_soc.matrix[2, 5].write(0xDEAD)
-        # Untouched entries still read 0 (their reset value).
-        assert int(multidim_soc.matrix[2, 4].read()) == 0
-        assert int(multidim_soc.matrix[2, 6].read()) == 0
-        assert int(multidim_soc.matrix[1, 5].read()) == 0
-        assert int(multidim_soc.matrix[3, 5].read()) == 0
-        # And the original write survives the reads above.
-        assert int(multidim_soc.matrix[2, 5].read()) == 0xDEAD
 
     def test_int_indexing_returns_array_view_subset(self, multidim_soc) -> None:
         """``soc.matrix[2]`` returns a length-8 ``ArrayView`` of the row."""
@@ -653,17 +597,6 @@ class TestMultiDimRegfileArraySurface:
     def test_shape_is_2d_tuple(self, multidim_soc) -> None:
         assert tuple(multidim_soc.channel.shape) == (2, 3)
 
-    def test_tuple_indexing_into_regfile_member(self, multidim_soc) -> None:
-        """``soc.channel[0, 1].config.enable.write(1)`` round-trips."""
-        multidim_soc.channel[0, 1].config.enable.write(1)
-        assert int(multidim_soc.channel[0, 1].config.enable.read()) == 1
-
-    def test_regfile_entries_independent(self, multidim_soc) -> None:
-        """Writes to ``channel[1, 2]`` don't disturb ``channel[0, 0]``."""
-        multidim_soc.channel[1, 2].config.enable.write(1)
-        assert int(multidim_soc.channel[0, 0].config.enable.read()) == 0
-        assert int(multidim_soc.channel[1, 2].config.enable.read()) == 1
-
     def test_chained_equals_tuple_for_regfile(self, multidim_soc) -> None:
         """``soc.channel[0][1] is soc.channel[0, 1]``."""
         a = multidim_soc.channel[0][1]
@@ -690,22 +623,20 @@ class TestMultiDimRegfileArraySurface:
 
 
 class TestMixedDimensionsIntegration:
-    """1-D and multi-dim arrays coexist in the same SoC."""
+    """1-D and multi-dim arrays coexist in the same SoC.
 
-    def test_one_d_and_multi_dim_side_by_side(self, multidim_soc) -> None:
-        """A 1-D ``lut[4]`` next to a 2-D ``matrix[4][8]`` and 2-D ``channel[2][3]``."""
-        # 1-D still works.
+    Round-trip + independence for each dimensionality is covered by
+    :class:`TestArrayRoundTrips` below; this class keeps the
+    coexistence smoke test (a single SoC exposing arrays of differing
+    rank without name/shape collisions).
+    """
+
+    def test_one_d_and_multi_dim_shapes_coexist(self, multidim_soc) -> None:
+        """1-D, 2-D, and 2-D-regfile arrays expose their distinct shapes
+        on the same SoC instance."""
         assert tuple(multidim_soc.lut.shape) == (4,)
-        multidim_soc.lut[2].write(0xCAFE)
-        assert int(multidim_soc.lut[2].read()) == 0xCAFE
-        # 2-D register array works.
         assert tuple(multidim_soc.matrix.shape) == (4, 8)
-        multidim_soc.matrix[1, 2].write(0xBEEF)
-        assert int(multidim_soc.matrix[1, 2].read()) == 0xBEEF
-        # 2-D regfile array works.
         assert tuple(multidim_soc.channel.shape) == (2, 3)
-        multidim_soc.channel[0, 1].config.enable.write(1)
-        assert int(multidim_soc.channel[0, 1].config.enable.read()) == 1
 
 
 class TestCubeIntegration:
@@ -713,10 +644,6 @@ class TestCubeIntegration:
 
     def test_3d_shape(self, cube_soc) -> None:
         assert tuple(cube_soc.cube.shape) == (2, 3, 4)
-
-    def test_3d_tuple_indexing_round_trip(self, cube_soc) -> None:
-        cube_soc.cube[1, 2, 3].write(0x55)
-        assert int(cube_soc.cube[1, 2, 3].read()) == 0x55
 
     def test_3d_chained_equals_tuple(self, cube_soc) -> None:
         """``cube[1][2][3] is cube[1, 2, 3]``."""
@@ -937,3 +864,147 @@ class TestPhase5SnapshotDataframe:
         # 8 lut[i] rows present.
         lut_rows = [p for p in df.index if "lut[" in str(p)]
         assert len(lut_rows) == 8
+
+
+# ---------------------------------------------------------------------------
+# Property-based round-trip + independence (consolidates twelve hand-written
+# tests across 1-D register / regfile / addrmap arrays and 2-D / 3-D
+# register arrays).
+#
+# The audit identified twelve hand-picked write-then-read-and-neighbour-
+# unchanged tests; each was a single point in a much wider input space.
+# The three properties below sweep every ``(target_index, value,
+# other_index)`` triple (with ``other != target``) and assert:
+#
+#   1. ``arr[target].write(v)`` is observable by ``arr[target].read()``.
+#   2. ``arr[other].read()`` returns the value it held *before* the
+#      write — neighbours are unaffected.
+#
+# One property per array dimensionality (1-D / 2-D / 3-D); each picks a
+# representative SoC (lut / matrix / cube). The round-trip property is
+# structural — register vs regfile vs addrmap arrays all share
+# :class:`ArrayView`, and the surface-specific tests (per-member access
+# paths, stride/shape geometry, idempotency on re-install) remain in
+# the classes above.
+#
+# We deliberately read ``other_before`` *inside* the example body rather
+# than relying on a fixture sentinel: ``@given`` re-uses the same
+# function-scoped fixture across all examples, so state from prior
+# examples is observable in the current one. Capturing the pre-write
+# value makes the property robust to that.
+# ---------------------------------------------------------------------------
+
+
+class TestArrayRoundTrips:
+    """Three round-trip-with-independence properties — one per dimension.
+
+    Each property folds the corresponding hand-written round-trip and
+    independence tests into one Hypothesis test sweeping the full
+    ``(index, value, other_index)`` space.
+    """
+
+    @given(
+        idx=st.integers(min_value=0, max_value=7),
+        val=st.integers(min_value=0, max_value=(1 << 32) - 1),
+        other_idx=st.integers(min_value=0, max_value=7),
+    )
+    @_ARRAY_PROPERTY_SETTINGS
+    def test_1d_array_roundtrip_with_independence(
+        self, soc, idx: int, val: int, other_idx: int
+    ) -> None:
+        """1-D register-array property (``soc.lut[8]``).
+
+        Generalises the six hand-written 1-D round-trip / independence
+        tests across the register-array, regfile-array, and
+        addrmap-array fixtures into a single swept property on the
+        register-array representative. All three surfaces share
+        :class:`ArrayView`, so a defect in indexed write/read on one
+        would also fail this property on the others.
+
+        Subsumes:
+          * ``TestArraySurface.test_indexed_write_then_read_round_trip``
+          * ``TestArraySurface.test_entries_are_independent``
+          * ``TestRegfileArraySurface.test_per_entry_member_access``
+          * ``TestRegfileArraySurface.test_entries_are_independent``
+          * ``TestAddrmapArraySurface.test_per_entry_member_access``
+          * ``TestAddrmapArraySurface.test_entries_are_independent``
+          * ``TestMixedArraysIntegration.test_both_arrays_work`` (round-trip part)
+        """
+        assume(other_idx != idx)
+        other_before = int(soc.lut[other_idx].read())
+        soc.lut[idx].write(val)
+        assert int(soc.lut[idx].read()) == val
+        assert int(soc.lut[other_idx].read()) == other_before
+
+    @given(
+        a=st.integers(min_value=0, max_value=3),
+        b=st.integers(min_value=0, max_value=7),
+        val=st.integers(min_value=0, max_value=(1 << 32) - 1),
+        other_a=st.integers(min_value=0, max_value=3),
+        other_b=st.integers(min_value=0, max_value=7),
+    )
+    @_ARRAY_PROPERTY_SETTINGS
+    def test_2d_array_roundtrip_with_independence(
+        self,
+        multidim_soc,
+        a: int,
+        b: int,
+        val: int,
+        other_a: int,
+        other_b: int,
+    ) -> None:
+        """2-D register-array property (``multidim_soc.matrix[4][8]``).
+
+        Generalises the four hand-written 2-D round-trip / independence
+        tests (register and regfile multi-dim variants share the same
+        :class:`ArrayView` tuple-indexing path).
+
+        Subsumes:
+          * ``TestMultiDimRegisterArraySurface.test_tuple_indexing_round_trip``
+          * ``TestMultiDimRegisterArraySurface.test_entries_are_independent``
+          * ``TestMultiDimRegfileArraySurface.test_tuple_indexing_into_regfile_member``
+          * ``TestMultiDimRegfileArraySurface.test_regfile_entries_independent``
+          * ``TestMixedDimensionsIntegration.test_one_d_and_multi_dim_side_by_side`` (round-trip part)
+        """
+        assume((other_a, other_b) != (a, b))
+        other_before = int(multidim_soc.matrix[other_a, other_b].read())
+        multidim_soc.matrix[a, b].write(val)
+        assert int(multidim_soc.matrix[a, b].read()) == val
+        assert (
+            int(multidim_soc.matrix[other_a, other_b].read()) == other_before
+        )
+
+    @given(
+        a=st.integers(min_value=0, max_value=1),
+        b=st.integers(min_value=0, max_value=2),
+        c=st.integers(min_value=0, max_value=3),
+        val=st.integers(min_value=0, max_value=(1 << 32) - 1),
+        other_a=st.integers(min_value=0, max_value=1),
+        other_b=st.integers(min_value=0, max_value=2),
+        other_c=st.integers(min_value=0, max_value=3),
+    )
+    @_ARRAY_PROPERTY_SETTINGS
+    def test_3d_array_roundtrip_with_independence(
+        self,
+        cube_soc,
+        a: int,
+        b: int,
+        c: int,
+        val: int,
+        other_a: int,
+        other_b: int,
+        other_c: int,
+    ) -> None:
+        """3-D register-array property (``cube_soc.cube[2][3][4]``).
+
+        Subsumes:
+          * ``TestCubeIntegration.test_3d_tuple_indexing_round_trip``
+        """
+        assume((other_a, other_b, other_c) != (a, b, c))
+        other_before = int(cube_soc.cube[other_a, other_b, other_c].read())
+        cube_soc.cube[a, b, c].write(val)
+        assert int(cube_soc.cube[a, b, c].read()) == val
+        assert (
+            int(cube_soc.cube[other_a, other_b, other_c].read())
+            == other_before
+        )
