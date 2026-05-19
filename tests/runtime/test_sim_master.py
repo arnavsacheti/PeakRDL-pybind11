@@ -26,6 +26,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from hypothesis import given
+from hypothesis import strategies as st
+
 from peakrdl_pybind11.masters import AccessOp
 from peakrdl_pybind11.masters.sim import SimMaster
 
@@ -127,69 +130,59 @@ class TestReadSideEffects:
 # ---------------------------------------------------------------------------
 
 
+# Map each on_write token to its expected formula on a 32-bit field
+# (lsb=0, width=32). ``prior`` is the current storage; ``written`` is the
+# value the caller asked to write; the lambda returns the expected new
+# storage. All formulas are masked to 32 bits because Python's ``~`` is
+# unbounded -- the simulator's _apply_write_token clamps to the field
+# width, which for width=32 is 0xFFFFFFFF.
+#
+# Semantics confirmed against the prior hand-written tests at this
+# location (woclr/wclr/woset/wset/wzc/wzs) and against
+# ``_apply_write_token`` in src/peakrdl_pybind11/masters/_side_effect_model.py.
+_WRITE_TOKEN_FORMULA = {
+    "woclr": lambda prior, written: (prior & ~written) & 0xFFFFFFFF,
+    "wclr": lambda prior, written: (prior & ~written) & 0xFFFFFFFF,
+    "wzc": lambda prior, written: (prior & written) & 0xFFFFFFFF,
+    "woset": lambda prior, written: (prior | written) & 0xFFFFFFFF,
+    "wset": lambda prior, written: (prior | written) & 0xFFFFFFFF,
+    "wzs": lambda prior, written: (prior | ((~written) & 0xFFFFFFFF)) & 0xFFFFFFFF,
+}
+
+
 class TestWriteSideEffects:
-    def test_woclr_clears_written_one_bits(self) -> None:
-        field = _make_field(lsb=0, width=16, on_write="woclr")
+    """Consolidated property-based coverage of the six per-bit
+    write-side-effect tokens.
+
+    Replaced six hand-picked tests (one per token) with a single
+    ``@given`` test sampling over the token plus randomised prior /
+    written values. Each token's formula was cross-checked against the
+    formerly-individual unit tests and against
+    ``_apply_write_token``."""
+
+    @given(
+        token=st.sampled_from(list(_WRITE_TOKEN_FORMULA.keys())),
+        prior=st.integers(min_value=0, max_value=2**32 - 1),
+        written=st.integers(min_value=0, max_value=2**32 - 1),
+    )
+    def test_write_side_effect_matches_token_formula(
+        self, token: str, prior: int, written: int
+    ) -> None:
+        field = _make_field(lsb=0, width=32, on_write=token, name="flags")
+        # Use a *unique* address per call -- Hypothesis re-runs the body
+        # many times within a single test; sharing a master across runs
+        # would let prior state leak. SimMaster construction is cheap.
         reg = _make_register(address=0x300, fields={"flags": field})
         master = SimMaster(soc=_make_soc(reg))
-        master.memory[0x300] = 0xFFFF
+        master.memory[0x300] = prior
 
-        master.write(0x300, 0x00FF, 4)
-        # Low byte cleared because we wrote 1s; high byte preserved.
-        assert master.memory[0x300] == 0xFF00
+        master.write(0x300, written, 4)
 
-    def test_wclr_alias_behaves_like_woclr(self) -> None:
-        """The project treats ``wclr`` as per-bit (see module docstring)."""
-        field = _make_field(lsb=0, width=8, on_write="wclr")
-        reg = _make_register(address=0x310, fields={"flags": field})
-        master = SimMaster(soc=_make_soc(reg))
-        master.memory[0x310] = 0xFF
-
-        master.write(0x310, 0x0F, 4)
-        assert master.memory[0x310] == 0xF0
-
-    def test_woset_sets_written_one_bits(self) -> None:
-        field = _make_field(lsb=0, width=16, on_write="woset")
-        reg = _make_register(address=0x320, fields={"flags": field})
-        master = SimMaster(soc=_make_soc(reg))
-        master.memory[0x320] = 0x0000
-
-        master.write(0x320, 0x00FF, 4)
-        assert master.memory[0x320] == 0x00FF
-
-    def test_wset_alias_behaves_like_woset(self) -> None:
-        field = _make_field(lsb=0, width=8, on_write="wset")
-        reg = _make_register(address=0x330, fields={"flags": field})
-        master = SimMaster(soc=_make_soc(reg))
-        master.memory[0x330] = 0x0F
-
-        master.write(0x330, 0xF0, 4)
-        # Set the high nibble; low nibble already on, stays on.
-        assert master.memory[0x330] == 0xFF
-
-    def test_wzc_write_zero_to_clear(self) -> None:
-        """``wzc``: written-0 bits clear stored 1s; written-1 bits preserve."""
-        field = _make_field(lsb=0, width=8, on_write="wzc")
-        reg = _make_register(address=0x340, fields={"flags": field})
-        master = SimMaster(soc=_make_soc(reg))
-        master.memory[0x340] = 0xFF
-
-        master.write(0x340, 0x0F, 4)
-        # Low nibble written 1s -> preserved as 1.
-        # High nibble written 0s -> cleared.
-        assert master.memory[0x340] == 0x0F
-
-    def test_wzs_write_zero_to_set(self) -> None:
-        """``wzs``: written-0 bits set stored 0s; written-1 bits preserve."""
-        field = _make_field(lsb=0, width=8, on_write="wzs")
-        reg = _make_register(address=0x350, fields={"flags": field})
-        master = SimMaster(soc=_make_soc(reg))
-        master.memory[0x350] = 0x00
-
-        master.write(0x350, 0x0F, 4)
-        # High nibble written 0s -> set to 1.
-        # Low nibble written 1s -> already 0, stays 0.
-        assert master.memory[0x350] == 0xF0
+        expected = _WRITE_TOKEN_FORMULA[token](prior, written)
+        assert master.memory[0x300] == expected, (
+            f"token={token} prior={prior:#010x} written={written:#010x} "
+            f"expected={expected:#010x} got={master.memory[0x300]:#010x}"
+        )
 
 
 # ---------------------------------------------------------------------------
