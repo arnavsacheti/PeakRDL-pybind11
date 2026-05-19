@@ -477,14 +477,21 @@ class Pybind11Exporter:
         """Sanitize a name to be a valid Python/C++ identifier.
 
         Replaces non-identifier characters with underscores, prefixes a
-        leading digit, and appends a trailing underscore to any sanitized
+        leading digit, and appends a ``_kw`` suffix to any sanitized
         name that collides with a Python or C++ reserved word.
+
+        The ``_kw`` suffix (rather than the historical bare ``_``) keeps
+        the disambiguator injective: a user-supplied identifier named
+        ``class_`` and the keyword ``class`` no longer collapse to the
+        same output. Python has no keyword ending in ``_kw``, so the
+        new suffix never produces a fresh collision against a stem
+        that's itself a keyword.
         """
         name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
         if name and name[0].isdigit():
             name = "_" + name
         if name in _RESERVED_WORDS:
-            name = name + "_"
+            name = name + "_kw"
         return name or "soc"
 
     def _pybind_name_from_node(self, value: Node | str) -> str:

@@ -226,6 +226,24 @@ def _wrap_read(original_read: Callable[..., Any]) -> Callable[..., Any]:
     return read
 
 
+def _wrap_invalidating(original: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a mutating call (``write`` / ``modify``) so it invalidates the cache.
+
+    Any successful write makes the cached :class:`RegisterValue` stale by
+    construction. We clear the entry *before* delegating to the original so
+    that an exception raised mid-write still leaves the cache dropped — the
+    next read will go to the bus, which is the safe answer when the prior
+    write's effect is uncertain.
+    """
+
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        _clear_state(self)
+        return original(self, *args, **kwargs)
+
+    setattr(wrapper, _CACHE_ENHANCED, True)
+    return wrapper
+
+
 # ---------------------------------------------------------------------------
 # Register enhancement
 # ---------------------------------------------------------------------------
@@ -233,11 +251,18 @@ def _wrap_read(original_read: Callable[..., Any]) -> Callable[..., Any]:
 
 @_registry.register_register_enhancement
 def register_cache_enhancement(cls: type, metadata: dict) -> None:
-    """Attach ``cache_for`` / ``invalidate_cache`` and wrap ``read``.
+    """Attach ``cache_for`` / ``invalidate_cache`` and wrap ``read``/``write``/``modify``.
 
     ``metadata`` is the dict the generated runtime passes in; we only
     consult it to bail cleanly on a stub class without ``read``. The real
     work is per-instance and runs at call time.
+
+    ``write`` and ``modify`` are wrapped so any bus write invalidates the
+    cached :class:`RegisterValue` before delegating to the original: a
+    write makes the cached value stale by construction, so subsequent
+    reads must hit the bus. Both wrappers carry the same
+    ``__peakrdl_cache_enhanced__`` sentinel as the read wrapper so the
+    enhancement remains idempotent.
 
     Idempotent: re-applying the enhancement is a no-op courtesy of the
     ``__peakrdl_cache_enhanced__`` sentinel on the wrapped ``read``.
@@ -251,6 +276,14 @@ def register_cache_enhancement(cls: type, metadata: dict) -> None:
         return  # already cache-enhanced
 
     cls.read = _wrap_read(raw_read)  # type: ignore[method-assign]
+
+    raw_write = getattr(cls, "write", None)
+    if raw_write is not None and not getattr(raw_write, _CACHE_ENHANCED, False):
+        cls.write = _wrap_invalidating(raw_write)  # type: ignore[method-assign]
+
+    raw_modify = getattr(cls, "modify", None)
+    if raw_modify is not None and not getattr(raw_modify, _CACHE_ENHANCED, False):
+        cls.modify = _wrap_invalidating(raw_modify)  # type: ignore[method-assign]
 
     def cache_for(self: Any, seconds: float) -> None:
         """Cache ``self.read()`` results for the next ``seconds``.
