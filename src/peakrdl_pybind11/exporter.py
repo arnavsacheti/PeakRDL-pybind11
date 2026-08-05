@@ -191,6 +191,22 @@ class ArrayInfo(TypedDict):
     relative_offset: int
 
 
+class NamedTypeInfo(TypedDict):
+    """One named SystemRDL definition reachable from the exported root.
+
+    ``node`` is a representative elaborated instance. It supplies the child
+    shape used to render the structural Python protocol. ``effective_name``
+    is the compiler-provided elaborated type name. It is an identity key for
+    this exporter, not a complete fingerprint of the component interface.
+    """
+
+    declared_name: str
+    effective_name: str
+    python_name: str
+    kind: str
+    node: RegNode | RegfileNode | AddrmapNode
+
+
 class Nodes(TypedDict):
     addrmaps: list[AddrmapNode]
     regfiles: list[RegfileNode]
@@ -252,6 +268,10 @@ class Nodes(TypedDict):
     # subset of ``arrays``; downstream code that hasn't been migrated
     # to the unified list can still iterate ``reg_arrays``.
     reg_arrays: list["RegArrayInfo"]
+    # Named definitions, deduplicated by elaborated component kind and type
+    # name. Consumed by the .pyi generator to emit structural protocols for
+    # reusable RDL types such as ``channel_regs``.
+    named_types: list["NamedTypeInfo"]
 
 
 def _compute_per_axis_strides(dimensions: list[int], inner_stride: int) -> list[int]:
@@ -333,6 +353,7 @@ class Pybind11Exporter:
         # logic.
         self.env.filters["python_string"] = repr
         self.env.filters["safe_id"] = self._sanitize_identifier
+        self.env.filters["named_type"] = self._named_type_for_node
         # Lazily resolves to the (name, value) list for an is_flag / is_enum
         # register; populated by _collect_nodes.
         self._members_by_id: dict[int, list[tuple[str, int]]] = {}
@@ -354,6 +375,7 @@ class Pybind11Exporter:
         # default — undeclared UDPs continue to fall back to ``Any`` on
         # the stub side and the permissive ``TagsNamespace`` at runtime.
         self._udp_type_map: dict[str, str] = {}
+        self._named_type_names: dict[tuple[str, str], str] = {}
 
         # Discover sibling-unit exporter plugins. Each plugin's
         # ``register(self)`` runs immediately so it can install Jinja
@@ -427,6 +449,7 @@ class Pybind11Exporter:
 
         # Collect all nodes first
         nodes = self._collect_nodes(self.top_node)
+        self._finalize_named_types(nodes)
         self._members_by_id = nodes["register_members"]
         self._field_encodes_by_path = nodes["field_encodes"]
 
@@ -580,6 +603,68 @@ class Pybind11Exporter:
         if candidate and candidate[0].isdigit():
             candidate = "_" + candidate
         return candidate or "Field"
+
+    def _python_type_name(self, type_name: str) -> str:
+        """Convert an RDL type identifier into a public Python class name."""
+        parts = re.split(r"[^a-zA-Z0-9]+", type_name)
+        result = "".join(part[:1].upper() + part[1:] for part in parts if part)
+        result = self._sanitize_identifier(result or "RdlType")
+        if result[0].islower():
+            result = result[:1].upper() + result[1:]
+        return result
+
+    @staticmethod
+    def _named_type_key(node: Node) -> tuple[str, str] | None:
+        """Return an addressable node's compiler-provided named-type key."""
+        if not isinstance(node, (RegNode, RegfileNode, AddrmapNode)):
+            return None
+        type_name = getattr(node, "type_name", None)
+        orig_type_name = getattr(node, "orig_type_name", None)
+        if not type_name or not orig_type_name:
+            return None
+        if isinstance(node, RegNode):
+            kind = "reg"
+        elif isinstance(node, RegfileNode):
+            kind = "regfile"
+        else:
+            kind = "addrmap"
+        return kind, str(type_name)
+
+    def _named_type_for_node(self, node: Node) -> str | None:
+        """Jinja filter returning the generated protocol name for *node*."""
+        key = self._named_type_key(node)
+        return self._named_type_names.get(key) if key is not None else None
+
+    def _finalize_named_types(self, nodes: Nodes) -> None:
+        """Deduplicate named definitions and allocate collision-free Python names."""
+        seen: set[tuple[str, str]] = set()
+        used_names: set[str] = set()
+        self._named_type_names = {}
+        for group in (nodes["addrmaps"], nodes["regfiles"], nodes["regs"]):
+            for node in group:
+                key = self._named_type_key(node)
+                if key is None or key in seen:
+                    continue
+                seen.add(key)
+                kind, effective_name = key
+                declared_name = str(getattr(node, "orig_type_name", effective_name))
+                base_name = self._python_type_name(effective_name)
+                python_name = base_name
+                suffix = 2
+                while python_name in used_names:
+                    python_name = f"{base_name}{suffix}"
+                    suffix += 1
+                used_names.add(python_name)
+                self._named_type_names[key] = python_name
+                nodes["named_types"].append(
+                    {
+                        "declared_name": declared_name,
+                        "effective_name": effective_name,
+                        "python_name": python_name,
+                        "kind": kind,
+                        "node": node,
+                    }
+                )
 
     def _generate_descriptors(self, nodes: Nodes) -> None:
         """Generate C++ descriptor header file"""
@@ -860,6 +945,7 @@ class Pybind11Exporter:
                 "field_encodes": {},
                 "arrays": [],
                 "reg_arrays": [],
+                "named_types": [],
             }
 
         if isinstance(node, AddrmapNode):

@@ -2,7 +2,9 @@
 Basic tests for PeakRDL-pybind11 exporter
 """
 
+import ast
 import os
+import re
 import tempfile
 
 import pytest
@@ -46,6 +48,23 @@ addrmap simple_soc {
             hw = w;
         } error[1:1];
     } status @ 0x0004;
+};
+"""
+
+
+NAMED_TYPES_RDL = """
+reg channel_ctrl {
+    field { sw = rw; hw = r; } enable[0:0];
+};
+
+regfile channel_regs {
+    channel_ctrl ctrl @ 0x0;
+};
+
+addrmap named_types_soc {
+    channel_regs channel_a @ 0x0000;
+    channel_regs channel_b @ 0x1000;
+    channel_regs channels[2] @ 0x2000;
 };
 """
 
@@ -146,6 +165,60 @@ class TestExporter:
             # Verify .pyi file was not created
             assert not os.path.exists(os.path.join(tmpdir, '__init__.pyi'))
             assert not os.path.exists(os.path.join(tmpdir, 'test_soc', '__init__.pyi'))
+
+    def test_named_rdl_definitions_generate_reusable_protocols(self):
+        """Named RDL definitions become path-independent stub protocols."""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(NAMED_TYPES_RDL))
+        root = rdl.elaborate()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            exporter = Pybind11Exporter()
+            exporter.export(root.top, tmpdir, soc_name="named_types_soc")
+
+            with open(os.path.join(tmpdir, "named_types_soc", "__init__.pyi"), encoding="utf-8") as f:
+                stubs = f.read()
+
+        assert "class ChannelRegs(Protocol):" in stubs
+        assert "class ChannelCtrl(Protocol):" in stubs
+        # Protocol members must be read-only so concrete mutable descriptor
+        # attributes can satisfy the reusable structural type covariantly.
+        tree = ast.parse(stubs)
+        classes = {
+            statement.name: statement
+            for statement in tree.body
+            if isinstance(statement, ast.ClassDef)
+        }
+
+        def property_returns(class_name: str) -> dict[str, str]:
+            result = {}
+            for statement in classes[class_name].body:
+                if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not any(
+                    isinstance(decorator, ast.Name) and decorator.id == "property"
+                    for decorator in statement.decorator_list
+                ):
+                    continue
+                assert statement.returns is not None
+                result[statement.name] = ast.unparse(statement.returns)
+            return result
+
+        assert property_returns("ChannelRegs") == {
+            "name": "str",
+            "offset": "int",
+            "ctrl": "ChannelCtrl",
+        }
+        assert property_returns("ChannelCtrl")["enable"] == "FieldBase"
+        assert "channel_a: ChannelRegs" in stubs
+        assert "channel_b: ChannelRegs" in stubs
+        # Array members retain their existing wrapper surface, rather than
+        # being incorrectly narrowed to one scalar entry protocol.
+        named_soc_properties = property_returns("NamedTypesSoc")
+        assert re.fullmatch(r"\w+_array_t", named_soc_properties["channels"])
+        assert named_soc_properties["channels"] != "ChannelRegs"
+        # The generated stub itself must remain valid Python syntax.
+        ast.parse(stubs)
     
     def test_generated_header_content(self):
         """Test that generated header contains expected content"""
@@ -418,6 +491,7 @@ addrmap hierarchical_soc {
         )
         env.filters["pybind_name"] = exporter._pybind_name_from_node
         env.filters["safe_id"] = exporter._sanitize_identifier
+        env.filters["named_type"] = exporter._named_type_for_node
         env.filters["members"] = exporter._members_for_node
         env.filters["field_encode_members"] = exporter._field_encode_members_for_node
         template = env.get_template("stubs.pyi.jinja")
@@ -471,6 +545,7 @@ addrmap hierarchical_soc {
         )
         env.filters["pybind_name"] = exporter._pybind_name_from_node
         env.filters["safe_id"] = exporter._sanitize_identifier
+        env.filters["named_type"] = exporter._named_type_for_node
         env.filters["members"] = exporter._members_for_node
         env.filters["field_encode_members"] = exporter._field_encode_members_for_node
         template = env.get_template("stubs.pyi.jinja")
@@ -517,6 +592,7 @@ addrmap hierarchical_soc {
         )
         env.filters["pybind_name"] = exporter._pybind_name_from_node
         env.filters["safe_id"] = exporter._sanitize_identifier
+        env.filters["named_type"] = exporter._named_type_for_node
         env.filters["members"] = exporter._members_for_node
         env.filters["field_encode_members"] = exporter._field_encode_members_for_node
         template = env.get_template("stubs.pyi.jinja")

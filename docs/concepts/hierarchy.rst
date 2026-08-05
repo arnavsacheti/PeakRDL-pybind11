@@ -71,6 +71,46 @@ Metadata via ``.info``
 Every node exposes a uniform ``.info`` namespace so attribute autocompletion
 isn't polluted by metadata accessors. The same shape works for any node kind:
 
+Named RDL types and Python hints
+--------------------------------
+
+When an RDL component has a named definition, the generated ``.pyi`` stub
+also exports a structural Python protocol for that definition. This lets an
+application API state the reusable block shape it accepts without coupling to
+one instance path or address:
+
+.. code-block:: systemrdl
+
+   regfile channel_regs {
+       channel_ctrl ctrl @ 0x0;
+   };
+
+   addrmap top {
+       channel_regs channel_a @ 0x0000;
+       channel_regs channel_b @ 0x1000;
+   };
+
+.. code-block:: python
+
+   from generated_soc import ChannelRegs
+
+   def configure_channel(channel: ChannelRegs) -> None:
+       channel.ctrl.enable.write(1)
+
+   configure_channel(soc.channel_a)
+   configure_channel(soc.channel_b)
+
+The generated ``ChannelRegs`` protocol describes the named RDL definition,
+not a single generated C++ wrapper class. Both instances satisfy it even
+though they have distinct paths and addresses. Named child definitions are
+also emitted as protocols, so nested access remains typed.
+
+The exporter groups types by component kind and the compiler-provided
+elaborated type name. This is a reuse key, not a complete interface
+fingerprint: generated protocols currently reflect the representative
+elaborated instance's visible children and fields. Anonymous definitions do
+not receive a reusable protocol.
+
 .. code-block:: python
 
    soc.uart.control.info.address           # 0x4000_1000
