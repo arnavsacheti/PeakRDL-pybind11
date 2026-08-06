@@ -69,6 +69,31 @@ addrmap named_types_soc {
 """
 
 
+SCOPED_NAMED_TYPES_RDL = """
+regfile left_block {
+    reg rr { field { sw = rw; hw = r; } f[0:0]; } left_reg @ 0x0;
+};
+
+regfile right_block {
+    reg rr { field { sw = rw; hw = r; } g[0:0]; } right_reg @ 0x0;
+};
+
+addrmap scoped_types_soc {
+    left_block left @ 0x0000;
+    right_block right @ 0x1000;
+};
+"""
+
+
+COLLIDING_NAMED_TYPES_RDL = """
+reg range { field { sw = rw; hw = r; } value[0:0]; };
+
+addrmap collision_soc {
+    range range_reg @ 0x0;
+};
+"""
+
+
 class TestExporter:
     """Test the Pybind11Exporter"""
     
@@ -180,7 +205,7 @@ class TestExporter:
                 stubs = f.read()
 
         assert "class ChannelRegs(Protocol):" in stubs
-        assert "class ChannelCtrl(Protocol):" in stubs
+        assert "class ChannelCtrl(_NamedRegisterProtocol, Protocol):" in stubs
         # Protocol members must be read-only so concrete mutable descriptor
         # attributes can satisfy the reusable structural type covariantly.
         tree = ast.parse(stubs)
@@ -210,6 +235,8 @@ class TestExporter:
             "ctrl": "ChannelCtrl",
         }
         assert property_returns("ChannelCtrl")["enable"] == "FieldBase"
+        assert "def read(self) -> RegisterInt:" in stubs
+        assert "def write(self, value: int, *, raw: bool = ...) -> None:" in stubs
         assert "channel_a: ChannelRegs" in stubs
         assert "channel_b: ChannelRegs" in stubs
         # Array members retain their existing wrapper surface, rather than
@@ -219,6 +246,46 @@ class TestExporter:
         assert named_soc_properties["channels"] != "ChannelRegs"
         # The generated stub itself must remain valid Python syntax.
         ast.parse(stubs)
+
+    def test_scoped_named_definitions_do_not_share_a_protocol(self):
+        """Identical local type names must remain distinct definitions."""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(SCOPED_NAMED_TYPES_RDL))
+        root = rdl.elaborate()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Pybind11Exporter().export(root.top, tmpdir, soc_name="scoped_types_soc")
+            stubs = open(os.path.join(tmpdir, "scoped_types_soc", "__init__.pyi"), encoding="utf-8").read()
+
+        tree = ast.parse(stubs)
+        classes = [statement for statement in tree.body if isinstance(statement, ast.ClassDef)]
+        rr_protocols = [cls for cls in classes if cls.name.startswith("Rr")]
+        assert len(rr_protocols) == 2
+        properties = {
+            cls.name: {
+                member.name
+                for member in cls.body
+                if isinstance(member, ast.FunctionDef)
+                and any(isinstance(d, ast.Name) and d.id == "property" for d in member.decorator_list)
+            }
+            for cls in rr_protocols
+        }
+        assert {frozenset(names) for names in properties.values()} == {frozenset({"f"}), frozenset({"g"})}
+
+    def test_named_type_protocols_do_not_shadow_stub_symbols(self):
+        """Generated protocol names avoid public/imported stub identifiers."""
+        rdl = RDLCompiler()
+        rdl.compile_file(self._write_rdl(COLLIDING_NAMED_TYPES_RDL))
+        root = rdl.elaborate()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Pybind11Exporter().export(root.top, tmpdir, soc_name="collision_soc")
+            stubs = open(os.path.join(tmpdir, "collision_soc", "__init__.pyi"), encoding="utf-8").read()
+
+        tree = ast.parse(stubs)
+        names = [statement.name for statement in tree.body if isinstance(statement, ast.ClassDef)]
+        assert names.count("Range") == 1
+        assert "Range2" in names
     
     def test_generated_header_content(self):
         """Test that generated header contains expected content"""

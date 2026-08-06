@@ -137,6 +137,42 @@ _RESERVED_WORDS: frozenset[str] = frozenset(
     }
 )
 
+# Public/imported identifiers emitted by ``stubs.pyi.jinja``. Named RDL
+# protocols share that module namespace, so their generated names must never
+# shadow these declarations.
+_STUB_RESERVED_NAMES: frozenset[str] = frozenset(
+    {
+        "AccessOp",
+        "Annotated",
+        "Callable",
+        "CallbackMaster",
+        "FieldBase",
+        "FieldInt",
+        "IntEnum",
+        "Iterator",
+        "Literal",
+        "Master",
+        "MmapMaster",
+        "MockMaster",
+        "NodeBase",
+        "Protocol",
+        "Range",
+        "RegisterBase",
+        "RegisterInt",
+        "RegisterIntEnum",
+        "RegisterIntFlag",
+        "RegisterWriteOnlyContext",
+        "Sequence",
+        "Transaction",
+        "TypedDict",
+        "Unpack",
+        "create",
+        "overload",
+    }
+)
+
+NamedTypeKey = tuple[str, int, str]
+
 
 class RegArrayInfo(TypedDict):
     """Metadata for an arrayed RDL register (Phase 1 of Tier 3 array support).
@@ -375,7 +411,7 @@ class Pybind11Exporter:
         # default — undeclared UDPs continue to fall back to ``Any`` on
         # the stub side and the permissive ``TagsNamespace`` at runtime.
         self._udp_type_map: dict[str, str] = {}
-        self._named_type_names: dict[tuple[str, str], str] = {}
+        self._named_type_names: dict[NamedTypeKey, str] = {}
 
         # Discover sibling-unit exporter plugins. Each plugin's
         # ``register(self)`` runs immediately so it can install Jinja
@@ -614,7 +650,7 @@ class Pybind11Exporter:
         return result
 
     @staticmethod
-    def _named_type_key(node: Node) -> tuple[str, str] | None:
+    def _named_type_key(node: Node) -> NamedTypeKey | None:
         """Return an addressable node's compiler-provided named-type key."""
         if not isinstance(node, (RegNode, RegfileNode, AddrmapNode)):
             return None
@@ -628,7 +664,13 @@ class Pybind11Exporter:
             kind = "regfile"
         else:
             kind = "addrmap"
-        return kind, str(type_name)
+        # ``type_name`` alone is scoped in SystemRDL, so unrelated local
+        # definitions can legitimately reuse it. The compiler's original
+        # definition object gives us the required per-compilation identity;
+        # keep the elaborated name too so parameter-specialized definitions
+        # remain distinct when the compiler provides a normalized name.
+        definition = getattr(node.inst, "original_def", node.inst)
+        return kind, id(definition), str(type_name)
 
     def _named_type_for_node(self, node: Node) -> str | None:
         """Jinja filter returning the generated protocol name for *node*."""
@@ -637,8 +679,8 @@ class Pybind11Exporter:
 
     def _finalize_named_types(self, nodes: Nodes) -> None:
         """Deduplicate named definitions and allocate collision-free Python names."""
-        seen: set[tuple[str, str]] = set()
-        used_names: set[str] = set()
+        seen: set[NamedTypeKey] = set()
+        used_names = set(_STUB_RESERVED_NAMES)
         self._named_type_names = {}
         for group in (nodes["addrmaps"], nodes["regfiles"], nodes["regs"]):
             for node in group:
@@ -646,7 +688,7 @@ class Pybind11Exporter:
                 if key is None or key in seen:
                     continue
                 seen.add(key)
-                kind, effective_name = key
+                kind, _, effective_name = key
                 declared_name = str(getattr(node, "orig_type_name", effective_name))
                 base_name = self._python_type_name(effective_name)
                 python_name = base_name

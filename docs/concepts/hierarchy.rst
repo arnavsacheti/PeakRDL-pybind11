@@ -105,11 +105,11 @@ not a single generated C++ wrapper class. Both instances satisfy it even
 though they have distinct paths and addresses. Named child definitions are
 also emitted as protocols, so nested access remains typed.
 
-The exporter groups types by component kind and the compiler-provided
-elaborated type name. This is a reuse key, not a complete interface
-fingerprint: generated protocols currently reflect the representative
-elaborated instance's visible children and fields. Anonymous definitions do
-not receive a reusable protocol.
+The exporter groups types by the compiler-resolved component definition, so
+same-named definitions in different RDL scopes remain distinct. The
+compiler-provided elaborated name is retained for display; it is not used as
+the sole identity key. Anonymous definitions do not receive a reusable
+protocol.
 
 .. code-block:: python
 

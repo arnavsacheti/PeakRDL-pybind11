@@ -618,16 +618,10 @@ def enrich_stubs(stubs_path: Path, regs: Iterable[RegNode], pybind_name_for: Cal
 
     block_lines: list[str] = [
         _STUBS_BEGIN,
-        "from typing import Annotated, Literal, TypedDict",
-        "try:",
-        "    from typing import Unpack  # type: ignore[attr-defined]",
-        "except ImportError:  # pragma: no cover - Python < 3.11",
-        "    from typing_extensions import Unpack",
-        "",
-        "class Range:",
-        '    """Marker used inside ``Annotated[int, Range(low, high)]``."""',
-        "    def __init__(self, low: int, high: int) -> None: ...",
-        "",
+        # The base stub template already exports these typing helpers and the
+        # ``Range`` marker. Re-declaring them here used to create duplicate
+        # public symbols and could overwrite a named RDL protocol emitted by
+        # the main generator.
     ]
     block_lines.extend(typed_dicts)
     block_lines.extend(overloads)

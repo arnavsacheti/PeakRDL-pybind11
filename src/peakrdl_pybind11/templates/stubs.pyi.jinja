@@ -642,17 +642,47 @@ class {{ soc_name }}_t(NodeBase):
 # *types*, not one address-specific generated wrapper class. Any instance
 # from the same compiler-provided named definition satisfies the protocol, so callers
 # can write ``def configure_channel(channel: ChannelRegs) -> None``.
-{% for named_type in nodes.named_types %}
-class {{ named_type.python_name }}(Protocol):
-    """Named SystemRDL {{ named_type.kind }} definition ``{{ named_type.declared_name }}``.
+class _NamedRegisterProtocol(Protocol):
+    """Path-independent structural surface shared by named registers."""
 
-    Compiler-provided elaborated type name: ``{{ named_type.effective_name }}``.
-    """
     @property
     def name(self) -> str: ...
 
     @property
     def offset(self) -> int: ...
+
+    @property
+    def width(self) -> int: ...
+
+    @overload
+    def read(self) -> RegisterInt: ...
+
+    @overload
+    def read(self, *, raw: Literal[True]) -> int: ...
+
+    @overload
+    def read(self, *, raw: Literal[False] = ...) -> RegisterInt: ...
+
+    def write(self, value: int, *, raw: bool = ...) -> None: ...
+    def modify(self, value: int, mask: int) -> None: ...
+    def __enter__(self) -> RegisterBase: ...
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
+    def write_only(self) -> RegisterWriteOnlyContext: ...
+    def write_fields(self, **kwargs: int) -> None: ...
+
+{% for named_type in nodes.named_types %}
+class {{ named_type.python_name }}({{ '_NamedRegisterProtocol, Protocol' if named_type.kind == 'reg' else 'Protocol' }}):
+    """Named SystemRDL {{ named_type.kind }} definition ``{{ named_type.declared_name }}``.
+
+    Compiler-provided elaborated type name: ``{{ named_type.effective_name }}``.
+    """
+    {% if named_type.kind != 'reg' %}
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def offset(self) -> int: ...
+    {% endif %}
 
     {% set _children = named_type.node.children() | list if named_type.kind != 'reg' else [] %}
     {% if named_type.kind == 'reg' %}
