@@ -321,6 +321,7 @@ class {{ reg | pybind_name }}__{{ field.inst_name | safe_id }}_e(IntEnum):
 # ``total=False`` so callers may pass any subset of fields. Emitted at
 # module scope so each ``<reg>_t.write_fields`` can reference its own
 # ``Unpack[_<reg>_Fields]`` signature below.
+# __PEAKRDL_NATIVE_WRITE_FIELDS_STUBS__
 {% for reg in nodes.regs %}
 {% set _reg_fields = reg.fields() | list %}
 {% if _reg_fields %}
@@ -418,8 +419,8 @@ class {{ regfile | pybind_name }}_t(NodeBase):
 
     {% for child in regfile.children() %}
     {% if child.inst_name %}
-    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
-    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}{{ _child_suffix }}
+    {% set _child_type = ((child | pybind_name) ~ '_array_t') if child.is_array else ((child | named_type) or ((child | pybind_name) ~ '_t')) %}
+    {{ child.inst_name | safe_id }}: {{ _child_type }}
     {% endif %}
     {% endfor %}
 
@@ -434,8 +435,8 @@ class {{ addrmap | pybind_name }}_t(NodeBase):
 
     {% for child in addrmap.children() %}
     {% if child.inst_name %}
-    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
-    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}{{ _child_suffix }}
+    {% set _child_type = ((child | pybind_name) ~ '_array_t') if child.is_array else ((child | named_type) or ((child | pybind_name) ~ '_t')) %}
+    {{ child.inst_name | safe_id }}: {{ _child_type }}
     {% endif %}
     {% endfor %}
 
@@ -632,10 +633,77 @@ class {{ soc_name }}_t(NodeBase):
 
     {% for child in top_node.children() %}
     {% if child.inst_name %}
-    {% set _child_suffix = '_array_t' if child.is_array else '_t' %}
-    {{ child.inst_name | safe_id }}: {{ child | pybind_name }}{{ _child_suffix }}
+    {% set _child_type = ((child | pybind_name) ~ '_array_t') if child.is_array else ((child | named_type) or ((child | pybind_name) ~ '_t')) %}
+    {{ child.inst_name | safe_id }}: {{ _child_type }}
     {% endif %}
     {% endfor %}
+
+{% if nodes.named_types %}
+# Named SystemRDL definition protocols. These describe reusable component
+# *types*, not one address-specific generated wrapper class. Any instance
+# from the same compiler-provided named definition satisfies the protocol, so callers
+# can write ``def configure_channel(channel: ChannelRegs) -> None``.
+class _NamedRegisterProtocol(Protocol):
+    """Path-independent structural surface shared by named registers."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def offset(self) -> int: ...
+
+    @property
+    def width(self) -> int: ...
+
+    @overload
+    def read(self) -> RegisterInt: ...
+
+    @overload
+    def read(self, *, raw: Literal[True]) -> int: ...
+
+    @overload
+    def read(self, *, raw: Literal[False] = ...) -> RegisterInt: ...
+
+    def write(self, value: int, *, raw: bool = ...) -> None: ...
+    def modify(self, value: int, mask: int) -> None: ...
+    def __enter__(self) -> RegisterBase: ...
+    def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
+    def write_only(self) -> RegisterWriteOnlyContext: ...
+
+{% for named_type in nodes.named_types %}
+class {{ named_type.python_name }}({{ '_NamedRegisterProtocol, Protocol' if named_type.kind == 'reg' else 'Protocol' }}):
+    """Named SystemRDL {{ named_type.kind }} definition ``{{ named_type.declared_name }}``.
+
+    Compiler-provided elaborated type name: ``{{ named_type.effective_name }}``.
+    """
+    {% if named_type.kind != 'reg' %}
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def offset(self) -> int: ...
+    {% endif %}
+
+    {% set _children = named_type.node.children() | list if named_type.kind != 'reg' else [] %}
+    {% if named_type.kind == 'reg' %}
+    {% for field in named_type.node.fields() %}
+    @property
+    def {{ field.inst_name | safe_id }}(self) -> FieldBase: ...
+    {% endfor %}
+    {% elif _children %}
+    {% for child in _children %}
+    {% if child.inst_name %}
+    {% set _child_type = ((child | pybind_name) ~ '_array_t') if child.is_array else ((child | named_type) or ((child | pybind_name) ~ '_t')) %}
+    @property
+    def {{ child.inst_name | safe_id }}(self) -> {{ _child_type }}: ...
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    pass
+    {% endif %}
+
+{% endfor %}
+{% endif %}
 
 def create() -> {{ soc_name }}_t:
     """Create a new instance of the {{ soc_name }} register map"""

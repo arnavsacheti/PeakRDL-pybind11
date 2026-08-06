@@ -172,6 +172,7 @@ class TestStubUDPNamespace:
             )
             env.filters["pybind_name"] = exporter._pybind_name_from_node
             env.filters["safe_id"] = exporter._sanitize_identifier
+            env.filters["named_type"] = exporter._named_type_for_node
             env.filters["members"] = exporter._members_for_node
             env.filters["field_encode_members"] = exporter._field_encode_members_for_node
             template = env.get_template("stubs.pyi.jinja")
