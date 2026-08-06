@@ -534,6 +534,7 @@ def build_schema(top_node: AddrmapNode) -> dict[str, Any]:
 # our additions instead of stacking duplicates.
 _STUBS_BEGIN = "# --- BEGIN feature_detection ----------------------------------------"
 _STUBS_END = "# --- END   feature_detection ----------------------------------------"
+_NATIVE_WRITE_FIELDS_STUB_MARKER = "# __PEAKRDL_NATIVE_WRITE_FIELDS_STUBS__"
 
 
 def _typed_dict_block_for_reg(reg: RegNode, pybind_name: str) -> str:
@@ -583,6 +584,12 @@ def enrich_stubs(stubs_path: Path, regs: Iterable[RegNode], pybind_name_for: Cal
         return
 
     text = stubs_path.read_text(encoding="utf-8")
+    # Current exporter stubs own the typed ``write_fields`` declarations.
+    # Retain this fallback only for legacy/custom templates that do not emit
+    # the marker; appending the old block to a current stub duplicates every
+    # TypedDict and concrete register declaration.
+    if _NATIVE_WRITE_FIELDS_STUB_MARKER in text:
+        return
     text = _strip_existing_block(text)
 
     # Build the block: imports + per-register TypedDicts + injected

@@ -237,6 +237,13 @@ class TestExporter:
         assert property_returns("ChannelCtrl")["enable"] == "FieldBase"
         assert "def read(self) -> RegisterInt:" in stubs
         assert "def write(self, value: int, *, raw: bool = ...) -> None:" in stubs
+        register_protocol_methods = {
+            statement.name
+            for statement in classes["_NamedRegisterProtocol"].body
+            if isinstance(statement, ast.FunctionDef)
+        }
+        assert {"read", "write", "modify", "write_only"} <= register_protocol_methods
+        assert "write_fields" not in register_protocol_methods
         assert "channel_a: ChannelRegs" in stubs
         assert "channel_b: ChannelRegs" in stubs
         # Array members retain their existing wrapper surface, rather than
@@ -244,6 +251,8 @@ class TestExporter:
         named_soc_properties = property_returns("NamedTypesSoc")
         assert re.fullmatch(r"\w+_array_t", named_soc_properties["channels"])
         assert named_soc_properties["channels"] != "ChannelRegs"
+        typed_dict_names = [name for name in classes if name.endswith("_Fields")]
+        assert len(typed_dict_names) == len(set(typed_dict_names))
         # The generated stub itself must remain valid Python syntax.
         ast.parse(stubs)
 

@@ -321,6 +321,7 @@ class {{ reg | pybind_name }}__{{ field.inst_name | safe_id }}_e(IntEnum):
 # ``total=False`` so callers may pass any subset of fields. Emitted at
 # module scope so each ``<reg>_t.write_fields`` can reference its own
 # ``Unpack[_<reg>_Fields]`` signature below.
+# __PEAKRDL_NATIVE_WRITE_FIELDS_STUBS__
 {% for reg in nodes.regs %}
 {% set _reg_fields = reg.fields() | list %}
 {% if _reg_fields %}
@@ -668,7 +669,6 @@ class _NamedRegisterProtocol(Protocol):
     def __enter__(self) -> RegisterBase: ...
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
     def write_only(self) -> RegisterWriteOnlyContext: ...
-    def write_fields(self, **kwargs: int) -> None: ...
 
 {% for named_type in nodes.named_types %}
 class {{ named_type.python_name }}({{ '_NamedRegisterProtocol, Protocol' if named_type.kind == 'reg' else 'Protocol' }}):
