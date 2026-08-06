@@ -94,6 +94,7 @@ in one place -- is available as a single document.
 
    installation
    usage
+   performance_evolution
    feature_matrix
 
 .. toctree::

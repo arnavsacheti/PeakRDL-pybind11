@@ -60,6 +60,9 @@ peakrdl_pybind11 = ["templates/*.jinja", "templates/**/*.jinja"]
 [tool.pytest.ini_options]
 markers = [
     "integration: tests that build a generated SoC module via cmake (slow; needs a C++ toolchain)",
+    "scaling: exporter scaling and region-coverage tests",
+    "slow: tests that perform expensive generation or native builds",
+    "stress: multi-GiB stress tests that require explicit opt-in",
 ]
 
 # ---------------------- RUFF ----------------------

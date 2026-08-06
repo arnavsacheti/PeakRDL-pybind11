@@ -22,6 +22,58 @@ The benchmarks use four complexity levels:
 
 ## Running Benchmarks
 
+### 100k+ register-map envelope
+
+The synthetic scale-envelope runner covers the full range through 100,001
+unique registers / 500,005 fields.  It validates every node and the contiguous
+address region before measuring compile, export, memory, and source size:
+
+```bash
+uv run python benchmarks/benchmark_scale_envelope.py
+```
+
+The upper point creates roughly 3 GiB of temporary generated source and peaks
+near 7 GiB RSS on the reference machine.  Wheel builds are disabled by default;
+set a bounded build ceiling explicitly:
+
+```bash
+uv run --group benchmark --with scikit-build-core==0.10.7 --with ninja \
+  python benchmarks/benchmark_scale_envelope.py --build-max-registers 1000
+```
+
+To run the pytest-wrapped 100k structural/export stress assertion:
+
+```bash
+PEAKRDL_RUN_100K_STRESS=1 uv run --group benchmark \
+  pytest benchmarks/test_scale_envelope.py -m stress
+```
+
+Checked-in results are in `results/scale_envelope.json`; the rendered plot is
+documented on the Sphinx **Performance evolution** page.
+
+### Sparse address ranges through 2 TiB
+
+Use `--max-address` to distribute the same register shapes evenly over a sparse
+region. This checked-in run reaches the exact `0x200_0000_0000` (2 TiB)
+endpoint and verifies every register address:
+
+```bash
+uv run python benchmarks/benchmark_scale_envelope.py \
+  --sizes 1000 10000 100001 \
+  --max-address 0x200_0000_0000 \
+  --output benchmarks/results/sparse_scale_envelope.json
+```
+
+At 100,001 registers / 500,005 fields, only 400,004 bytes are occupied within
+the 2 TiB + 4-byte inclusive region. Generation time, peak RSS, source size,
+and binding-chunk count remain close to the contiguous result, showing that
+the exporter scales with populated nodes rather than the size of the address
+holes. This benchmark covers generation and address validation; it does not
+allocate a contiguous 2 TiB runtime backing or build the 100k-register wheel.
+
+Checked-in sparse results are in `results/sparse_scale_envelope.json`; the
+contiguous/sparse comparison is on the Sphinx **Performance evolution** page.
+
 ### Basic Usage
 
 Run all benchmarks:

@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 570" role="img" aria-labelledby="title description">
+<title id="title">Contiguous versus sparse address scaling through a 2 TiB span</title>
+<desc id="description">Three line charts compare export time, peak resident memory, and generated source size for contiguous layouts and layouts spread from zero through two tebibytes.</desc>
+<style>
+            :root { color-scheme: light dark; }
+            .panel-title, .value-label, .legend { fill: #172033; }
+            .panel-title { font: 600 14px system-ui, sans-serif; }
+            .unit, .tick { fill: #5d6678; font: 11px system-ui, sans-serif; }
+            .legend, .value-label { font: 11px system-ui, sans-serif; }
+            .grid { stroke: #d9dde6; stroke-width: 1; }
+            .axis { stroke: #838b9b; stroke-width: 1; }
+            .series { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+            .point { stroke-width: 2; }
+            .series-a { stroke: #2563eb; }
+            .series-b { stroke: #c2410c; }
+            .point.series-a { fill: #2563eb; }
+            .point.series-b { fill: #c2410c; }
+            @media (prefers-color-scheme: dark) {
+                .panel-title, .value-label, .legend { fill: #ecf0f7; }
+                .unit, .tick { fill: #aab2c2; }
+                .grid { stroke: #3b4352; }
+                .axis { stroke: #7d8799; }
+                .series-a { stroke: #60a5fa; }
+                .series-b { stroke: #fb923c; }
+                .point.series-a { fill: #60a5fa; }
+                .point.series-b { fill: #fb923c; }
+            }
+        </style>
+<g class="panel" aria-label="Source export time">
+<text class="panel-title" x="20.0" y="28.0">Source export time</text>
+<text class="unit" x="900.0" y="28.0" text-anchor="end">seconds</text>
+<line class="grid" x1="74.0" y1="234.0" x2="886.0" y2="234.0"/>
+<text class="tick" x="66.0" y="238.0" text-anchor="end">0</text>
+<line class="grid" x1="74.0" y1="186.0" x2="886.0" y2="186.0"/>
+<text class="tick" x="66.0" y="190.0" text-anchor="end">12</text>
+<line class="grid" x1="74.0" y1="138.0" x2="886.0" y2="138.0"/>
+<text class="tick" x="66.0" y="142.0" text-anchor="end">25</text>
+<line class="grid" x1="74.0" y1="90.0" x2="886.0" y2="90.0"/>
+<text class="tick" x="66.0" y="94.0" text-anchor="end">38</text>
+<line class="grid" x1="74.0" y1="42.0" x2="886.0" y2="42.0"/>
+<text class="tick" x="66.0" y="46.0" text-anchor="end">50</text>
+<line class="axis" x1="74.0" y1="234.0" x2="886.0" y2="234.0"/>
+<text class="tick" x="74.0" y="256.0" text-anchor="middle">1k</text>
+<text class="tick" x="480.0" y="256.0" text-anchor="middle">10k</text>
+<text class="tick" x="886.0" y="256.0" text-anchor="middle">100k+</text>
+<polyline class="series series-a" points="74.0,232.1 480.0,217.5 886.0,63.9" aria-label="Contiguous"/>
+<circle class="point series-a" cx="74.0" cy="232.1" r="3.5"/>
+<circle class="point series-a" cx="480.0" cy="217.5" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="63.9" r="3.5"/>
+<text class="value-label" x="882.0" y="54.9" text-anchor="end">44</text>
+<polyline class="series series-b" points="74.0,232.2 480.0,217.5 886.0,65.2" aria-label="Sparse through 2 TiB"/>
+<circle class="point series-b" cx="74.0" cy="232.2" r="3.5"/>
+<circle class="point series-b" cx="480.0" cy="217.5" r="3.5"/>
+<circle class="point series-b" cx="886.0" cy="65.2" r="3.5"/>
+<text class="value-label" x="882.0" y="81.2" text-anchor="end">44</text>
+<line class="series series-a" x1="81.0" y1="52.0" x2="99.0" y2="52.0"/>
+<text class="legend" x="106.0" y="56.0">Contiguous</text>
+<line class="series series-b" x1="81.0" y1="70.0" x2="99.0" y2="70.0"/>
+<text class="legend" x="106.0" y="74.0">Sparse through 2 TiB</text>
+</g>
+<g class="panel" aria-label="Generation peak memory">
+<text class="panel-title" x="20.0" y="304.0">Generation peak memory</text>
+<text class="unit" x="450.0" y="304.0" text-anchor="end">GiB RSS</text>
+<line class="grid" x1="74.0" y1="510.0" x2="436.0" y2="510.0"/>
+<text class="tick" x="66.0" y="514.0" text-anchor="end">0</text>
+<line class="grid" x1="74.0" y1="462.0" x2="436.0" y2="462.0"/>
+<text class="tick" x="66.0" y="466.0" text-anchor="end">2.5</text>
+<line class="grid" x1="74.0" y1="414.0" x2="436.0" y2="414.0"/>
+<text class="tick" x="66.0" y="418.0" text-anchor="end">5</text>
+<line class="grid" x1="74.0" y1="366.0" x2="436.0" y2="366.0"/>
+<text class="tick" x="66.0" y="370.0" text-anchor="end">7.5</text>
+<line class="grid" x1="74.0" y1="318.0" x2="436.0" y2="318.0"/>
+<text class="tick" x="66.0" y="322.0" text-anchor="end">10</text>
+<line class="axis" x1="74.0" y1="510.0" x2="436.0" y2="510.0"/>
+<text class="tick" x="74.0" y="532.0" text-anchor="middle">1k</text>
+<text class="tick" x="255.0" y="532.0" text-anchor="middle">10k</text>
+<text class="tick" x="436.0" y="532.0" text-anchor="middle">100k+</text>
+<polyline class="series series-a" points="74.0,507.5 255.0,493.0 436.0,384.0" aria-label="Contiguous"/>
+<circle class="point series-a" cx="74.0" cy="507.5" r="3.5"/>
+<circle class="point series-a" cx="255.0" cy="493.0" r="3.5"/>
+<circle class="point series-a" cx="436.0" cy="384.0" r="3.5"/>
+<text class="value-label" x="432.0" y="400.0" text-anchor="end">6.6</text>
+<polyline class="series series-b" points="74.0,507.5 255.0,492.9 436.0,377.4" aria-label="Sparse through 2 TiB"/>
+<circle class="point series-b" cx="74.0" cy="507.5" r="3.5"/>
+<circle class="point series-b" cx="255.0" cy="492.9" r="3.5"/>
+<circle class="point series-b" cx="436.0" cy="377.4" r="3.5"/>
+<text class="value-label" x="432.0" y="368.4" text-anchor="end">6.9</text>
+<line class="series series-a" x1="81.0" y1="328.0" x2="99.0" y2="328.0"/>
+<text class="legend" x="106.0" y="332.0">Contiguous</text>
+<line class="series series-b" x1="81.0" y1="346.0" x2="99.0" y2="346.0"/>
+<text class="legend" x="106.0" y="350.0">Sparse through 2 TiB</text>
+</g>
+<g class="panel" aria-label="Generated source footprint">
+<text class="panel-title" x="470.0" y="304.0">Generated source footprint</text>
+<text class="unit" x="900.0" y="304.0" text-anchor="end">GiB</text>
+<line class="grid" x1="524.0" y1="510.0" x2="886.0" y2="510.0"/>
+<text class="tick" x="516.0" y="514.0" text-anchor="end">0</text>
+<line class="grid" x1="524.0" y1="462.0" x2="886.0" y2="462.0"/>
+<text class="tick" x="516.0" y="466.0" text-anchor="end">1.2</text>
+<line class="grid" x1="524.0" y1="414.0" x2="886.0" y2="414.0"/>
+<text class="tick" x="516.0" y="418.0" text-anchor="end">2.5</text>
+<line class="grid" x1="524.0" y1="366.0" x2="886.0" y2="366.0"/>
+<text class="tick" x="516.0" y="370.0" text-anchor="end">3.8</text>
+<line class="grid" x1="524.0" y1="318.0" x2="886.0" y2="318.0"/>
+<text class="tick" x="516.0" y="322.0" text-anchor="end">5</text>
+<line class="axis" x1="524.0" y1="510.0" x2="886.0" y2="510.0"/>
+<text class="tick" x="524.0" y="532.0" text-anchor="middle">1k</text>
+<text class="tick" x="705.0" y="532.0" text-anchor="middle">10k</text>
+<text class="tick" x="886.0" y="532.0" text-anchor="middle">100k+</text>
+<polyline class="series series-a" points="524.0,508.8 705.0,498.5 886.0,395.0" aria-label="Contiguous"/>
+<circle class="point series-a" cx="524.0" cy="508.8" r="3.5"/>
+<circle class="point series-a" cx="705.0" cy="498.5" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="395.0" r="3.5"/>
+<text class="value-label" x="882.0" y="411.0" text-anchor="end">3</text>
+<polyline class="series series-b" points="524.0,508.8 705.0,498.5 886.0,394.9" aria-label="Sparse through 2 TiB"/>
+<circle class="point series-b" cx="524.0" cy="508.8" r="3.5"/>
+<circle class="point series-b" cx="705.0" cy="498.5" r="3.5"/>
+<circle class="point series-b" cx="886.0" cy="394.9" r="3.5"/>
+<text class="value-label" x="882.0" y="385.9" text-anchor="end">3</text>
+<line class="series series-a" x1="531.0" y1="328.0" x2="549.0" y2="328.0"/>
+<text class="legend" x="556.0" y="332.0">Contiguous</text>
+<line class="series series-b" x1="531.0" y1="346.0" x2="549.0" y2="346.0"/>
+<text class="legend" x="556.0" y="350.0">Sparse through 2 TiB</text>
+</g>
+</svg>

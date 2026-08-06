@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-08-06T21:21:10.566932+00:00",
+  "benchmark": {
+    "design": "benchmarks/rdl_files/simple.rdl",
+    "design_sha256": "091c3dd95738fd1ea511a122ac2d382ab0805f4d87d930601abd2ed27df5f498",
+    "registers": 3,
+    "generation_rounds": 7,
+    "runtime_rounds": 7,
+    "runtime_operations_per_round": 20000
+  },
+  "environment": {
+    "system": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M3 Max",
+    "python": "3.13.2",
+    "compiler": "Clang 19.1.6 ",
+    "cmake": "cmake version 4.3.3",
+    "pybind11": "3.0.4",
+    "scikit_build_core": "0.10.7",
+    "ninja": "1.13.0.git.kitware.jobserver-pipe-1"
+  },
+  "releases": [
+    {
+      "ref": "v0.2.0",
+      "generation_ms": 24.889916996471584,
+      "build_s": 5.411133875022642,
+      "read_us": 0.32878960482776165,
+      "write_us": 0.3264333005063236,
+      "source_kib": 24.6328125,
+      "wheel_kib": 99.974609375,
+      "generation_peak_rss_mib": 44.953125,
+      "build_peak_rss_mib": 350.328125,
+      "commit": "731fdb158fb21142c09ff197bb079948bbcdbb83",
+      "commit_date": "2025-10-25"
+    },
+    {
+      "ref": "v0.4.0",
+      "generation_ms": 22.751416079699993,
+      "build_s": 5.366848374949768,
+      "read_us": 6.623470853082836,
+      "write_us": 0.3979666973464191,
+      "source_kib": 30.087890625,
+      "wheel_kib": 104.1259765625,
+      "generation_peak_rss_mib": 45.5,
+      "build_peak_rss_mib": 354.125,
+      "commit": "f9cc2cd9d5f00f3c4f5d5067a0db4a7b5e51b3bf",
+      "commit_date": "2025-10-27"
+    },
+    {
+      "ref": "v0.5.0",
+      "generation_ms": 33.80845801439136,
+      "build_s": 5.339650750043802,
+      "read_us": 1.6251729510258883,
+      "write_us": 0.5448603944387287,
+      "source_kib": 31.93359375,
+      "wheel_kib": 104.119140625,
+      "generation_peak_rss_mib": 45.640625,
+      "build_peak_rss_mib": 354.03125,
+      "commit": "c385a6dbd89fee186647bc983208ade96985eefe",
+      "commit_date": "2026-04-25"
+    },
+    {
+      "ref": "v0.6.0",
+      "generation_ms": 35.09912500157952,
+      "build_s": 5.037591540953144,
+      "read_us": 1.6713167016860098,
+      "write_us": 0.6062416534405202,
+      "source_kib": 48.6533203125,
+      "wheel_kib": 117.921875,
+      "generation_peak_rss_mib": 45.390625,
+      "build_peak_rss_mib": 462.9375,
+      "commit": "e051aed3e03cd9b7b0b4690b12d94671b3d94dfb",
+      "commit_date": "2026-04-26"
+    },
+    {
+      "ref": "v0.7.0",
+      "generation_ms": 43.44629100523889,
+      "build_s": 5.536609917064197,
+      "read_us": 2.5293521001003683,
+      "write_us": 1.0776812501717359,
+      "source_kib": 89.0673828125,
+      "wheel_kib": 137.1875,
+      "generation_peak_rss_mib": 46.90625,
+      "build_peak_rss_mib": 520.03125,
+      "commit": "444f5c36de5a8e708ce2cdbb44a9253413aecb62",
+      "commit_date": "2026-05-08"
+    },
+    {
+      "ref": "v0.8.5",
+      "generation_ms": 80.92537499032915,
+      "build_s": 5.5630237919976935,
+      "read_us": 2.325479203136638,
+      "write_us": 1.5444833494257182,
+      "source_kib": 122.54296875,
+      "wheel_kib": 139.2109375,
+      "generation_peak_rss_mib": 49.640625,
+      "build_peak_rss_mib": 526.6875,
+      "commit": "2c5a85613f0f42e2dd8f73f5997dc05aad9312c6",
+      "commit_date": "2026-05-19"
+    }
+  ]
+}
