@@ -589,6 +589,15 @@ def enrich_stubs(stubs_path: Path, regs: Iterable[RegNode], pybind_name_for: Cal
     # the marker; appending the old block to a current stub duplicates every
     # TypedDict and concrete register declaration.
     if _NATIVE_WRITE_FIELDS_STUB_MARKER in text:
+        text = _strip_existing_block(text)
+        block = "\n".join(
+            [
+                _STUBS_BEGIN,
+                "# Native stub template provides typed write_fields declarations.",
+                _STUBS_END,
+            ]
+        )
+        stubs_path.write_text(text.rstrip() + "\n\n" + block + "\n", encoding="utf-8")
         return
     text = _strip_existing_block(text)
 
