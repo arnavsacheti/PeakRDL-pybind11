@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import resource
+import zlib
 from pathlib import Path
 
 import pytest
 
+from . import benchmark_output_profiles
 from .benchmark_output_profiles import (
     KIND,
     SCHEMA_VERSION,
     _collect,
     _effective_output_config,
+    _output_metrics,
     _worker,
 )
 
@@ -103,6 +107,55 @@ def test_tiny_worker_records_manifest_and_all_size_metrics(
     assert point["peak_rss_mib"] > 0
 
 
+def test_output_metrics_streaming_deflate_matches_concatenated_proxy(tmp_path: Path) -> None:
+    package_dir = tmp_path / "example"
+    nested_dir = package_dir / "nested"
+    nested_dir.mkdir(parents=True)
+    files = {
+        package_dir / "__init__.py": b"from .nested import values\n",
+        nested_dir / "values.py": b"values = [1, 2, 3]\n" * 60_000,
+        nested_dir / "ignored.cpp": b"// not package text\n",
+    }
+    for path, content in files.items():
+        path.write_bytes(content)
+
+    expected = bytearray()
+    for path in sorted(path for path in files if path.suffix in {".py", ".pyi", ".json", ".toml"}):
+        expected.extend(path.relative_to(package_dir).as_posix().encode("utf-8"))
+        expected.extend(b"\0")
+        expected.extend(files[path])
+        expected.extend(b"\0")
+
+    metrics = _output_metrics(tmp_path, "example")
+
+    assert metrics["package_text_deflate_bytes_proxy"] == len(zlib.compress(expected, level=9))
+
+
+def test_worker_samples_generation_rss_before_output_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    def sample_peak_rss(usage: int) -> float:
+        assert usage == resource.RUSAGE_SELF
+        events.append("rss")
+        return 123.0
+
+    def collect_output_metrics(output_dir: Path, soc_name: str) -> dict[str, int]:
+        assert output_dir.is_dir()
+        assert soc_name == "output_profile_1"
+        events.append("metrics")
+        return {}
+
+    monkeypatch.setattr(benchmark_output_profiles, "_peak_rss_mib", sample_peak_rss)
+    monkeypatch.setattr(benchmark_output_profiles, "_output_metrics", collect_output_metrics)
+
+    point = _worker(1, "minimal", registers_per_block=1)
+
+    assert events == ["rss", "metrics"]
+    assert point["peak_rss_mib"] == 123.0
+
+
 def test_collection_writes_schema_v2_output_profile_matrix(tmp_path: Path) -> None:
     output = tmp_path / "matrix.json"
     payload = _collect([1], ["full", "minimal"], registers_per_block=1, build_max_registers=0, output=output)
@@ -117,6 +170,7 @@ def test_collection_writes_schema_v2_output_profile_matrix(tmp_path: Path) -> No
     assert benchmark["build_max_registers"] == 0
     assert benchmark["field_profile"]["id"] == "nibbles5"
     assert "not a wheel size" in benchmark["package_text_deflate_metric"]
+    assert "immediately after export" in benchmark["generation_peak_rss_metric"]
     assert len(benchmark["shape_sha256"]) == 64
     assert [item["id"] for item in benchmark["profiles"]] == ["full", "minimal"]
     assert benchmark["profiles"][1]["effective_output_config"] == _effective_output_config("minimal")

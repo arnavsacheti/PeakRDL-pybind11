@@ -68,6 +68,7 @@ DEFAULT_REGISTERS_PER_BLOCK = 256
 _CPP_SUFFIXES = (".cpp", ".hpp", ".h")
 _PYTHON_SUFFIXES = (".py", ".pyi")
 _TEXT_SUFFIXES = (".py", ".pyi", ".json", ".toml")
+_COMPRESSION_CHUNK_BYTES = 1024 * 1024
 _ROOT_MIRROR_FILENAMES = {
     "__init__.py",
     "__init__.pyi",
@@ -119,17 +120,25 @@ def _output_metrics(output_dir: Path, soc_name: str) -> dict[str, int]:
     }
     metrics.update({f"{name}_files": len(category) for name, category in categories.items()})
 
-    package_text = bytearray()
+    compressor = zlib.compressobj(level=9)
+    compressed_bytes = 0
+
+    def compress(data: bytes) -> None:
+        nonlocal compressed_bytes
+        compressed_bytes += len(compressor.compress(data))
+
     for path in sorted(categories["package"]):
         if path.suffix not in _TEXT_SUFFIXES:
             continue
         # Include names and separators, so two different package layouts do
         # not accidentally hash/compress as the same concatenated payload.
-        package_text.extend(path.relative_to(package_dir).as_posix().encode("utf-8"))
-        package_text.extend(b"\0")
-        package_text.extend(path.read_bytes())
-        package_text.extend(b"\0")
-    metrics["package_text_deflate_bytes_proxy"] = len(zlib.compress(bytes(package_text), level=9))
+        compress(path.relative_to(package_dir).as_posix().encode("utf-8"))
+        compress(b"\0")
+        with path.open("rb") as stream:
+            while chunk := stream.read(_COMPRESSION_CHUNK_BYTES):
+                compress(chunk)
+        compress(b"\0")
+    metrics["package_text_deflate_bytes_proxy"] = compressed_bytes + len(compressor.flush())
     return metrics
 
 
@@ -187,6 +196,7 @@ def _worker(
             split_by_hierarchy=True,
         )
         export_s = time.perf_counter() - started
+        generation_peak_rss_mib = _peak_rss_mib(resource.RUSAGE_SELF)
 
         result = {
             **region,
@@ -198,7 +208,7 @@ def _worker(
             "compile_s": compile_s,
             "validate_s": validate_s,
             "export_s": export_s,
-            "peak_rss_mib": _peak_rss_mib(resource.RUSAGE_SELF),
+            "peak_rss_mib": generation_peak_rss_mib,
             "manifest": _manifest(output_dir),
             "build_s": None,
             "build_peak_rss_mib": None,
@@ -274,6 +284,10 @@ def _collect(
         "profiles": [_profile_record(profile) for profile in profiles],
         "package_text_deflate_metric": (
             "package_text_deflate_bytes_proxy: deflate-compressed package text; not a wheel size"
+        ),
+        "generation_peak_rss_metric": (
+            "peak_rss_mib: process peak RSS sampled immediately after export and before output "
+            "metrics or an optional wheel build"
         ),
     }
     benchmark["shape_sha256"] = hashlib.sha256(json.dumps(benchmark, sort_keys=True).encode()).hexdigest()
