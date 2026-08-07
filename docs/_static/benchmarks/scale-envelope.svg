@@ -47,24 +47,24 @@
 <text class="tick" x="615.3" y="256.0" text-anchor="middle">50k</text>
 <text class="tick" x="750.7" y="256.0" text-anchor="middle">75k</text>
 <text class="tick" x="886.0" y="256.0" text-anchor="middle">100k+</text>
-<polyline class="series series-a" points="74.0,233.6 209.3,232.0 344.7,229.7 480.0,221.6 615.3,208.8 750.7,193.5 886.0,179.5" aria-label="Compile + elaborate"/>
+<polyline class="series series-a" points="74.0,233.6 209.3,232.1 344.7,229.8 480.0,221.8 615.3,208.9 750.7,193.6 886.0,179.6" aria-label="Compile + elaborate"/>
 <circle class="point series-a" cx="74.0" cy="233.6" r="3.5"/>
-<circle class="point series-a" cx="209.3" cy="232.0" r="3.5"/>
-<circle class="point series-a" cx="344.7" cy="229.7" r="3.5"/>
-<circle class="point series-a" cx="480.0" cy="221.6" r="3.5"/>
-<circle class="point series-a" cx="615.3" cy="208.8" r="3.5"/>
-<circle class="point series-a" cx="750.7" cy="193.5" r="3.5"/>
-<circle class="point series-a" cx="886.0" cy="179.5" r="3.5"/>
-<text class="value-label" x="882.0" y="195.5" text-anchor="end">14</text>
-<polyline class="series series-b" points="74.0,232.3 209.3,226.1 344.7,219.0 480.0,197.4 615.3,158.6 750.7,123.4 886.0,86.3" aria-label="Export"/>
-<circle class="point series-b" cx="74.0" cy="232.3" r="3.5"/>
-<circle class="point series-b" cx="209.3" cy="226.1" r="3.5"/>
-<circle class="point series-b" cx="344.7" cy="219.0" r="3.5"/>
-<circle class="point series-b" cx="480.0" cy="197.4" r="3.5"/>
+<circle class="point series-a" cx="209.3" cy="232.1" r="3.5"/>
+<circle class="point series-a" cx="344.7" cy="229.8" r="3.5"/>
+<circle class="point series-a" cx="480.0" cy="221.8" r="3.5"/>
+<circle class="point series-a" cx="615.3" cy="208.9" r="3.5"/>
+<circle class="point series-a" cx="750.7" cy="193.6" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="179.6" r="3.5"/>
+<text class="value-label" x="882.0" y="195.6" text-anchor="end">14</text>
+<polyline class="series series-b" points="74.0,232.2 209.3,226.2 344.7,219.2 480.0,197.9 615.3,158.6 750.7,121.2 886.0,89.1" aria-label="Export"/>
+<circle class="point series-b" cx="74.0" cy="232.2" r="3.5"/>
+<circle class="point series-b" cx="209.3" cy="226.2" r="3.5"/>
+<circle class="point series-b" cx="344.7" cy="219.2" r="3.5"/>
+<circle class="point series-b" cx="480.0" cy="197.9" r="3.5"/>
 <circle class="point series-b" cx="615.3" cy="158.6" r="3.5"/>
-<circle class="point series-b" cx="750.7" cy="123.4" r="3.5"/>
-<circle class="point series-b" cx="886.0" cy="86.3" r="3.5"/>
-<text class="value-label" x="882.0" y="77.3" text-anchor="end">38</text>
+<circle class="point series-b" cx="750.7" cy="121.2" r="3.5"/>
+<circle class="point series-b" cx="886.0" cy="89.1" r="3.5"/>
+<text class="value-label" x="882.0" y="80.1" text-anchor="end">38</text>
 <line class="series series-a" x1="81.0" y1="52.0" x2="99.0" y2="52.0"/>
 <text class="legend" x="106.0" y="56.0">Compile + elaborate</text>
 <line class="series series-b" x1="81.0" y1="70.0" x2="99.0" y2="70.0"/>
@@ -91,15 +91,15 @@
 <text class="tick" x="315.3" y="532.0" text-anchor="middle">50k</text>
 <text class="tick" x="375.7" y="532.0" text-anchor="middle">75k</text>
 <text class="tick" x="436.0" y="532.0" text-anchor="middle">100k+</text>
-<polyline class="series series-a" points="74.0,507.5 134.3,500.9 194.7,492.8 255.0,468.3 315.3,427.7 375.7,387.2 436.0,364.8" aria-label="Peak RSS"/>
+<polyline class="series series-a" points="74.0,507.5 134.3,500.9 194.7,492.8 255.0,468.3 315.3,427.7 375.7,401.5 436.0,359.8" aria-label="Peak RSS"/>
 <circle class="point series-a" cx="74.0" cy="507.5" r="3.5"/>
 <circle class="point series-a" cx="134.3" cy="500.9" r="3.5"/>
 <circle class="point series-a" cx="194.7" cy="492.8" r="3.5"/>
 <circle class="point series-a" cx="255.0" cy="468.3" r="3.5"/>
 <circle class="point series-a" cx="315.3" cy="427.7" r="3.5"/>
-<circle class="point series-a" cx="375.7" cy="387.2" r="3.5"/>
-<circle class="point series-a" cx="436.0" cy="364.8" r="3.5"/>
-<text class="value-label" x="432.0" y="355.8" text-anchor="end">7.6</text>
+<circle class="point series-a" cx="375.7" cy="401.5" r="3.5"/>
+<circle class="point series-a" cx="436.0" cy="359.8" r="3.5"/>
+<text class="value-label" x="432.0" y="350.8" text-anchor="end">7.8</text>
 </g>
 <g class="panel" aria-label="Generated source footprint">
 <text class="panel-title" x="470.0" y="304.0">Generated source footprint</text>

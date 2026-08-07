@@ -93,23 +93,23 @@
 <text class="tick" x="1116.0" y="324.0" text-anchor="middle">100</text>
 <line class="axis" x1="742.0" y1="302.0" x2="1116.0" y2="302.0"/>
 <text class="bar-label" x="732.0" y="82.3" text-anchor="end">word32</text>
-<rect class="bar profile-0" x="742.0" y="66.5" width="57.7" height="23.6" rx="2" aria-label="word32: 15 seconds"/>
-<text class="bar-value" x="805.7" y="82.3" text-anchor="start">15</text>
+<rect class="bar profile-0" x="742.0" y="66.5" width="51.1" height="23.6" rx="2" aria-label="word32: 14 seconds"/>
+<text class="bar-value" x="799.1" y="82.3" text-anchor="start">14</text>
 <text class="bar-label" x="732.0" y="123.0" text-anchor="end">bytes4</text>
-<rect class="bar profile-1" x="742.0" y="107.2" width="130.8" height="23.6" rx="2" aria-label="bytes4: 35 seconds"/>
-<text class="bar-value" x="878.8" y="123.0" text-anchor="start">35</text>
+<rect class="bar profile-1" x="742.0" y="107.2" width="119.7" height="23.6" rx="2" aria-label="bytes4: 32 seconds"/>
+<text class="bar-value" x="867.7" y="123.0" text-anchor="start">32</text>
 <text class="bar-label" x="732.0" y="163.7" text-anchor="end">mixed 1/8/4</text>
-<rect class="bar profile-2" x="742.0" y="147.9" width="144.6" height="23.6" rx="2" aria-label="mixed 1/8/4: 39 seconds"/>
-<text class="bar-value" x="892.6" y="163.7" text-anchor="start">39</text>
+<rect class="bar profile-2" x="742.0" y="147.9" width="128.7" height="23.6" rx="2" aria-label="mixed 1/8/4: 34 seconds"/>
+<text class="bar-value" x="876.7" y="163.7" text-anchor="start">34</text>
 <text class="bar-label" x="732.0" y="204.3" text-anchor="end">nibbles5</text>
-<rect class="bar profile-3" x="742.0" y="188.5" width="145.0" height="23.6" rx="2" aria-label="nibbles5: 39 seconds"/>
-<text class="bar-value" x="893.0" y="204.3" text-anchor="start">39</text>
+<rect class="bar profile-3" x="742.0" y="188.5" width="141.2" height="23.6" rx="2" aria-label="nibbles5: 38 seconds"/>
+<text class="bar-value" x="889.2" y="204.3" text-anchor="start">38</text>
 <text class="bar-label" x="732.0" y="245.0" text-anchor="end">flags8 packed</text>
-<rect class="bar profile-4" x="742.0" y="229.2" width="220.1" height="23.6" rx="2" aria-label="flags8 packed: 59 seconds"/>
-<text class="bar-value" x="968.1" y="245.0" text-anchor="start">59</text>
+<rect class="bar profile-4" x="742.0" y="229.2" width="212.2" height="23.6" rx="2" aria-label="flags8 packed: 57 seconds"/>
+<text class="bar-value" x="960.2" y="245.0" text-anchor="start">57</text>
 <text class="bar-label" x="732.0" y="285.7" text-anchor="end">flags8 spread</text>
-<rect class="bar profile-5" x="742.0" y="269.9" width="215.5" height="23.6" rx="2" aria-label="flags8 spread: 58 seconds"/>
-<text class="bar-value" x="963.5" y="285.7" text-anchor="start">58</text>
+<rect class="bar profile-5" x="742.0" y="269.9" width="208.4" height="23.6" rx="2" aria-label="flags8 spread: 56 seconds"/>
+<text class="bar-value" x="956.4" y="285.7" text-anchor="start">56</text>
 </g>
 <g class="panel" aria-label="Generation peak memory">
 <text class="panel-title" x="20.0" y="391.0">Generation peak memory</text>
@@ -126,23 +126,23 @@
 <text class="tick" x="536.0" y="680.0" text-anchor="middle">20000</text>
 <line class="axis" x1="162.0" y1="658.0" x2="536.0" y2="658.0"/>
 <text class="bar-label" x="152.0" y="438.3" text-anchor="end">word32</text>
-<rect class="bar profile-0" x="162.0" y="422.5" width="68.1" height="23.6" rx="2" aria-label="word32: 3643 MiB RSS"/>
-<text class="bar-value" x="236.1" y="438.3" text-anchor="start">3643</text>
+<rect class="bar profile-0" x="162.0" y="422.5" width="64.3" height="23.6" rx="2" aria-label="word32: 3437 MiB RSS"/>
+<text class="bar-value" x="232.3" y="438.3" text-anchor="start">3437</text>
 <text class="bar-label" x="152.0" y="479.0" text-anchor="end">bytes4</text>
-<rect class="bar profile-1" x="162.0" y="463.2" width="104.1" height="23.6" rx="2" aria-label="bytes4: 5566 MiB RSS"/>
-<text class="bar-value" x="272.1" y="479.0" text-anchor="start">5566</text>
+<rect class="bar profile-1" x="162.0" y="463.2" width="142.2" height="23.6" rx="2" aria-label="bytes4: 7603 MiB RSS"/>
+<text class="bar-value" x="310.2" y="479.0" text-anchor="start">7603</text>
 <text class="bar-label" x="152.0" y="519.7" text-anchor="end">mixed 1/8/4</text>
-<rect class="bar profile-2" x="162.0" y="503.9" width="137.0" height="23.6" rx="2" aria-label="mixed 1/8/4: 7327 MiB RSS"/>
-<text class="bar-value" x="305.0" y="519.7" text-anchor="start">7327</text>
+<rect class="bar profile-2" x="162.0" y="503.9" width="136.5" height="23.6" rx="2" aria-label="mixed 1/8/4: 7297 MiB RSS"/>
+<text class="bar-value" x="304.5" y="519.7" text-anchor="start">7297</text>
 <text class="bar-label" x="152.0" y="560.3" text-anchor="end">nibbles5</text>
-<rect class="bar profile-3" x="162.0" y="544.5" width="142.2" height="23.6" rx="2" aria-label="nibbles5: 7604 MiB RSS"/>
-<text class="bar-value" x="310.2" y="560.3" text-anchor="start">7604</text>
+<rect class="bar profile-3" x="162.0" y="544.5" width="157.1" height="23.6" rx="2" aria-label="nibbles5: 8402 MiB RSS"/>
+<text class="bar-value" x="325.1" y="560.3" text-anchor="start">8402</text>
 <text class="bar-label" x="152.0" y="601.0" text-anchor="end">flags8 packed</text>
-<rect class="bar profile-4" x="162.0" y="585.2" width="184.6" height="23.6" rx="2" aria-label="flags8 packed: 9874 MiB RSS"/>
-<text class="bar-value" x="352.6" y="601.0" text-anchor="start">9874</text>
+<rect class="bar profile-4" x="162.0" y="585.2" width="181.5" height="23.6" rx="2" aria-label="flags8 packed: 9705 MiB RSS"/>
+<text class="bar-value" x="349.5" y="601.0" text-anchor="start">9705</text>
 <text class="bar-label" x="152.0" y="641.7" text-anchor="end">flags8 spread</text>
-<rect class="bar profile-5" x="162.0" y="625.9" width="192.0" height="23.6" rx="2" aria-label="flags8 spread: 10265 MiB RSS"/>
-<text class="bar-value" x="360.0" y="641.7" text-anchor="start">10265</text>
+<rect class="bar profile-5" x="162.0" y="625.9" width="188.4" height="23.6" rx="2" aria-label="flags8 spread: 10073 MiB RSS"/>
+<text class="bar-value" x="356.4" y="641.7" text-anchor="start">10073</text>
 </g>
 <g class="panel" aria-label="Generated source footprint">
 <text class="panel-title" x="600.0" y="391.0">Generated source footprint</text>

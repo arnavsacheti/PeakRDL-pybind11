@@ -66,17 +66,17 @@ chunks.
    Current-exporter scaling over the entire contiguous synthetic address region.
 
 The upper point validates every node and every address from ``0x0`` through
-``0x61a80`` before recording a result.  Compile and elaboration take 14.197
-seconds, export takes 38.459 seconds, and full-region validation takes 0.655
+``0x61a80`` before recording a result.  Compile and elaboration take 14.158
+seconds, export takes 37.729 seconds, and full-region validation takes 0.635
 seconds.  The export emits 391 binding chunks and 2,634,020,286 bytes
-(2.453 GiB) of source while the worker peaks at 7,742.656 MiB (7.561 GiB) RSS.
+(2.453 GiB) of source while the worker peaks at 8,008.094 MiB (7.820 GiB) RSS.
 
 Native compilation is already the limiting stage well below that envelope.  A
-clean 1,000-register / 5,000-field control build takes 99.919 seconds, peaks at
-4,413.578 MiB RSS, and produces a 7,745,184-byte (7.386 MiB) wheel from
+clean 1,000-register / 5,000-field control build takes 104.487 seconds, peaks at
+4,462.703 MiB RSS, and produces a 7,745,184-byte (7.386 MiB) wheel from
 26,422,010 bytes of source, including 3,810,445 bytes of C++.  Relative to the
-previous checked result, build time fell from 420.981 to 99.919 seconds
-(76.27%), build peak RSS from 5,543.672 to 4,413.578 MiB (20.39%), wheel size
+previous checked result, build time fell from 420.981 to 104.487 seconds
+(75.18%), build peak RSS from 5,543.672 to 4,462.703 MiB (19.50%), wheel size
 from 12,338,130 to 7,745,184 bytes (37.23%), total source from 32,228,788 to
 26,422,010 bytes (18.02%), and C++ source from 8,672,155 to 3,810,445 bytes
 (56.06%).
@@ -124,11 +124,11 @@ width of regular fields, making the sweep useful for distinguishing the cost
 of a field-rich map from the cost of a sparse-looking bit layout.
 
 At 100,001 registers, ``word32`` contains 100,001 fields and emits
-915,002,710 bytes in 15.426 seconds while peaking at 3,642.766 MiB RSS.  The
+915,002,710 bytes in 13.660 seconds while peaking at 3,437.266 MiB RSS.  The
 two eight-flag profiles each contain 800,008 fields.  Packed flags emit
-4,030,934,597 bytes in 58.849 seconds and peak at 9,873.938 MiB; spread flags
-emit 4,037,434,662 bytes in 57.614 seconds and peak at 10,265.375 MiB.  Spread
-versus packed is therefore +0.16% source, -2.10% export time, and +3.96% peak
+4,030,934,597 bytes in 56.738 seconds and peak at 9,704.781 MiB; spread flags
+emit 4,037,434,662 bytes in 55.732 seconds and peak at 10,072.516 MiB.  Spread
+versus packed is therefore +0.16% source, -1.77% export time, and +3.79% peak
 RSS in this run.  Those small, mixed-direction differences should be read as
 similar cost, not evidence that either bit placement is intrinsically faster.
 
@@ -200,13 +200,13 @@ table.  Explicit CLI switches override these values for one invocation.
      - 1,014,464,372 B (61.49% less)
      - 692,540,222 B (73.71% less)
    * - Source export
-     - 38.153140 s
-     - 28.927820 s (24.18% less)
-     - 22.577399 s (40.82% less)
+     - 37.196223 s
+     - 28.392298 s (23.67% less)
+     - 22.568336 s (39.33% less)
    * - Generation peak RSS
-     - 7,743.40625 MiB
-     - 6,833.625 MiB (11.75% less)
-     - 3,269.609375 MiB (57.78% less)
+     - 8,205.375 MiB
+     - 6,832.375 MiB (16.73% less)
+     - 3,339.421875 MiB (59.30% less)
    * - Package-text deflate proxy
      - 16,357,327 B
      - 10,942,958 B (33.10% less)
@@ -236,15 +236,15 @@ endpoint, rather than inferring the span from the first and last nodes.
 
 At the upper point, only 400,004 bytes contain registers within a
 2,199,023,255,556-byte inclusive region: an address density of
-``1.819e-7``, or about ``0.0000182%``.  Compile and elaboration take 14.260
-seconds, full-address validation takes 0.658 seconds, and export takes 37.572
-seconds.  The worker peaks at 8,518.797 MiB (8.319 GiB) RSS and emits
+``1.819e-7``, or about ``0.0000182%``.  Compile and elaboration take 14.371
+seconds, full-address validation takes 0.664 seconds, and export takes 37.860
+seconds.  The worker peaks at 8,448.109 MiB (8.250 GiB) RSS and emits
 2,637,284,035 bytes (2.456 GiB) of source, including 376,768,256 bytes of C++,
 in the same 391 binding chunks.  The corresponding contiguous export takes
-38.459 seconds, peaks at 7,742.656 MiB (7.561 GiB), and emits 2,634,020,286
+37.729 seconds, peaks at 8,008.094 MiB (7.820 GiB), and emits 2,634,020,286
 bytes (2.453 GiB), including 376,223,493 bytes of C++.
 
-Sparse versus contiguous is -2.31% export time, +10.02% peak RSS, +0.124%
+Sparse versus contiguous is +0.35% export time, +5.49% peak RSS, +0.124%
 total source, and +0.145% C++ source in this run.  The one-run timing and memory
 differences are not performance guarantees; the nearly identical emitted
 footprints show that neither memory nor output grows in proportion to the
@@ -309,10 +309,10 @@ matrices are generation-only runs: their metadata records pybind11,
 scikit-build-core, and Ninja as unavailable because those native-build-only
 packages were not invoked and no wheels were built.
 
-The four current envelope payloads record base commit
-``a492151271520ddafc275119b8f2c83bef0d632a`` with ``git_dirty=true``: the
-measurements intentionally include the code-generation changes present in the
-benchmark worktree.  Recreate the JSON and SVGs with:
+The four current envelope payloads record source commit
+``bdcf01747c57076130d7f365429cdbccb3a596d1`` with ``git_dirty=false``.  That
+retained ancestor contains the exact generator and benchmark code used for the
+measurements.  Recreate the JSON and SVGs with:
 
 .. code-block:: console
 
