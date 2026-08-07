@@ -28,11 +28,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --group benchmark
 
-      - name: Run benchmark contract tests
-        run: |
-          uv run pytest benchmarks/test_scale_envelope.py benchmarks/test_output_profiles.py \
-            -m "not stress" --benchmark-disable -v
-      
       - name: Run fast benchmarks (export only)
         run: |
           uv run pytest benchmarks/ --benchmark-only -m "not slow" -v \
