@@ -80,11 +80,12 @@ Example:
 ```python
 from . import MasterBase
 
+
 class MyMaster(MasterBase):
     def read(self, address: int, width: int) -> int:
         # Your implementation
         pass
-    
+
     def write(self, address: int, value: int, width: int) -> None:
         # Your implementation
         pass

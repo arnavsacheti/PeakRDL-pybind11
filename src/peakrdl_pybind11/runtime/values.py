@@ -554,7 +554,7 @@ class RegisterValue(int):
 
         # Walk MSB-first (string is left-to-right MSB-first).
         out: list[str] = []
-        prev_owner: str | None | object = object()  # sentinel
+        prev_owner: str | object | None = object()  # sentinel
         for i, ch in enumerate(body):
             bit_index = self._width - 1 - i
             owner = owners[bit_index]

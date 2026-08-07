@@ -28,10 +28,10 @@ Nodes are *descriptors*, not values. They produce values by reading. Values prod
 There are exactly **four primitive operations**:
 
 ```python
-reg.read()              # → RegisterValue   (1 bus read)
-reg.write(value)        # raw write         (1 bus write, no read)
-reg.modify(**fields)    # RMW               (1 read + 1 write)
-reg.poke(value)         # explicit "I know what I'm doing", same as .write()
+reg.read()  # → RegisterValue   (1 bus read)
+reg.write(value)  # raw write         (1 bus write, no read)
+reg.modify(**fields)  # RMW               (1 read + 1 write)
+reg.poke(value)  # explicit "I know what I'm doing", same as .write()
 ```
 
 `field.read()` reads the parent register and slices. `field.write(v)` is shorthand for `reg.modify(field=v)` — one read, one write. The names are chosen so the bus cost is the obvious reading.
@@ -65,7 +65,7 @@ from peakrdl_pybind11.masters import OpenOCDMaster
 soc = MyChip.create(master=OpenOCDMaster())
 print(soc.uart.control)
 soc.uart.control.modify(enable=1, baudrate=BaudRate.BAUD_115200)
-soc.uart.data.write(ord('A'))
+soc.uart.data.write(ord("A"))
 soc.uart.interrupts.tx_done.wait(timeout=1.0)
 soc.uart.interrupts.tx_done.clear()
 ```
@@ -75,9 +75,9 @@ soc.uart.interrupts.tx_done.clear()
 ```python
 def test_uart_loopback(soc):
     with soc.uart.control as r:
-        r.enable    = 1
-        r.loopback  = 1
-        r.baudrate  = BaudRate.BAUD_115200
+        r.enable = 1
+        r.loopback = 1
+        r.baudrate = BaudRate.BAUD_115200
 
     soc.uart.data.write(0xA5)
     soc.uart.status.rx_ready.wait_for(True, timeout=0.1)
@@ -163,8 +163,8 @@ soc.uart.interrupts.tx_done.clear()
 
 # Stage many writes with the secondary context-manager form
 with soc.uart.control as r:
-    r.enable    = 1
-    r.baudrate  = BaudRate.BAUD_115200
+    r.enable = 1
+    r.baudrate = BaudRate.BAUD_115200
     if r.parity.read() == Parity.NONE:
         r.parity = Parity.EVEN
 # 1 read + 1 write hits the bus on exit
