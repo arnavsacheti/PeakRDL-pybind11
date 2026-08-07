@@ -260,7 +260,7 @@ class Exporter(ExporterSubcommandPlugin):
         split_by_hierarchy = getattr(options, "split_by_hierarchy", False)
         interrupt_pattern = getattr(options, "interrupt_pattern", None)
         udp_config = getattr(options, "udp_config", None)
-        strict_fields = getattr(options, "strict_fields", True)
+        strict_fields = getattr(options, "strict_fields", None)
 
         exporter.export(
             top_node,

@@ -696,7 +696,9 @@ class FeatureDetectionPlugin:
         top = ctx.top_node
         from peakrdl_pybind11.output_config import OutputConfig
 
-        output_config = ctx.options.get("output_config", OutputConfig.full())
+        output_config = ctx.options.get("output_config")
+        if output_config is None:
+            output_config = OutputConfig.full()
         targets = _output_targets(
             ctx.output_dir,
             ctx.soc_name,

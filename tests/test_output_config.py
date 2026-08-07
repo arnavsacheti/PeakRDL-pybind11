@@ -15,6 +15,8 @@ from systemrdl.node import AddrmapNode
 
 from peakrdl_pybind11 import OutputConfig, Pybind11Exporter
 from peakrdl_pybind11.__peakrdl__ import Exporter
+from peakrdl_pybind11.exporter_plugins import PluginContext
+from peakrdl_pybind11.exporter_plugins.feature_detection import FeatureDetectionPlugin
 
 SIMPLE_RDL = """
 addrmap output_soc {
@@ -156,6 +158,32 @@ root_mirror = true
     assert calls[-1]["gen_aliases"] is None
     assert calls[-1]["root_mirror"] is None
     assert calls[-1]["gen_interrupts"] is True
+    assert calls[-1]["strict_fields"] is None
+
+
+def test_feature_plugin_none_output_config_falls_back_to_full(tmp_path: Path) -> None:
+    top = _compile(tmp_path)
+    output_dir = tmp_path / "plugin"
+    context = PluginContext(
+        exporter=SimpleNamespace(),
+        top_node=top,
+        output_dir=output_dir,
+        soc_name="output_soc",
+        nodes={"regs": []},
+        options={"output_config": None},
+    )
+
+    FeatureDetectionPlugin().post_export(context)
+
+    expected = {
+        "aliases.py",
+        "interrupts_detected.py",
+        "schema.json",
+        "output_soc/aliases.py",
+        "output_soc/interrupts_detected.py",
+        "output_soc/schema.json",
+    }
+    assert expected.issubset(_manifest(output_dir))
 
 
 @pytest.mark.parametrize(
