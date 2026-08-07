@@ -74,6 +74,33 @@ addrmap schema_soc {
 };
 """
 
+NESTED_ARRAYED_REGFILE_RDL = """
+addrmap top {
+    regfile outer_t {
+        regfile inner_t {
+            reg {
+                field { sw=rw; hw=r; } D[7:0] = 0x0;
+            } R @ 0x8;
+        };
+        inner_t inner @ 0x4;
+    };
+    outer_t outer[2] @ 0x100 += 0x20;
+};
+"""
+
+ADDRMAP_ARRAY_WITH_MEM_RDL = """
+addrmap inner_with_mem {
+    external mem {
+        mementries = 8;
+        memwidth = 32;
+        reg { field { sw=rw; hw=r; } data[31:0] = 0; } entry;
+    } buffer @ 0x8;
+};
+addrmap am_with_mem_soc {
+    inner_with_mem blocks[2] @ 0x100 += 0x40;
+};
+"""
+
 NO_TRIO_RDL = """
 addrmap empty_soc {
     reg {
@@ -213,7 +240,7 @@ class TestAliasDetection:
         module = _load_module(aliases_path, "alias_emit")
         aliases = module.aliases
         assert len(aliases) == 1
-        (alt_path, target_path), = aliases.items()
+        ((alt_path, target_path),) = aliases.items()
         assert alt_path.endswith("control_alt")
         assert target_path.endswith("control")
         assert "control_alt" not in target_path  # primary, not the alias itself
@@ -263,6 +290,42 @@ class TestSchema:
         # Should be valid JSON parsable end-to-end.
         data = json.loads((out / "schema.json").read_text())
         assert isinstance(data, dict)
+
+    def test_schema_handles_nested_regfile_below_arrayed_regfile(self) -> None:
+        out = _export(NESTED_ARRAYED_REGFILE_RDL, "top")
+        root_schema = out / "schema.json"
+        package_schema = out / "top" / "schema.json"
+        assert root_schema.exists()
+        assert package_schema.exists()
+
+        data = json.loads(root_schema.read_text())
+        assert data == json.loads(package_schema.read_text())
+
+        outer = data["soc"]["children"][0]
+        assert outer["path"] == "top.outer[]"
+        assert outer["absolute_address"] == 0x100
+        assert outer["array_dimensions"] == [2]
+        assert outer["array_stride"] == 0x20
+
+        inner = outer["children"][0]
+        assert inner["path"] == "top.outer[].inner"
+        assert inner["absolute_address"] == 0x104
+
+        register = inner["children"][0]
+        assert register["path"] == "top.outer[].inner.R"
+        assert register["absolute_address"] == 0x10C
+
+    def test_schema_handles_memory_below_arrayed_addrmap(self) -> None:
+        out = _export(ADDRMAP_ARRAY_WITH_MEM_RDL, "am_with_mem_soc")
+        data = json.loads((out / "schema.json").read_text())
+
+        blocks = data["soc"]["children"][0]
+        assert blocks["path"] == "am_with_mem_soc.blocks[]"
+        assert blocks["absolute_address"] == 0x100
+
+        memory = blocks["children"][0]
+        assert memory["path"] == "am_with_mem_soc.blocks[].buffer"
+        assert memory["absolute_address"] == 0x108
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +380,6 @@ def test_plugin_discovery_includes_feature_detection() -> None:
     from peakrdl_pybind11.exporter_plugins import discover_plugins
 
     plugins = discover_plugins()
-    assert any(
-        type(p).__name__ == "FeatureDetectionPlugin" for p in plugins
-    ), [type(p).__name__ for p in plugins]
+    assert any(type(p).__name__ == "FeatureDetectionPlugin" for p in plugins), [
+        type(p).__name__ for p in plugins
+    ]

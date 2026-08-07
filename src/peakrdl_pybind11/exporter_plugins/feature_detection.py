@@ -466,7 +466,7 @@ def _mem_to_dict(mem: MemNode) -> dict[str, Any]:
         "kind": "mem",
         "inst_name": mem.inst_name,
         "path": mem.get_path(),
-        "absolute_address": mem.absolute_address,
+        "absolute_address": _resolve_array_base_address(mem),
         "size": mem.size,
         "children": [_node_to_dict(c) for c in mem.children()],
     }
@@ -476,20 +476,15 @@ def _mem_to_dict(mem: MemNode) -> dict[str, Any]:
 
 
 def _container_to_dict(node: AddrmapNode | RegfileNode) -> dict[str, Any]:
-    # ``absolute_address`` raises on arrayed regfile/addrmap nodes
-    # (needs a concrete ``current_idx``). ``raw_absolute_address`` is
-    # the array base address; per-entry offsets are reconstructed at
-    # runtime by ``ArrayBase``. Phase 2 of issue #138 introduced
-    # regfile arrays — without this guard ``build_schema`` would
-    # blow up the moment a user generated schema.json for an SoC
-    # carrying a regfile array.
+    # ``absolute_address`` also raises on non-array containers below an
+    # arrayed ancestor, so resolve the whole lineage rather than checking
+    # only this node.
     is_array = bool(getattr(node, "is_array", False))
-    absolute_address = node.raw_absolute_address if is_array else node.absolute_address
     out: dict[str, Any] = {
         "kind": "addrmap" if isinstance(node, AddrmapNode) else "regfile",
         "inst_name": node.inst_name,
         "path": node.get_path(),
-        "absolute_address": absolute_address,
+        "absolute_address": _resolve_array_base_address(node),
         "size": node.size,
         "name": _safe_property(node, "name"),
         "desc": _safe_property(node, "desc"),
