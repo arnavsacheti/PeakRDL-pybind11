@@ -200,13 +200,13 @@ table.  Explicit CLI switches override these values for one invocation.
      - 1,014,464,372 B (61.49% less)
      - 692,540,222 B (73.71% less)
    * - Source export
-     - 37.196223 s
-     - 28.392298 s (23.67% less)
-     - 22.568336 s (39.33% less)
+     - 49.167487 s
+     - 30.484684 s (38.00% less)
+     - 22.920405 s (53.38% less)
    * - Generation peak RSS
-     - 8,205.375 MiB
-     - 6,832.375 MiB (16.73% less)
-     - 3,339.421875 MiB (59.30% less)
+     - 7,996.094 MiB
+     - 5,834.719 MiB (27.03% less)
+     - 3,270.609 MiB (59.10% less)
    * - Package-text deflate proxy
      - 16,357,327 B
      - 10,942,958 B (33.10% less)
@@ -215,10 +215,12 @@ table.  Explicit CLI switches override these values for one invocation.
 The C++ portion is fixed at exactly 376,237,731 bytes in all three profiles;
 the savings come from optional Python, schema, stub, and mirrored artifacts.
 The compressed package-text value is a deterministic deflate proxy for
-comparing emitted text, not a wheel size.  No 100k wheel was built.  Separately,
-shared native base-method compaction reduced the measured 1,000-register C++
-output from 8,672,155 to 3,810,445 bytes, a 56.1% reduction; that common saving
-applies before the output profiles select optional artifacts.
+comparing emitted text, not a wheel size.  Peak RSS is the worker-process
+high-water mark through export; it is sampled before manifest inspection,
+deflate-proxy calculation, or an optional wheel build.  No 100k wheel was
+built.  Separately, shared native base-method compaction reduced the measured
+1,000-register C++ output from 8,672,155 to 3,810,445 bytes, a 56.1% reduction;
+that common saving applies before the output profiles select optional artifacts.
 
 Sparse 2 TiB address span
 -------------------------
@@ -298,7 +300,7 @@ The benchmark code lives in the repository:
    * - Field-profile sweep
      - One clean worker per profile and size; records the declared repeated field layouts plus total fields, total field bits, source export time, generation peak RSS, source bytes, and binding chunks.  The comparison figure selects the largest register count shared by every profile.
    * - Output-profile sweep
-     - One clean worker per output profile and size over the same ``nibbles5`` input; records the effective output booleans, complete manifest, overlapping source categories, export time, and generation peak RSS.
+     - One clean worker per output profile and size over the same ``nibbles5`` input; records the effective output booleans, complete manifest, overlapping source categories, export time, and worker peak RSS through export, sampled before output analysis.
    * - Package-text deflate proxy
      - Level-9 deflate size of named text files inside the generated Python package.  It is deterministic comparison data and explicitly not a wheel size.
 
@@ -309,9 +311,11 @@ matrices are generation-only runs: their metadata records pybind11,
 scikit-build-core, and Ninja as unavailable because those native-build-only
 packages were not invoked and no wheels were built.
 
-The four current envelope payloads record source commit
-``bdcf01747c57076130d7f365429cdbccb3a596d1`` with ``git_dirty=false``.  That
-retained ancestor contains the exact generator and benchmark code used for the
+The dense, sparse, and field-profile envelope payloads record source commit
+``bdcf01747c57076130d7f365429cdbccb3a596d1``.  The refreshed output-profile
+payload records ``90c711ccf8658b6bd1aa65640e0cbb77ec34aaea``, which samples
+peak RSS before output analysis.  All four record ``git_dirty=false``; those
+retained commits contain the exact generator and benchmark code used for their
 measurements.  Recreate the JSON and SVGs with:
 
 .. code-block:: console

@@ -75,23 +75,23 @@
 <line class="grid" x1="742.0" y1="58.0" x2="742.0" y2="302.0"/>
 <text class="tick" x="742.0" y="324.0" text-anchor="middle">0</text>
 <line class="grid" x1="835.5" y1="58.0" x2="835.5" y2="302.0"/>
-<text class="tick" x="835.5" y="324.0" text-anchor="middle">12</text>
+<text class="tick" x="835.5" y="324.0" text-anchor="middle">25</text>
 <line class="grid" x1="929.0" y1="58.0" x2="929.0" y2="302.0"/>
-<text class="tick" x="929.0" y="324.0" text-anchor="middle">25</text>
+<text class="tick" x="929.0" y="324.0" text-anchor="middle">50</text>
 <line class="grid" x1="1022.5" y1="58.0" x2="1022.5" y2="302.0"/>
-<text class="tick" x="1022.5" y="324.0" text-anchor="middle">38</text>
+<text class="tick" x="1022.5" y="324.0" text-anchor="middle">75</text>
 <line class="grid" x1="1116.0" y1="58.0" x2="1116.0" y2="302.0"/>
-<text class="tick" x="1116.0" y="324.0" text-anchor="middle">50</text>
+<text class="tick" x="1116.0" y="324.0" text-anchor="middle">100</text>
 <line class="axis" x1="742.0" y1="302.0" x2="1116.0" y2="302.0"/>
 <text class="bar-label" x="732.0" y="102.7" text-anchor="end">Full</text>
-<rect class="bar profile-0" x="742.0" y="86.7" width="278.2" height="24.0" rx="2" aria-label="Full: 37 seconds"/>
-<text class="bar-value" x="1026.2" y="102.7" text-anchor="start">37</text>
+<rect class="bar profile-0" x="742.0" y="86.7" width="183.9" height="24.0" rx="2" aria-label="Full: 49 seconds"/>
+<text class="bar-value" x="931.9" y="102.7" text-anchor="start">49</text>
 <text class="bar-label" x="732.0" y="184.0" text-anchor="end">Compact</text>
-<rect class="bar profile-1" x="742.0" y="168.0" width="212.4" height="24.0" rx="2" aria-label="Compact: 28 seconds"/>
-<text class="bar-value" x="960.4" y="184.0" text-anchor="start">28</text>
+<rect class="bar profile-1" x="742.0" y="168.0" width="114.0" height="24.0" rx="2" aria-label="Compact: 30 seconds"/>
+<text class="bar-value" x="862.0" y="184.0" text-anchor="start">30</text>
 <text class="bar-label" x="732.0" y="265.3" text-anchor="end">Minimal</text>
-<rect class="bar profile-2" x="742.0" y="249.3" width="168.8" height="24.0" rx="2" aria-label="Minimal: 23 seconds"/>
-<text class="bar-value" x="916.8" y="265.3" text-anchor="start">23</text>
+<rect class="bar profile-2" x="742.0" y="249.3" width="85.7" height="24.0" rx="2" aria-label="Minimal: 23 seconds"/>
+<text class="bar-value" x="833.7" y="265.3" text-anchor="start">23</text>
 </g>
 <g class="panel" aria-label="Generation peak memory">
 <text class="panel-title" x="20.0" y="391.0">Generation peak memory</text>
@@ -108,14 +108,14 @@
 <text class="tick" x="536.0" y="680.0" text-anchor="middle">10</text>
 <line class="axis" x1="162.0" y1="658.0" x2="536.0" y2="658.0"/>
 <text class="bar-label" x="152.0" y="458.7" text-anchor="end">Full</text>
-<rect class="bar profile-0" x="162.0" y="442.7" width="299.7" height="24.0" rx="2" aria-label="Full: 8 GiB RSS"/>
-<text class="bar-value" x="467.7" y="458.7" text-anchor="start">8</text>
+<rect class="bar profile-0" x="162.0" y="442.7" width="292.0" height="24.0" rx="2" aria-label="Full: 7.8 GiB RSS"/>
+<text class="bar-value" x="460.0" y="458.7" text-anchor="start">7.8</text>
 <text class="bar-label" x="152.0" y="540.0" text-anchor="end">Compact</text>
-<rect class="bar profile-1" x="162.0" y="524.0" width="249.5" height="24.0" rx="2" aria-label="Compact: 6.7 GiB RSS"/>
-<text class="bar-value" x="417.5" y="540.0" text-anchor="start">6.7</text>
+<rect class="bar profile-1" x="162.0" y="524.0" width="213.1" height="24.0" rx="2" aria-label="Compact: 5.7 GiB RSS"/>
+<text class="bar-value" x="381.1" y="540.0" text-anchor="start">5.7</text>
 <text class="bar-label" x="152.0" y="621.3" text-anchor="end">Minimal</text>
-<rect class="bar profile-2" x="162.0" y="605.3" width="122.0" height="24.0" rx="2" aria-label="Minimal: 3.3 GiB RSS"/>
-<text class="bar-value" x="290.0" y="621.3" text-anchor="start">3.3</text>
+<rect class="bar profile-2" x="162.0" y="605.3" width="119.5" height="24.0" rx="2" aria-label="Minimal: 3.2 GiB RSS"/>
+<text class="bar-value" x="287.5" y="621.3" text-anchor="start">3.2</text>
 </g>
 <g class="panel" aria-label="Package-text deflate proxy">
 <text class="panel-title" x="600.0" y="391.0">Package-text deflate proxy</text>

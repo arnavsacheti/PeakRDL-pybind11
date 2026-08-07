@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "kind": "output-profile-matrix",
-  "collected_at": "2026-08-07T07:59:52.729955+00:00",
+  "collected_at": "2026-08-07T19:07:01.436367+00:00",
   "benchmark": {
     "sizes": [
       1000,
@@ -84,7 +84,8 @@
       }
     ],
     "package_text_deflate_metric": "package_text_deflate_bytes_proxy: deflate-compressed package text; not a wheel size",
-    "shape_sha256": "c92192d7ca9ce36df3751e325b315b9c47fc2778b208b1aca2c31656c0a5cba9"
+    "generation_peak_rss_metric": "peak_rss_mib: process peak RSS sampled immediately after export and before output metrics or an optional wheel build",
+    "shape_sha256": "522fcf5b0fce1ccbff38f417c36f2fc81e78bc816a323c99e2f7449e7bf5520f"
   },
   "environment": {
     "system": "macOS-26.6-arm64-arm-64bit-Mach-O",
@@ -96,7 +97,7 @@
     "pybind11": "unavailable",
     "scikit_build_core": "unavailable",
     "ninja": "unavailable",
-    "commit": "bdcf01747c57076130d7f365429cdbccb3a596d1",
+    "commit": "90c711ccf8658b6bd1aa65640e0cbb77ec34aaea",
     "git_dirty": false
   },
   "series": [
@@ -147,11 +148,11 @@
             "root_mirror": true
           },
           "rdl_bytes": 45173,
-          "rdl_write_s": 0.000536374980583787,
-          "compile_s": 0.09999116603285074,
-          "validate_s": 0.006281042005866766,
-          "export_s": 0.4511655420064926,
-          "peak_rss_mib": 149.296875,
+          "rdl_write_s": 0.0008210830856114626,
+          "compile_s": 0.10415083297993988,
+          "validate_s": 0.006718874908983707,
+          "export_s": 0.4543464999878779,
+          "peak_rss_mib": 131.328125,
           "manifest": [
             "CMakeLists.txt",
             "__init__.py",
@@ -213,11 +214,11 @@
             "root_mirror": true
           },
           "rdl_bytes": 449321,
-          "rdl_write_s": 0.0038762909825891256,
-          "compile_s": 1.0770524999825284,
-          "validate_s": 0.06289241707418114,
-          "export_s": 3.8970843330025673,
-          "peak_rss_mib": 914.171875,
+          "rdl_write_s": 0.007877583033405244,
+          "compile_s": 1.1330434170085937,
+          "validate_s": 0.06460558308754116,
+          "export_s": 4.028512165998109,
+          "peak_rss_mib": 845.96875,
           "manifest": [
             "CMakeLists.txt",
             "__init__.py",
@@ -315,11 +316,11 @@
             "root_mirror": true
           },
           "rdl_bytes": 4490870,
-          "rdl_write_s": 0.03747399989515543,
-          "compile_s": 13.686400875099935,
-          "validate_s": 0.6404694160446525,
-          "export_s": 37.19622287491802,
-          "peak_rss_mib": 8205.375,
+          "rdl_write_s": 0.240722291986458,
+          "compile_s": 14.238982582930475,
+          "validate_s": 0.657123208977282,
+          "export_s": 49.167486958089285,
+          "peak_rss_mib": 7996.09375,
           "manifest": [
             "CMakeLists.txt",
             "__init__.py",
@@ -780,11 +781,11 @@
             "root_mirror": false
           },
           "rdl_bytes": 45173,
-          "rdl_write_s": 0.0005565000465139747,
-          "compile_s": 0.10088929207995534,
-          "validate_s": 0.006277167005464435,
-          "export_s": 0.3563278749352321,
-          "peak_rss_mib": 107.15625,
+          "rdl_write_s": 0.0034025839995592833,
+          "compile_s": 0.10019874991849065,
+          "validate_s": 0.006289415992796421,
+          "export_s": 0.45325537503231317,
+          "peak_rss_mib": 107.046875,
           "manifest": [
             "CMakeLists.txt",
             "output_profile_1000/__init__.py",
@@ -840,11 +841,11 @@
             "root_mirror": false
           },
           "rdl_bytes": 449321,
-          "rdl_write_s": 0.00404058292042464,
-          "compile_s": 1.0903849999886006,
-          "validate_s": 0.06354804092552513,
-          "export_s": 2.9425601658876985,
-          "peak_rss_mib": 694.296875,
+          "rdl_write_s": 0.008446709020063281,
+          "compile_s": 1.1173645830713212,
+          "validate_s": 0.06506916705984622,
+          "export_s": 2.980892625055276,
+          "peak_rss_mib": 639.890625,
           "manifest": [
             "CMakeLists.txt",
             "output_profile_10000/__init__.py",
@@ -936,11 +937,11 @@
             "root_mirror": false
           },
           "rdl_bytes": 4490870,
-          "rdl_write_s": 0.03682875004597008,
-          "compile_s": 13.837865125038661,
-          "validate_s": 0.6342958329478279,
-          "export_s": 28.392297625076026,
-          "peak_rss_mib": 6832.375,
+          "rdl_write_s": 0.054371415986679494,
+          "compile_s": 14.154935083002783,
+          "validate_s": 0.6479552499949932,
+          "export_s": 30.484683708054945,
+          "peak_rss_mib": 5834.71875,
           "manifest": [
             "CMakeLists.txt",
             "output_profile_100001/__init__.py",
@@ -1395,11 +1396,11 @@
             "root_mirror": false
           },
           "rdl_bytes": 45173,
-          "rdl_write_s": 0.0005616249982267618,
-          "compile_s": 0.09838116599712521,
-          "validate_s": 0.006300083012320101,
-          "export_s": 0.27876729203853756,
-          "peak_rss_mib": 81.984375,
+          "rdl_write_s": 0.0008252920815721154,
+          "compile_s": 0.10046350001357496,
+          "validate_s": 0.006307958974502981,
+          "export_s": 0.28905529098119587,
+          "peak_rss_mib": 82.0,
           "manifest": [
             "CMakeLists.txt",
             "output_profile_1000/__init__.py",
@@ -1452,11 +1453,11 @@
             "root_mirror": false
           },
           "rdl_bytes": 449321,
-          "rdl_write_s": 0.004080916056409478,
-          "compile_s": 1.08141208300367,
-          "validate_s": 0.06502204202115536,
-          "export_s": 2.2663626660360023,
-          "peak_rss_mib": 406.125,
+          "rdl_write_s": 0.006000166060402989,
+          "compile_s": 1.1238050840329379,
+          "validate_s": 0.06531158299185336,
+          "export_s": 2.3661103330086917,
+          "peak_rss_mib": 382.046875,
           "manifest": [
             "CMakeLists.txt",
             "output_profile_10000/__init__.py",
@@ -1545,11 +1546,11 @@
             "root_mirror": false
           },
           "rdl_bytes": 4490870,
-          "rdl_write_s": 0.03814204200170934,
-          "compile_s": 13.751007916056551,
-          "validate_s": 0.6286245000083,
-          "export_s": 22.56833566701971,
-          "peak_rss_mib": 3339.421875,
+          "rdl_write_s": 0.08359433303121477,
+          "compile_s": 14.268078499939293,
+          "validate_s": 0.6517749580089003,
+          "export_s": 22.92040520790033,
+          "peak_rss_mib": 3270.609375,
           "manifest": [
             "CMakeLists.txt",
             "output_profile_100001/__init__.py",
