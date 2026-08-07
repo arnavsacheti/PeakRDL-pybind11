@@ -17,14 +17,14 @@ Pipeline cost
 -------------
 
 .. figure:: _static/benchmarks/release-pipeline.svg
-   :alt: Four line charts showing generation time, wheel build time, generation peak memory, and build peak memory from v0.2.0 through v0.8.5.
+   :alt: Four line charts showing generation time, wheel build time, generation peak memory, and build peak memory from v0.2.0 through v0.8.8.
    :width: 100%
 
    End-to-end generation and clean wheel-build cost for each release milestone.
 
 The generated surface grew substantially while clean build time stayed close
-to 5–6 seconds on the reference machine.  From v0.2.0 to v0.8.5, generation
-rose from 25 ms to 81 ms and build peak RSS from 350 MiB to 527 MiB; generation
+to 5 seconds on the reference machine.  From v0.2.0 to v0.8.8, generation
+rose from 24 ms to 79 ms and build peak RSS from 348 MiB to 516 MiB; generation
 peak RSS moved much less, from 45 MiB to 50 MiB.  For this series, compiler
 memory—not generation memory—accounts for the meaningful capacity change.  The
 intentionally small input isolates per-release overhead; it is not a
@@ -34,7 +34,7 @@ Runtime and artifact cost
 -------------------------
 
 .. figure:: _static/benchmarks/release-runtime-size.svg
-   :alt: Two line charts showing register read and write latency and generated source and wheel size from v0.2.0 through v0.8.5.
+   :alt: Two line charts showing register read and write latency and generated source and wheel size from v0.2.0 through v0.8.8.
    :width: 100%
 
    Direct register-access latency and generated artifact size for the same input.
@@ -43,9 +43,11 @@ The v0.4 read spike records an instructive intermediate design: that release
 rebuilt field metadata by inspecting the generated object on every read.  v0.5
 moved the layout to generated lookup tables, cutting the measured read from
 6.6 microseconds to 1.6 microseconds.  Later releases add richer values,
-batching, runtime services, and the broader target API; by v0.8.5 the generated
-sources are 123 KiB (about 5× v0.2.0), while the compiled wheel is 139 KiB
-(about 1.4×).
+batching, runtime services, and the broader target API; by v0.8.8, reads take
+2.29 microseconds and writes take 1.61 microseconds.  The generated sources are
+123 KiB (about 5× v0.2.0), while the compiled wheel is 139 KiB (about 1.4×).
+Between v0.8.5 and v0.8.8, source output grows by just 0.87 KiB and the wheel by
+0.25 KiB, with read/write latency effectively unchanged.
 
 100k+ scale envelope
 --------------------
@@ -314,9 +316,11 @@ benchmark worktree.  Recreate the JSON and SVGs with:
 
 .. code-block:: console
 
-   uv run --group benchmark --with scikit-build-core==0.10.7 --with ninja \
+   uv run --python 3.13 --group benchmark --with pybind11==3.0.4 \
+     --with scikit-build-core==0.10.7 --with ninja \
      python benchmarks/collect_release_metrics.py
-   uv run --group benchmark --with scikit-build-core==0.10.7 --with ninja \
+   uv run --python 3.13 --group benchmark --with pybind11==3.0.4 \
+     --with scikit-build-core==0.10.7 --with ninja \
      python benchmarks/benchmark_scale_envelope.py --build-max-registers 1000
    uv run python benchmarks/benchmark_scale_envelope.py \
      --sizes 1000 10000 100001 --max-address 0x200_0000_0000 \

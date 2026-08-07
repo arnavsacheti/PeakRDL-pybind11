@@ -41,27 +41,33 @@
 <text class="tick" x="66.0" y="46.0" text-anchor="end">10</text>
 <line class="axis" x1="74.0" y1="246.0" x2="436.0" y2="246.0"/>
 <text class="tick" x="74.0" y="268.0" text-anchor="middle">v0.2.0</text>
-<text class="tick" x="146.4" y="268.0" text-anchor="middle">v0.4.0</text>
-<text class="tick" x="218.8" y="268.0" text-anchor="middle">v0.5.0</text>
-<text class="tick" x="291.2" y="268.0" text-anchor="middle">v0.6.0</text>
-<text class="tick" x="363.6" y="268.0" text-anchor="middle">v0.7.0</text>
-<text class="tick" x="436.0" y="268.0" text-anchor="middle">v0.8.5</text>
-<polyline class="series series-a" points="74.0,239.3 146.4,110.9 218.8,212.8 291.2,211.9 363.6,194.4 436.0,198.6" aria-label="Read"/>
-<circle class="point series-a" cx="74.0" cy="239.3" r="3.5"/>
-<circle class="point series-a" cx="146.4" cy="110.9" r="3.5"/>
-<circle class="point series-a" cx="218.8" cy="212.8" r="3.5"/>
-<circle class="point series-a" cx="291.2" cy="211.9" r="3.5"/>
-<circle class="point series-a" cx="363.6" cy="194.4" r="3.5"/>
-<circle class="point series-a" cx="436.0" cy="198.6" r="3.5"/>
-<text class="value-label" x="432.0" y="189.6" text-anchor="end">2.3</text>
-<polyline class="series series-b" points="74.0,239.3 146.4,237.9 218.8,234.9 291.2,233.6 363.6,224.0 436.0,214.5" aria-label="Write"/>
-<circle class="point series-b" cx="74.0" cy="239.3" r="3.5"/>
-<circle class="point series-b" cx="146.4" cy="237.9" r="3.5"/>
-<circle class="point series-b" cx="218.8" cy="234.9" r="3.5"/>
-<circle class="point series-b" cx="291.2" cy="233.6" r="3.5"/>
-<circle class="point series-b" cx="363.6" cy="224.0" r="3.5"/>
-<circle class="point series-b" cx="436.0" cy="214.5" r="3.5"/>
-<text class="value-label" x="432.0" y="230.5" text-anchor="end">1.5</text>
+<text class="tick" x="125.7" y="268.0" text-anchor="middle">v0.4.0</text>
+<text class="tick" x="177.4" y="268.0" text-anchor="middle">v0.5.0</text>
+<text class="tick" x="229.1" y="268.0" text-anchor="middle">v0.6.0</text>
+<text class="tick" x="280.9" y="268.0" text-anchor="middle">v0.7.0</text>
+<text class="tick" x="332.6" y="268.0" text-anchor="middle">v0.8.5</text>
+<text class="tick" x="384.3" y="268.0" text-anchor="middle">v0.8.7</text>
+<text class="tick" x="436.0" y="268.0" text-anchor="middle">v0.8.8</text>
+<polyline class="series series-a" points="74.0,239.2 125.7,111.8 177.4,214.3 229.1,210.7 280.9,196.3 332.6,198.4 384.3,199.0 436.0,199.4" aria-label="Read"/>
+<circle class="point series-a" cx="74.0" cy="239.2" r="3.5"/>
+<circle class="point series-a" cx="125.7" cy="111.8" r="3.5"/>
+<circle class="point series-a" cx="177.4" cy="214.3" r="3.5"/>
+<circle class="point series-a" cx="229.1" cy="210.7" r="3.5"/>
+<circle class="point series-a" cx="280.9" cy="196.3" r="3.5"/>
+<circle class="point series-a" cx="332.6" cy="198.4" r="3.5"/>
+<circle class="point series-a" cx="384.3" cy="199.0" r="3.5"/>
+<circle class="point series-a" cx="436.0" cy="199.4" r="3.5"/>
+<text class="value-label" x="432.0" y="190.4" text-anchor="end">2.3</text>
+<polyline class="series series-b" points="74.0,239.5 125.7,237.5 177.4,235.3 229.1,234.0 280.9,223.9 332.6,213.4 384.3,213.9 436.0,213.1" aria-label="Write"/>
+<circle class="point series-b" cx="74.0" cy="239.5" r="3.5"/>
+<circle class="point series-b" cx="125.7" cy="237.5" r="3.5"/>
+<circle class="point series-b" cx="177.4" cy="235.3" r="3.5"/>
+<circle class="point series-b" cx="229.1" cy="234.0" r="3.5"/>
+<circle class="point series-b" cx="280.9" cy="223.9" r="3.5"/>
+<circle class="point series-b" cx="332.6" cy="213.4" r="3.5"/>
+<circle class="point series-b" cx="384.3" cy="213.9" r="3.5"/>
+<circle class="point series-b" cx="436.0" cy="213.1" r="3.5"/>
+<text class="value-label" x="432.0" y="229.1" text-anchor="end">1.6</text>
 <line class="series series-a" x1="81.0" y1="52.0" x2="99.0" y2="52.0"/>
 <text class="legend" x="106.0" y="56.0">Read</text>
 <line class="series series-b" x1="81.0" y1="70.0" x2="99.0" y2="70.0"/>
@@ -82,27 +88,33 @@
 <text class="tick" x="516.0" y="46.0" text-anchor="end">200</text>
 <line class="axis" x1="524.0" y1="246.0" x2="886.0" y2="246.0"/>
 <text class="tick" x="524.0" y="268.0" text-anchor="middle">v0.2.0</text>
-<text class="tick" x="596.4" y="268.0" text-anchor="middle">v0.4.0</text>
-<text class="tick" x="668.8" y="268.0" text-anchor="middle">v0.5.0</text>
-<text class="tick" x="741.2" y="268.0" text-anchor="middle">v0.6.0</text>
-<text class="tick" x="813.6" y="268.0" text-anchor="middle">v0.7.0</text>
-<text class="tick" x="886.0" y="268.0" text-anchor="middle">v0.8.5</text>
-<polyline class="series series-a" points="524.0,220.9 596.4,215.3 668.8,213.4 741.2,196.4 813.6,155.2 886.0,121.0" aria-label="Sources"/>
+<text class="tick" x="575.7" y="268.0" text-anchor="middle">v0.4.0</text>
+<text class="tick" x="627.4" y="268.0" text-anchor="middle">v0.5.0</text>
+<text class="tick" x="679.1" y="268.0" text-anchor="middle">v0.6.0</text>
+<text class="tick" x="730.9" y="268.0" text-anchor="middle">v0.7.0</text>
+<text class="tick" x="782.6" y="268.0" text-anchor="middle">v0.8.5</text>
+<text class="tick" x="834.3" y="268.0" text-anchor="middle">v0.8.7</text>
+<text class="tick" x="886.0" y="268.0" text-anchor="middle">v0.8.8</text>
+<polyline class="series series-a" points="524.0,220.9 575.7,215.3 627.4,213.4 679.1,196.4 730.9,155.2 782.6,121.0 834.3,120.1 886.0,120.1" aria-label="Sources"/>
 <circle class="point series-a" cx="524.0" cy="220.9" r="3.5"/>
-<circle class="point series-a" cx="596.4" cy="215.3" r="3.5"/>
-<circle class="point series-a" cx="668.8" cy="213.4" r="3.5"/>
-<circle class="point series-a" cx="741.2" cy="196.4" r="3.5"/>
-<circle class="point series-a" cx="813.6" cy="155.2" r="3.5"/>
-<circle class="point series-a" cx="886.0" cy="121.0" r="3.5"/>
-<text class="value-label" x="882.0" y="137.0" text-anchor="end">123</text>
-<polyline class="series series-b" points="524.0,144.0 596.4,139.8 668.8,139.8 741.2,125.7 813.6,106.1 886.0,104.0" aria-label="Wheel"/>
+<circle class="point series-a" cx="575.7" cy="215.3" r="3.5"/>
+<circle class="point series-a" cx="627.4" cy="213.4" r="3.5"/>
+<circle class="point series-a" cx="679.1" cy="196.4" r="3.5"/>
+<circle class="point series-a" cx="730.9" cy="155.2" r="3.5"/>
+<circle class="point series-a" cx="782.6" cy="121.0" r="3.5"/>
+<circle class="point series-a" cx="834.3" cy="120.1" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="120.1" r="3.5"/>
+<text class="value-label" x="882.0" y="136.1" text-anchor="end">123</text>
+<polyline class="series series-b" points="524.0,144.0 575.7,139.8 627.4,139.8 679.1,125.7 730.9,106.1 782.6,104.0 834.3,103.8 886.0,103.8" aria-label="Wheel"/>
 <circle class="point series-b" cx="524.0" cy="144.0" r="3.5"/>
-<circle class="point series-b" cx="596.4" cy="139.8" r="3.5"/>
-<circle class="point series-b" cx="668.8" cy="139.8" r="3.5"/>
-<circle class="point series-b" cx="741.2" cy="125.7" r="3.5"/>
-<circle class="point series-b" cx="813.6" cy="106.1" r="3.5"/>
-<circle class="point series-b" cx="886.0" cy="104.0" r="3.5"/>
-<text class="value-label" x="882.0" y="95.0" text-anchor="end">139</text>
+<circle class="point series-b" cx="575.7" cy="139.8" r="3.5"/>
+<circle class="point series-b" cx="627.4" cy="139.8" r="3.5"/>
+<circle class="point series-b" cx="679.1" cy="125.7" r="3.5"/>
+<circle class="point series-b" cx="730.9" cy="106.1" r="3.5"/>
+<circle class="point series-b" cx="782.6" cy="104.0" r="3.5"/>
+<circle class="point series-b" cx="834.3" cy="103.8" r="3.5"/>
+<circle class="point series-b" cx="886.0" cy="103.8" r="3.5"/>
+<text class="value-label" x="882.0" y="94.8" text-anchor="end">139</text>
 <line class="series series-a" x1="531.0" y1="52.0" x2="549.0" y2="52.0"/>
 <text class="legend" x="556.0" y="56.0">Sources</text>
 <line class="series series-b" x1="531.0" y1="70.0" x2="549.0" y2="70.0"/>
