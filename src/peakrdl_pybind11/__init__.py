@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .exporter import Pybind11Exporter
     from .int_types import FieldInt, RegisterInt, RegisterIntEnum, RegisterIntFlag
+    from .output_config import OutputConfig
     from .runtime.transactions import Burst, Read, Write
     from .runtime.values import FieldValue, RegisterValue
 
@@ -24,6 +25,7 @@ __all__ = [
     "Burst",
     "FieldInt",
     "FieldValue",
+    "OutputConfig",
     "Pybind11Exporter",
     "Read",
     "RegisterInt",
@@ -39,6 +41,10 @@ def __getattr__(name: str) -> type:
         from .exporter import Pybind11Exporter
 
         return Pybind11Exporter
+    if name == "OutputConfig":
+        from .output_config import OutputConfig
+
+        return OutputConfig
     if name in ("RegisterInt", "RegisterValue"):
         from .int_types import RegisterInt
 

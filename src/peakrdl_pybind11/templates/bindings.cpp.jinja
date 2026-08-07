@@ -145,6 +145,8 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def_property_readonly("is_readable", &FieldBase::is_readable)
         .def_property_readonly("is_writable", &FieldBase::is_writable)
         .def_property_readonly("mask", &FieldBase::mask)
+        .def("read", &FieldBase::read, "Read field value")
+        .def("write", &FieldBase::write, "Write field value")
         .def("__repr__", &FieldBase::__repr__)
         .def("__str__", &FieldBase::__repr__);
 
@@ -156,6 +158,9 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
         .def("read", &RegisterBase::read, "Read register value")
         .def("write", &RegisterBase::write, "Write register value")
         .def("modify", &RegisterBase::modify, "Read-modify-write operation")
+        .def("write_fields", &RegisterBase::write_fields,
+             py::arg("mask"), py::arg("value"),
+             "Combined multi-field RMW: single read+write on the master")
         .def("__enter__", &RegisterBase::__enter__, "Enter context manager")
         .def("__exit__", [](RegisterBase& self, py::object exc_type, py::object exc_value, py::object traceback) {
             self.exit_context();
@@ -192,9 +197,6 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
     // Register class: {{ reg.get_path() }}
     py::class_<{{ reg | pybind_name }}_t, RegisterBase>(m, "{{ reg | pybind_name }}_t"{% if reg.get_property('desc') %}, "{{ reg.get_html_desc() | cpp_string }}"{% endif %}, py::dynamic_attr())
         .def(py::init<uint64_t>())
-        .def("write_fields", &{{ reg | pybind_name }}_t::write_fields,
-             py::arg("mask"), py::arg("value"),
-             "Combined multi-field RMW: single read+write on the master")
         {% for field in reg.fields() %}
         .def_readonly("{{ field.inst_name | safe_id }}", &{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }})
         {% endfor %}
@@ -202,9 +204,7 @@ PYBIND11_MODULE(_{{ soc_name }}_native, m) {
 
     {% for field in reg.fields() %}
     // Field class: {{ reg.get_path() }}.{{ field.inst_name | safe_id }}
-    py::class_<{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }}_field, FieldBase>(m, "{{ reg | pybind_name }}_{{ field.inst_name | safe_id }}_field"{% if field.get_property('desc') %}, "{{ field.get_html_desc() | cpp_string }}"{% endif %}, py::dynamic_attr())
-        .def("read", &{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }}_field::read, "Read field value")
-        .def("write", &{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }}_field::write, "Write field value");
+    py::class_<{{ reg | pybind_name }}_t::{{ field.inst_name | safe_id }}_field, FieldBase>(m, "{{ reg | pybind_name }}_{{ field.inst_name | safe_id }}_field"{% if field.get_property('desc') %}, "{{ field.get_html_desc() | cpp_string }}"{% endif %}, py::dynamic_attr());
     {% endfor %}
     {% endfor %}
 

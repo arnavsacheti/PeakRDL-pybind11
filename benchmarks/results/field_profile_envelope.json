@@ -1,0 +1,874 @@
+{
+  "schema_version": 2,
+  "kind": "field-profile-matrix",
+  "collected_at": "2026-08-07T06:54:43.705217+00:00",
+  "benchmark": {
+    "sizes": [
+      1000,
+      10000,
+      100001
+    ],
+    "registers_per_block": 256,
+    "gen_pyi": true,
+    "build_max_registers": 0,
+    "max_address": null,
+    "layout": "contiguous 32-bit registers from address zero",
+    "profiles": [
+      {
+        "id": "word32",
+        "label": "one 32-bit field",
+        "cycle": [
+          "word32"
+        ],
+        "layouts": [
+          {
+            "id": "word32",
+            "label": "one 32-bit field",
+            "fields": [
+              {
+                "name": "value",
+                "lsb": 0,
+                "width": 32
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "bytes4",
+        "label": "four 8-bit fields",
+        "cycle": [
+          "bytes4"
+        ],
+        "layouts": [
+          {
+            "id": "bytes4",
+            "label": "four packed 8-bit fields",
+            "fields": [
+              {
+                "name": "byte0",
+                "lsb": 0,
+                "width": 8
+              },
+              {
+                "name": "byte1",
+                "lsb": 8,
+                "width": 8
+              },
+              {
+                "name": "byte2",
+                "lsb": 16,
+                "width": 8
+              },
+              {
+                "name": "byte3",
+                "lsb": 24,
+                "width": 8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mixed-1-8-4",
+        "label": "repeating one-field, eight-flag, four-byte layouts",
+        "cycle": [
+          "word32",
+          "flags8-packed",
+          "bytes4"
+        ],
+        "layouts": [
+          {
+            "id": "word32",
+            "label": "one 32-bit field",
+            "fields": [
+              {
+                "name": "value",
+                "lsb": 0,
+                "width": 32
+              }
+            ]
+          },
+          {
+            "id": "flags8-packed",
+            "label": "eight packed 1-bit flags",
+            "fields": [
+              {
+                "name": "flag0",
+                "lsb": 0,
+                "width": 1
+              },
+              {
+                "name": "flag1",
+                "lsb": 1,
+                "width": 1
+              },
+              {
+                "name": "flag2",
+                "lsb": 2,
+                "width": 1
+              },
+              {
+                "name": "flag3",
+                "lsb": 3,
+                "width": 1
+              },
+              {
+                "name": "flag4",
+                "lsb": 4,
+                "width": 1
+              },
+              {
+                "name": "flag5",
+                "lsb": 5,
+                "width": 1
+              },
+              {
+                "name": "flag6",
+                "lsb": 6,
+                "width": 1
+              },
+              {
+                "name": "flag7",
+                "lsb": 7,
+                "width": 1
+              }
+            ]
+          },
+          {
+            "id": "bytes4",
+            "label": "four packed 8-bit fields",
+            "fields": [
+              {
+                "name": "byte0",
+                "lsb": 0,
+                "width": 8
+              },
+              {
+                "name": "byte1",
+                "lsb": 8,
+                "width": 8
+              },
+              {
+                "name": "byte2",
+                "lsb": 16,
+                "width": 8
+              },
+              {
+                "name": "byte3",
+                "lsb": 24,
+                "width": 8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nibbles5",
+        "label": "five 4-bit fields (baseline)",
+        "cycle": [
+          "nibbles5"
+        ],
+        "layouts": [
+          {
+            "id": "nibbles5",
+            "label": "five packed 4-bit fields",
+            "fields": [
+              {
+                "name": "f0",
+                "lsb": 0,
+                "width": 4
+              },
+              {
+                "name": "f1",
+                "lsb": 4,
+                "width": 4
+              },
+              {
+                "name": "f2",
+                "lsb": 8,
+                "width": 4
+              },
+              {
+                "name": "f3",
+                "lsb": 12,
+                "width": 4
+              },
+              {
+                "name": "f4",
+                "lsb": 16,
+                "width": 4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "flags8-packed",
+        "label": "eight packed 1-bit flags",
+        "cycle": [
+          "flags8-packed"
+        ],
+        "layouts": [
+          {
+            "id": "flags8-packed",
+            "label": "eight packed 1-bit flags",
+            "fields": [
+              {
+                "name": "flag0",
+                "lsb": 0,
+                "width": 1
+              },
+              {
+                "name": "flag1",
+                "lsb": 1,
+                "width": 1
+              },
+              {
+                "name": "flag2",
+                "lsb": 2,
+                "width": 1
+              },
+              {
+                "name": "flag3",
+                "lsb": 3,
+                "width": 1
+              },
+              {
+                "name": "flag4",
+                "lsb": 4,
+                "width": 1
+              },
+              {
+                "name": "flag5",
+                "lsb": 5,
+                "width": 1
+              },
+              {
+                "name": "flag6",
+                "lsb": 6,
+                "width": 1
+              },
+              {
+                "name": "flag7",
+                "lsb": 7,
+                "width": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "flags8-spread",
+        "label": "eight 1-bit flags spread across the word",
+        "cycle": [
+          "flags8-spread"
+        ],
+        "layouts": [
+          {
+            "id": "flags8-spread",
+            "label": "eight 1-bit flags spread across the word",
+            "fields": [
+              {
+                "name": "flag0",
+                "lsb": 0,
+                "width": 1
+              },
+              {
+                "name": "flag1",
+                "lsb": 4,
+                "width": 1
+              },
+              {
+                "name": "flag2",
+                "lsb": 8,
+                "width": 1
+              },
+              {
+                "name": "flag3",
+                "lsb": 12,
+                "width": 1
+              },
+              {
+                "name": "flag4",
+                "lsb": 16,
+                "width": 1
+              },
+              {
+                "name": "flag5",
+                "lsb": 20,
+                "width": 1
+              },
+              {
+                "name": "flag6",
+                "lsb": 24,
+                "width": 1
+              },
+              {
+                "name": "flag7",
+                "lsb": 28,
+                "width": 1
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "shape_sha256": "c96d84c8d7c7a802805d5ad5915e456ffcf62f2df1326449b4f503c800c481e6"
+  },
+  "environment": {
+    "system": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "cpu": "Apple M3 Max",
+    "python": "3.13.2",
+    "compiler": "Clang 19.1.6 ",
+    "cmake": "cmake version 4.3.3",
+    "pybind11": "unavailable",
+    "scikit_build_core": "unavailable",
+    "ninja": "unavailable",
+    "commit": "a492151271520ddafc275119b8f2c83bef0d632a",
+    "git_dirty": true
+  },
+  "series": [
+    {
+      "field_profile": "word32",
+      "points": [
+        {
+          "registers": 1000,
+          "fields": 1000,
+          "first_address": 0,
+          "last_address": 3996,
+          "region_bytes": 4000,
+          "occupied_bytes": 4000,
+          "address_density": 1.0,
+          "field_profile": "word32",
+          "layout_counts": {
+            "word32": 1000
+          },
+          "field_bits": 32000,
+          "source_bytes": 9231624,
+          "cpp_bytes": 1470445,
+          "python_bytes": 5031364,
+          "source_files": 18,
+          "binding_chunks": 4,
+          "rdl_bytes": 45012,
+          "rdl_write_s": 0.0006422080332413316,
+          "compile_s": 0.06075520906597376,
+          "validate_s": 0.0028643750119954348,
+          "export_s": 0.22153025004081428,
+          "generation_peak_rss_mib": 75.25,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 10000,
+          "fields": 10000,
+          "first_address": 0,
+          "last_address": 39996,
+          "region_bytes": 40000,
+          "occupied_bytes": 40000,
+          "address_density": 1.0,
+          "field_profile": "word32",
+          "layout_counts": {
+            "word32": 10000
+          },
+          "field_bits": 320000,
+          "source_bytes": 91542657,
+          "cpp_bytes": 14266769,
+          "python_bytes": 49994618,
+          "source_files": 54,
+          "binding_chunks": 40,
+          "rdl_bytes": 449160,
+          "rdl_write_s": 0.004930833005346358,
+          "compile_s": 0.6807311659213156,
+          "validate_s": 0.03042304201517254,
+          "export_s": 1.5436732500093058,
+          "generation_peak_rss_mib": 381.578125,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 100001,
+          "fields": 100001,
+          "first_address": 0,
+          "last_address": 400000,
+          "region_bytes": 400004,
+          "occupied_bytes": 400004,
+          "address_density": 1.0,
+          "field_profile": "word32",
+          "layout_counts": {
+            "word32": 100001
+          },
+          "field_bits": 3200032,
+          "source_bytes": 915002710,
+          "cpp_bytes": 142221153,
+          "python_bytes": 499806898,
+          "source_files": 405,
+          "binding_chunks": 391,
+          "rdl_bytes": 4490709,
+          "rdl_write_s": 0.05967208300717175,
+          "compile_s": 8.634344042045996,
+          "validate_s": 0.29539183294400573,
+          "export_s": 15.426074458053336,
+          "generation_peak_rss_mib": 3642.765625,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        }
+      ]
+    },
+    {
+      "field_profile": "bytes4",
+      "points": [
+        {
+          "registers": 1000,
+          "fields": 4000,
+          "first_address": 0,
+          "last_address": 3996,
+          "region_bytes": 4000,
+          "occupied_bytes": 4000,
+          "address_density": 1.0,
+          "field_profile": "bytes4",
+          "layout_counts": {
+            "bytes4": 1000
+          },
+          "field_bits": 32000,
+          "source_bytes": 22620936,
+          "cpp_bytes": 3349445,
+          "python_bytes": 11157676,
+          "source_files": 18,
+          "binding_chunks": 4,
+          "rdl_bytes": 45145,
+          "rdl_write_s": 0.0006589590338990092,
+          "compile_s": 0.08950999996159226,
+          "validate_s": 0.0064022919395938516,
+          "export_s": 0.40225662500597537,
+          "generation_peak_rss_mib": 121.09375,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 10000,
+          "fields": 40000,
+          "first_address": 0,
+          "last_address": 39996,
+          "region_bytes": 40000,
+          "occupied_bytes": 40000,
+          "address_density": 1.0,
+          "field_profile": "bytes4",
+          "layout_counts": {
+            "bytes4": 10000
+          },
+          "field_bits": 320000,
+          "source_bytes": 225432969,
+          "cpp_bytes": 33056769,
+          "python_bytes": 111254930,
+          "source_files": 54,
+          "binding_chunks": 40,
+          "rdl_bytes": 449293,
+          "rdl_write_s": 0.0056954160099849105,
+          "compile_s": 1.030456667067483,
+          "validate_s": 0.05904391699004918,
+          "export_s": 3.4500382500700653,
+          "generation_peak_rss_mib": 858.9375,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 100001,
+          "fields": 400004,
+          "first_address": 0,
+          "last_address": 400000,
+          "region_bytes": 400004,
+          "occupied_bytes": 400004,
+          "address_density": 1.0,
+          "field_profile": "bytes4",
+          "layout_counts": {
+            "bytes4": 100001
+          },
+          "field_bits": 3200032,
+          "source_bytes": 2253916411,
+          "cpp_bytes": 330123032,
+          "python_bytes": 1112413336,
+          "source_files": 405,
+          "binding_chunks": 391,
+          "rdl_bytes": 4490842,
+          "rdl_write_s": 0.054953458020463586,
+          "compile_s": 12.570542250061408,
+          "validate_s": 0.5649782499531284,
+          "export_s": 34.985338875092566,
+          "generation_peak_rss_mib": 5566.25,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        }
+      ]
+    },
+    {
+      "field_profile": "mixed-1-8-4",
+      "points": [
+        {
+          "registers": 1000,
+          "fields": 4330,
+          "first_address": 0,
+          "last_address": 3996,
+          "region_bytes": 4000,
+          "occupied_bytes": 4000,
+          "address_density": 1.0,
+          "field_profile": "mixed-1-8-4",
+          "layout_counts": {
+            "word32": 334,
+            "flags8-packed": 333,
+            "bytes4": 333
+          },
+          "field_bits": 24008,
+          "source_bytes": 24070158,
+          "cpp_bytes": 3555025,
+          "python_bytes": 11821954,
+          "source_files": 18,
+          "binding_chunks": 4,
+          "rdl_bytes": 47631,
+          "rdl_write_s": 0.0007055840687826276,
+          "compile_s": 0.10047933296300471,
+          "validate_s": 0.0057319169864058495,
+          "export_s": 0.43512499995995313,
+          "generation_peak_rss_mib": 132.15625,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 10000,
+          "fields": 43330,
+          "first_address": 0,
+          "last_address": 39996,
+          "region_bytes": 40000,
+          "occupied_bytes": 40000,
+          "address_density": 1.0,
+          "field_profile": "mixed-1-8-4",
+          "layout_counts": {
+            "word32": 3334,
+            "flags8-packed": 3333,
+            "bytes4": 3333
+          },
+          "field_bits": 240008,
+          "source_bytes": 240043191,
+          "cpp_bytes": 35131349,
+          "python_bytes": 117943208,
+          "source_files": 54,
+          "binding_chunks": 40,
+          "rdl_bytes": 469779,
+          "rdl_write_s": 0.005384332966059446,
+          "compile_s": 1.120179041987285,
+          "validate_s": 0.061258040950633585,
+          "export_s": 3.4942184580722824,
+          "generation_peak_rss_mib": 849.03125,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 100001,
+          "fields": 433338,
+          "first_address": 0,
+          "last_address": 400000,
+          "region_bytes": 400004,
+          "occupied_bytes": 400004,
+          "address_density": 1.0,
+          "field_profile": "mixed-1-8-4",
+          "layout_counts": {
+            "word32": 33334,
+            "flags8-packed": 33334,
+            "bytes4": 33333
+          },
+          "field_bits": 2400016,
+          "source_bytes": 2400154405,
+          "cpp_bytes": 350890114,
+          "python_bytes": 1179349744,
+          "source_files": 405,
+          "binding_chunks": 391,
+          "rdl_bytes": 4691330,
+          "rdl_write_s": 0.05693458300083876,
+          "compile_s": 13.161152417073026,
+          "validate_s": 0.6025792500004172,
+          "export_s": 38.673607083037496,
+          "generation_peak_rss_mib": 7326.71875,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        }
+      ]
+    },
+    {
+      "field_profile": "nibbles5",
+      "points": [
+        {
+          "registers": 1000,
+          "fields": 5000,
+          "first_address": 0,
+          "last_address": 3996,
+          "region_bytes": 4000,
+          "occupied_bytes": 4000,
+          "address_density": 1.0,
+          "field_profile": "nibbles5",
+          "layout_counts": {
+            "nibbles5": 1000
+          },
+          "field_bits": 20000,
+          "source_bytes": 26422010,
+          "cpp_bytes": 3810445,
+          "python_bytes": 12797750,
+          "source_files": 18,
+          "binding_chunks": 4,
+          "rdl_bytes": 45173,
+          "rdl_write_s": 0.0006190419662743807,
+          "compile_s": 0.10493799997493625,
+          "validate_s": 0.007028207997791469,
+          "export_s": 0.6259427909972146,
+          "generation_peak_rss_mib": 133.84375,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 10000,
+          "fields": 50000,
+          "first_address": 0,
+          "last_address": 39996,
+          "region_bytes": 40000,
+          "occupied_bytes": 40000,
+          "address_density": 1.0,
+          "field_profile": "nibbles5",
+          "layout_counts": {
+            "nibbles5": 10000
+          },
+          "field_bits": 200000,
+          "source_bytes": 263443043,
+          "cpp_bytes": 37666769,
+          "python_bytes": 127655004,
+          "source_files": 54,
+          "binding_chunks": 40,
+          "rdl_bytes": 449321,
+          "rdl_write_s": 0.00433487503323704,
+          "compile_s": 1.1507054170360789,
+          "validate_s": 0.0654689579969272,
+          "export_s": 4.050658792024478,
+          "generation_peak_rss_mib": 916.96875,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 100001,
+          "fields": 500005,
+          "first_address": 0,
+          "last_address": 400000,
+          "region_bytes": 400004,
+          "occupied_bytes": 400004,
+          "address_density": 1.0,
+          "field_profile": "nibbles5",
+          "layout_counts": {
+            "nibbles5": 100001
+          },
+          "field_bits": 2000020,
+          "source_bytes": 2634020286,
+          "cpp_bytes": 376223493,
+          "python_bytes": 1276415050,
+          "source_files": 405,
+          "binding_chunks": 391,
+          "rdl_bytes": 4490870,
+          "rdl_write_s": 0.03780499997083098,
+          "compile_s": 14.408417458063923,
+          "validate_s": 0.64497174997814,
+          "export_s": 38.77126412501093,
+          "generation_peak_rss_mib": 7603.65625,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        }
+      ]
+    },
+    {
+      "field_profile": "flags8-packed",
+      "points": [
+        {
+          "registers": 1000,
+          "fields": 8000,
+          "first_address": 0,
+          "last_address": 3996,
+          "region_bytes": 4000,
+          "occupied_bytes": 4000,
+          "address_density": 1.0,
+          "field_profile": "flags8-packed",
+          "layout_counts": {
+            "flags8-packed": 1000
+          },
+          "field_bits": 8000,
+          "source_bytes": 40391352,
+          "cpp_bytes": 5851445,
+          "python_bytes": 19286092,
+          "source_files": 18,
+          "binding_chunks": 4,
+          "rdl_bytes": 45312,
+          "rdl_write_s": 0.0006747919833287597,
+          "compile_s": 0.13101058406755328,
+          "validate_s": 0.008764582918956876,
+          "export_s": 0.6269585000118241,
+          "generation_peak_rss_mib": 168.671875,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 10000,
+          "fields": 80000,
+          "first_address": 0,
+          "last_address": 39996,
+          "region_bytes": 40000,
+          "occupied_bytes": 40000,
+          "address_density": 1.0,
+          "field_profile": "flags8-packed",
+          "layout_counts": {
+            "flags8-packed": 10000
+          },
+          "field_bits": 80000,
+          "source_bytes": 403133385,
+          "cpp_bytes": 58076769,
+          "python_bytes": 192535346,
+          "source_files": 54,
+          "binding_chunks": 40,
+          "rdl_bytes": 449460,
+          "rdl_write_s": 0.0038416250608861446,
+          "compile_s": 1.4783462079940364,
+          "validate_s": 0.08708316704723984,
+          "export_s": 5.677403667010367,
+          "generation_peak_rss_mib": 1229.0625,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 100001,
+          "fields": 800008,
+          "first_address": 0,
+          "last_address": 400000,
+          "region_bytes": 400004,
+          "occupied_bytes": 400004,
+          "address_density": 1.0,
+          "field_profile": "flags8-packed",
+          "layout_counts": {
+            "flags8-packed": 100001
+          },
+          "field_bits": 800008,
+          "source_bytes": 4030934597,
+          "cpp_bytes": 580325534,
+          "python_bytes": 1925221880,
+          "source_files": 405,
+          "binding_chunks": 391,
+          "rdl_bytes": 4491009,
+          "rdl_write_s": 0.037146957940422,
+          "compile_s": 17.91835208295379,
+          "validate_s": 0.8988743330119178,
+          "export_s": 58.84875808400102,
+          "generation_peak_rss_mib": 9873.9375,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        }
+      ]
+    },
+    {
+      "field_profile": "flags8-spread",
+      "points": [
+        {
+          "registers": 1000,
+          "fields": 8000,
+          "first_address": 0,
+          "last_address": 3996,
+          "region_bytes": 4000,
+          "occupied_bytes": 4000,
+          "address_density": 1.0,
+          "field_profile": "flags8-spread",
+          "layout_counts": {
+            "flags8-spread": 1000
+          },
+          "field_bits": 8000,
+          "source_bytes": 40456352,
+          "cpp_bytes": 5856445,
+          "python_bytes": 19306092,
+          "source_files": 18,
+          "binding_chunks": 4,
+          "rdl_bytes": 45322,
+          "rdl_write_s": 0.0005472920602187514,
+          "compile_s": 0.12781908293254673,
+          "validate_s": 0.009129540994763374,
+          "export_s": 0.6447298750281334,
+          "generation_peak_rss_mib": 168.375,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 10000,
+          "fields": 80000,
+          "first_address": 0,
+          "last_address": 39996,
+          "region_bytes": 40000,
+          "occupied_bytes": 40000,
+          "address_density": 1.0,
+          "field_profile": "flags8-spread",
+          "layout_counts": {
+            "flags8-spread": 10000
+          },
+          "field_bits": 80000,
+          "source_bytes": 403783385,
+          "cpp_bytes": 58126769,
+          "python_bytes": 192735346,
+          "source_files": 54,
+          "binding_chunks": 40,
+          "rdl_bytes": 449470,
+          "rdl_write_s": 0.004141416982747614,
+          "compile_s": 1.4864732919959351,
+          "validate_s": 0.08658250002190471,
+          "export_s": 5.728386333910748,
+          "generation_peak_rss_mib": 1230.0,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        },
+        {
+          "registers": 100001,
+          "fields": 800008,
+          "first_address": 0,
+          "last_address": 400000,
+          "region_bytes": 400004,
+          "occupied_bytes": 400004,
+          "address_density": 1.0,
+          "field_profile": "flags8-spread",
+          "layout_counts": {
+            "flags8-spread": 100001
+          },
+          "field_bits": 800008,
+          "source_bytes": 4037434662,
+          "cpp_bytes": 580825539,
+          "python_bytes": 1927221900,
+          "source_files": 405,
+          "binding_chunks": 391,
+          "rdl_bytes": 4491019,
+          "rdl_write_s": 0.03784050000831485,
+          "compile_s": 17.548457790981047,
+          "validate_s": 0.8869563329499215,
+          "export_s": 57.61378045799211,
+          "generation_peak_rss_mib": 10265.375,
+          "build_s": null,
+          "build_peak_rss_mib": null,
+          "wheel_bytes": null
+        }
+      ]
+    }
+  ]
+}

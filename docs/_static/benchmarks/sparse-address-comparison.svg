@@ -43,16 +43,16 @@
 <text class="tick" x="74.0" y="256.0" text-anchor="middle">1k</text>
 <text class="tick" x="480.0" y="256.0" text-anchor="middle">10k</text>
 <text class="tick" x="886.0" y="256.0" text-anchor="middle">100k+</text>
-<polyline class="series series-a" points="74.0,232.1 480.0,217.5 886.0,63.9" aria-label="Contiguous"/>
-<circle class="point series-a" cx="74.0" cy="232.1" r="3.5"/>
-<circle class="point series-a" cx="480.0" cy="217.5" r="3.5"/>
-<circle class="point series-a" cx="886.0" cy="63.9" r="3.5"/>
-<text class="value-label" x="882.0" y="54.9" text-anchor="end">44</text>
-<polyline class="series series-b" points="74.0,232.2 480.0,217.5 886.0,65.2" aria-label="Sparse through 2 TiB"/>
+<polyline class="series series-a" points="74.0,232.3 480.0,219.0 886.0,86.3" aria-label="Contiguous"/>
+<circle class="point series-a" cx="74.0" cy="232.3" r="3.5"/>
+<circle class="point series-a" cx="480.0" cy="219.0" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="86.3" r="3.5"/>
+<text class="value-label" x="882.0" y="77.3" text-anchor="end">38</text>
+<polyline class="series series-b" points="74.0,232.2 480.0,218.8 886.0,89.7" aria-label="Sparse through 2 TiB"/>
 <circle class="point series-b" cx="74.0" cy="232.2" r="3.5"/>
-<circle class="point series-b" cx="480.0" cy="217.5" r="3.5"/>
-<circle class="point series-b" cx="886.0" cy="65.2" r="3.5"/>
-<text class="value-label" x="882.0" y="81.2" text-anchor="end">44</text>
+<circle class="point series-b" cx="480.0" cy="218.8" r="3.5"/>
+<circle class="point series-b" cx="886.0" cy="89.7" r="3.5"/>
+<text class="value-label" x="882.0" y="105.7" text-anchor="end">38</text>
 <line class="series series-a" x1="81.0" y1="52.0" x2="99.0" y2="52.0"/>
 <text class="legend" x="106.0" y="56.0">Contiguous</text>
 <line class="series series-b" x1="81.0" y1="70.0" x2="99.0" y2="70.0"/>
@@ -75,16 +75,16 @@
 <text class="tick" x="74.0" y="532.0" text-anchor="middle">1k</text>
 <text class="tick" x="255.0" y="532.0" text-anchor="middle">10k</text>
 <text class="tick" x="436.0" y="532.0" text-anchor="middle">100k+</text>
-<polyline class="series series-a" points="74.0,507.5 255.0,493.0 436.0,384.0" aria-label="Contiguous"/>
+<polyline class="series series-a" points="74.0,507.5 255.0,492.8 436.0,364.8" aria-label="Contiguous"/>
 <circle class="point series-a" cx="74.0" cy="507.5" r="3.5"/>
-<circle class="point series-a" cx="255.0" cy="493.0" r="3.5"/>
-<circle class="point series-a" cx="436.0" cy="384.0" r="3.5"/>
-<text class="value-label" x="432.0" y="400.0" text-anchor="end">6.6</text>
-<polyline class="series series-b" points="74.0,507.5 255.0,492.9 436.0,377.4" aria-label="Sparse through 2 TiB"/>
+<circle class="point series-a" cx="255.0" cy="492.8" r="3.5"/>
+<circle class="point series-a" cx="436.0" cy="364.8" r="3.5"/>
+<text class="value-label" x="432.0" y="380.8" text-anchor="end">7.6</text>
+<polyline class="series series-b" points="74.0,507.5 255.0,492.7 436.0,350.3" aria-label="Sparse through 2 TiB"/>
 <circle class="point series-b" cx="74.0" cy="507.5" r="3.5"/>
-<circle class="point series-b" cx="255.0" cy="492.9" r="3.5"/>
-<circle class="point series-b" cx="436.0" cy="377.4" r="3.5"/>
-<text class="value-label" x="432.0" y="368.4" text-anchor="end">6.9</text>
+<circle class="point series-b" cx="255.0" cy="492.7" r="3.5"/>
+<circle class="point series-b" cx="436.0" cy="350.3" r="3.5"/>
+<text class="value-label" x="432.0" y="341.3" text-anchor="end">8.3</text>
 <line class="series series-a" x1="81.0" y1="328.0" x2="99.0" y2="328.0"/>
 <text class="legend" x="106.0" y="332.0">Contiguous</text>
 <line class="series series-b" x1="81.0" y1="346.0" x2="99.0" y2="346.0"/>
@@ -107,16 +107,16 @@
 <text class="tick" x="524.0" y="532.0" text-anchor="middle">1k</text>
 <text class="tick" x="705.0" y="532.0" text-anchor="middle">10k</text>
 <text class="tick" x="886.0" y="532.0" text-anchor="middle">100k+</text>
-<polyline class="series series-a" points="524.0,508.8 705.0,498.5 886.0,395.0" aria-label="Contiguous"/>
-<circle class="point series-a" cx="524.0" cy="508.8" r="3.5"/>
-<circle class="point series-a" cx="705.0" cy="498.5" r="3.5"/>
-<circle class="point series-a" cx="886.0" cy="395.0" r="3.5"/>
-<text class="value-label" x="882.0" y="411.0" text-anchor="end">3</text>
-<polyline class="series series-b" points="524.0,508.8 705.0,498.5 886.0,394.9" aria-label="Sparse through 2 TiB"/>
-<circle class="point series-b" cx="524.0" cy="508.8" r="3.5"/>
-<circle class="point series-b" cx="705.0" cy="498.5" r="3.5"/>
-<circle class="point series-b" cx="886.0" cy="394.9" r="3.5"/>
-<text class="value-label" x="882.0" y="385.9" text-anchor="end">3</text>
+<polyline class="series series-a" points="524.0,509.1 705.0,500.6 886.0,415.8" aria-label="Contiguous"/>
+<circle class="point series-a" cx="524.0" cy="509.1" r="3.5"/>
+<circle class="point series-a" cx="705.0" cy="500.6" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="415.8" r="3.5"/>
+<text class="value-label" x="882.0" y="431.8" text-anchor="end">2.5</text>
+<polyline class="series series-b" points="524.0,509.1 705.0,500.6 886.0,415.7" aria-label="Sparse through 2 TiB"/>
+<circle class="point series-b" cx="524.0" cy="509.1" r="3.5"/>
+<circle class="point series-b" cx="705.0" cy="500.6" r="3.5"/>
+<circle class="point series-b" cx="886.0" cy="415.7" r="3.5"/>
+<text class="value-label" x="882.0" y="406.7" text-anchor="end">2.5</text>
 <line class="series series-a" x1="531.0" y1="328.0" x2="549.0" y2="328.0"/>
 <text class="legend" x="556.0" y="332.0">Contiguous</text>
 <line class="series series-b" x1="531.0" y1="346.0" x2="549.0" y2="346.0"/>

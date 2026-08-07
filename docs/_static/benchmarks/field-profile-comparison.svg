@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 720" role="img" aria-labelledby="title description">
+<title id="title">Field-profile comparison at the largest shared register count (100,001 registers)</title>
+<desc id="description">Four grouped horizontal bar charts compare total fields, source export time, generation peak resident memory, and generated source size for six field layouts at the largest register count shared by every profile. The shared comparison point is 100,001 registers.</desc>
+<style>
+            :root { color-scheme: light dark; }
+            .panel-title, .value-label, .legend { fill: #172033; }
+            .panel-title { font: 600 14px system-ui, sans-serif; }
+            .unit, .tick { fill: #5d6678; font: 11px system-ui, sans-serif; }
+            .legend, .value-label { font: 11px system-ui, sans-serif; }
+            .grid { stroke: #d9dde6; stroke-width: 1; }
+            .axis { stroke: #838b9b; stroke-width: 1; }
+            .series { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+            .point { stroke-width: 2; }
+            .series-a { stroke: #2563eb; }
+            .series-b { stroke: #c2410c; }
+            .point.series-a { fill: #2563eb; }
+            .point.series-b { fill: #c2410c; }
+            @media (prefers-color-scheme: dark) {
+                .panel-title, .value-label, .legend { fill: #ecf0f7; }
+                .unit, .tick { fill: #aab2c2; }
+                .grid { stroke: #3b4352; }
+                .axis { stroke: #7d8799; }
+                .series-a { stroke: #60a5fa; }
+                .series-b { stroke: #fb923c; }
+                .point.series-a { fill: #60a5fa; }
+                .point.series-b { fill: #fb923c; }
+            }
+        </style>
+<style>
+            .bar-label, .bar-value { fill: #172033; font: 11px system-ui, sans-serif; }
+            .bar { stroke: none; }
+            .profile-0 { fill: #2563eb; }
+            .profile-1 { fill: #0f766e; }
+            .profile-2 { fill: #7c3aed; }
+            .profile-3 { fill: #c2410c; }
+            .profile-4 { fill: #be123c; }
+            .profile-5 { fill: #4d7c0f; }
+            @media (prefers-color-scheme: dark) {
+                .bar-label, .bar-value { fill: #ecf0f7; }
+                .profile-0 { fill: #60a5fa; }
+                .profile-1 { fill: #2dd4bf; }
+                .profile-2 { fill: #a78bfa; }
+                .profile-3 { fill: #fb923c; }
+                .profile-4 { fill: #fb7185; }
+                .profile-5 { fill: #a3e635; }
+            }
+        </style>
+<g class="panel" aria-label="Total fields">
+<text class="panel-title" x="20.0" y="35.0">Total fields</text>
+<text class="unit" x="560.0" y="35.0" text-anchor="end">fields</text>
+<line class="grid" x1="162.0" y1="58.0" x2="162.0" y2="302.0"/>
+<text class="tick" x="162.0" y="324.0" text-anchor="middle">0</text>
+<line class="grid" x1="255.5" y1="58.0" x2="255.5" y2="302.0"/>
+<text class="tick" x="255.5" y="324.0" text-anchor="middle">250,000</text>
+<line class="grid" x1="349.0" y1="58.0" x2="349.0" y2="302.0"/>
+<text class="tick" x="349.0" y="324.0" text-anchor="middle">500,000</text>
+<line class="grid" x1="442.5" y1="58.0" x2="442.5" y2="302.0"/>
+<text class="tick" x="442.5" y="324.0" text-anchor="middle">750,000</text>
+<line class="grid" x1="536.0" y1="58.0" x2="536.0" y2="302.0"/>
+<text class="tick" x="536.0" y="324.0" text-anchor="middle">1,000,000</text>
+<line class="axis" x1="162.0" y1="302.0" x2="536.0" y2="302.0"/>
+<text class="bar-label" x="152.0" y="82.3" text-anchor="end">word32</text>
+<rect class="bar profile-0" x="162.0" y="66.5" width="37.4" height="23.6" rx="2" aria-label="word32: 100,001 fields"/>
+<text class="bar-value" x="205.4" y="82.3" text-anchor="start">100,001</text>
+<text class="bar-label" x="152.0" y="123.0" text-anchor="end">bytes4</text>
+<rect class="bar profile-1" x="162.0" y="107.2" width="149.6" height="23.6" rx="2" aria-label="bytes4: 400,004 fields"/>
+<text class="bar-value" x="317.6" y="123.0" text-anchor="start">400,004</text>
+<text class="bar-label" x="152.0" y="163.7" text-anchor="end">mixed 1/8/4</text>
+<rect class="bar profile-2" x="162.0" y="147.9" width="162.1" height="23.6" rx="2" aria-label="mixed 1/8/4: 433,338 fields"/>
+<text class="bar-value" x="330.1" y="163.7" text-anchor="start">433,338</text>
+<text class="bar-label" x="152.0" y="204.3" text-anchor="end">nibbles5</text>
+<rect class="bar profile-3" x="162.0" y="188.5" width="187.0" height="23.6" rx="2" aria-label="nibbles5: 500,005 fields"/>
+<text class="bar-value" x="355.0" y="204.3" text-anchor="start">500,005</text>
+<text class="bar-label" x="152.0" y="245.0" text-anchor="end">flags8 packed</text>
+<rect class="bar profile-4" x="162.0" y="229.2" width="299.2" height="23.6" rx="2" aria-label="flags8 packed: 800,008 fields"/>
+<text class="bar-value" x="467.2" y="245.0" text-anchor="start">800,008</text>
+<text class="bar-label" x="152.0" y="285.7" text-anchor="end">flags8 spread</text>
+<rect class="bar profile-5" x="162.0" y="269.9" width="299.2" height="23.6" rx="2" aria-label="flags8 spread: 800,008 fields"/>
+<text class="bar-value" x="467.2" y="285.7" text-anchor="start">800,008</text>
+</g>
+<g class="panel" aria-label="Source export time">
+<text class="panel-title" x="600.0" y="35.0">Source export time</text>
+<text class="unit" x="1140.0" y="35.0" text-anchor="end">seconds</text>
+<line class="grid" x1="742.0" y1="58.0" x2="742.0" y2="302.0"/>
+<text class="tick" x="742.0" y="324.0" text-anchor="middle">0</text>
+<line class="grid" x1="835.5" y1="58.0" x2="835.5" y2="302.0"/>
+<text class="tick" x="835.5" y="324.0" text-anchor="middle">25</text>
+<line class="grid" x1="929.0" y1="58.0" x2="929.0" y2="302.0"/>
+<text class="tick" x="929.0" y="324.0" text-anchor="middle">50</text>
+<line class="grid" x1="1022.5" y1="58.0" x2="1022.5" y2="302.0"/>
+<text class="tick" x="1022.5" y="324.0" text-anchor="middle">75</text>
+<line class="grid" x1="1116.0" y1="58.0" x2="1116.0" y2="302.0"/>
+<text class="tick" x="1116.0" y="324.0" text-anchor="middle">100</text>
+<line class="axis" x1="742.0" y1="302.0" x2="1116.0" y2="302.0"/>
+<text class="bar-label" x="732.0" y="82.3" text-anchor="end">word32</text>
+<rect class="bar profile-0" x="742.0" y="66.5" width="57.7" height="23.6" rx="2" aria-label="word32: 15 seconds"/>
+<text class="bar-value" x="805.7" y="82.3" text-anchor="start">15</text>
+<text class="bar-label" x="732.0" y="123.0" text-anchor="end">bytes4</text>
+<rect class="bar profile-1" x="742.0" y="107.2" width="130.8" height="23.6" rx="2" aria-label="bytes4: 35 seconds"/>
+<text class="bar-value" x="878.8" y="123.0" text-anchor="start">35</text>
+<text class="bar-label" x="732.0" y="163.7" text-anchor="end">mixed 1/8/4</text>
+<rect class="bar profile-2" x="742.0" y="147.9" width="144.6" height="23.6" rx="2" aria-label="mixed 1/8/4: 39 seconds"/>
+<text class="bar-value" x="892.6" y="163.7" text-anchor="start">39</text>
+<text class="bar-label" x="732.0" y="204.3" text-anchor="end">nibbles5</text>
+<rect class="bar profile-3" x="742.0" y="188.5" width="145.0" height="23.6" rx="2" aria-label="nibbles5: 39 seconds"/>
+<text class="bar-value" x="893.0" y="204.3" text-anchor="start">39</text>
+<text class="bar-label" x="732.0" y="245.0" text-anchor="end">flags8 packed</text>
+<rect class="bar profile-4" x="742.0" y="229.2" width="220.1" height="23.6" rx="2" aria-label="flags8 packed: 59 seconds"/>
+<text class="bar-value" x="968.1" y="245.0" text-anchor="start">59</text>
+<text class="bar-label" x="732.0" y="285.7" text-anchor="end">flags8 spread</text>
+<rect class="bar profile-5" x="742.0" y="269.9" width="215.5" height="23.6" rx="2" aria-label="flags8 spread: 58 seconds"/>
+<text class="bar-value" x="963.5" y="285.7" text-anchor="start">58</text>
+</g>
+<g class="panel" aria-label="Generation peak memory">
+<text class="panel-title" x="20.0" y="391.0">Generation peak memory</text>
+<text class="unit" x="560.0" y="391.0" text-anchor="end">MiB RSS</text>
+<line class="grid" x1="162.0" y1="414.0" x2="162.0" y2="658.0"/>
+<text class="tick" x="162.0" y="680.0" text-anchor="middle">0</text>
+<line class="grid" x1="255.5" y1="414.0" x2="255.5" y2="658.0"/>
+<text class="tick" x="255.5" y="680.0" text-anchor="middle">5000</text>
+<line class="grid" x1="349.0" y1="414.0" x2="349.0" y2="658.0"/>
+<text class="tick" x="349.0" y="680.0" text-anchor="middle">10000</text>
+<line class="grid" x1="442.5" y1="414.0" x2="442.5" y2="658.0"/>
+<text class="tick" x="442.5" y="680.0" text-anchor="middle">15000</text>
+<line class="grid" x1="536.0" y1="414.0" x2="536.0" y2="658.0"/>
+<text class="tick" x="536.0" y="680.0" text-anchor="middle">20000</text>
+<line class="axis" x1="162.0" y1="658.0" x2="536.0" y2="658.0"/>
+<text class="bar-label" x="152.0" y="438.3" text-anchor="end">word32</text>
+<rect class="bar profile-0" x="162.0" y="422.5" width="68.1" height="23.6" rx="2" aria-label="word32: 3643 MiB RSS"/>
+<text class="bar-value" x="236.1" y="438.3" text-anchor="start">3643</text>
+<text class="bar-label" x="152.0" y="479.0" text-anchor="end">bytes4</text>
+<rect class="bar profile-1" x="162.0" y="463.2" width="104.1" height="23.6" rx="2" aria-label="bytes4: 5566 MiB RSS"/>
+<text class="bar-value" x="272.1" y="479.0" text-anchor="start">5566</text>
+<text class="bar-label" x="152.0" y="519.7" text-anchor="end">mixed 1/8/4</text>
+<rect class="bar profile-2" x="162.0" y="503.9" width="137.0" height="23.6" rx="2" aria-label="mixed 1/8/4: 7327 MiB RSS"/>
+<text class="bar-value" x="305.0" y="519.7" text-anchor="start">7327</text>
+<text class="bar-label" x="152.0" y="560.3" text-anchor="end">nibbles5</text>
+<rect class="bar profile-3" x="162.0" y="544.5" width="142.2" height="23.6" rx="2" aria-label="nibbles5: 7604 MiB RSS"/>
+<text class="bar-value" x="310.2" y="560.3" text-anchor="start">7604</text>
+<text class="bar-label" x="152.0" y="601.0" text-anchor="end">flags8 packed</text>
+<rect class="bar profile-4" x="162.0" y="585.2" width="184.6" height="23.6" rx="2" aria-label="flags8 packed: 9874 MiB RSS"/>
+<text class="bar-value" x="352.6" y="601.0" text-anchor="start">9874</text>
+<text class="bar-label" x="152.0" y="641.7" text-anchor="end">flags8 spread</text>
+<rect class="bar profile-5" x="162.0" y="625.9" width="192.0" height="23.6" rx="2" aria-label="flags8 spread: 10265 MiB RSS"/>
+<text class="bar-value" x="360.0" y="641.7" text-anchor="start">10265</text>
+</g>
+<g class="panel" aria-label="Generated source footprint">
+<text class="panel-title" x="600.0" y="391.0">Generated source footprint</text>
+<text class="unit" x="1140.0" y="391.0" text-anchor="end">GiB</text>
+<line class="grid" x1="742.0" y1="414.0" x2="742.0" y2="658.0"/>
+<text class="tick" x="742.0" y="680.0" text-anchor="middle">0</text>
+<line class="grid" x1="835.5" y1="414.0" x2="835.5" y2="658.0"/>
+<text class="tick" x="835.5" y="680.0" text-anchor="middle">1.2</text>
+<line class="grid" x1="929.0" y1="414.0" x2="929.0" y2="658.0"/>
+<text class="tick" x="929.0" y="680.0" text-anchor="middle">2.5</text>
+<line class="grid" x1="1022.5" y1="414.0" x2="1022.5" y2="658.0"/>
+<text class="tick" x="1022.5" y="680.0" text-anchor="middle">3.8</text>
+<line class="grid" x1="1116.0" y1="414.0" x2="1116.0" y2="658.0"/>
+<text class="tick" x="1116.0" y="680.0" text-anchor="middle">5</text>
+<line class="axis" x1="742.0" y1="658.0" x2="1116.0" y2="658.0"/>
+<text class="bar-label" x="732.0" y="438.3" text-anchor="end">word32</text>
+<rect class="bar profile-0" x="742.0" y="422.5" width="63.7" height="23.6" rx="2" aria-label="word32: 0.85 GiB"/>
+<text class="bar-value" x="811.7" y="438.3" text-anchor="start">0.85</text>
+<text class="bar-label" x="732.0" y="479.0" text-anchor="end">bytes4</text>
+<rect class="bar profile-1" x="742.0" y="463.2" width="157.0" height="23.6" rx="2" aria-label="bytes4: 2.1 GiB"/>
+<text class="bar-value" x="905.0" y="479.0" text-anchor="start">2.1</text>
+<text class="bar-label" x="732.0" y="519.7" text-anchor="end">mixed 1/8/4</text>
+<rect class="bar profile-2" x="742.0" y="503.9" width="167.2" height="23.6" rx="2" aria-label="mixed 1/8/4: 2.2 GiB"/>
+<text class="bar-value" x="915.2" y="519.7" text-anchor="start">2.2</text>
+<text class="bar-label" x="732.0" y="560.3" text-anchor="end">nibbles5</text>
+<rect class="bar profile-3" x="742.0" y="544.5" width="183.5" height="23.6" rx="2" aria-label="nibbles5: 2.5 GiB"/>
+<text class="bar-value" x="931.5" y="560.3" text-anchor="start">2.5</text>
+<text class="bar-label" x="732.0" y="601.0" text-anchor="end">flags8 packed</text>
+<rect class="bar profile-4" x="742.0" y="585.2" width="280.8" height="23.6" rx="2" aria-label="flags8 packed: 3.8 GiB"/>
+<text class="bar-value" x="1028.8" y="601.0" text-anchor="start">3.8</text>
+<text class="bar-label" x="732.0" y="641.7" text-anchor="end">flags8 spread</text>
+<rect class="bar profile-5" x="742.0" y="625.9" width="281.3" height="23.6" rx="2" aria-label="flags8 spread: 3.8 GiB"/>
+<text class="bar-value" x="1029.3" y="641.7" text-anchor="start">3.8</text>
+</g>
+</svg>

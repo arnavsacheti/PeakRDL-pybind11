@@ -4,6 +4,11 @@ PeakRDL exporter integration
 
 from typing import TYPE_CHECKING
 
+try:
+    from peakrdl.config import schema as _peakrdl_schema  # pyrefly: ignore[missing-import]
+except ImportError:
+    _peakrdl_schema = None
+
 if TYPE_CHECKING:
     import argparse
 
@@ -18,6 +23,30 @@ else:
 
 from . import cli as _cli
 from .exporter import _KNOWN_UDPS, Pybind11Exporter
+
+
+def _add_boolean_pair(
+    arg_group: "argparse._ActionsContainer",
+    *,
+    dest: str,
+    enabled: str,
+    disabled: str,
+    noun: str,
+) -> None:
+    """Add symmetric opt-in/opt-out flags with an unspecified default."""
+    arg_group.add_argument(
+        enabled,
+        dest=dest,
+        action="store_true",
+        default=None,
+        help=f"Generate {noun}",
+    )
+    arg_group.add_argument(
+        disabled,
+        dest=dest,
+        action="store_false",
+        help=f"Do not generate {noun}",
+    )
 
 
 def _build_udp_definitions() -> list[type]:
@@ -58,6 +87,21 @@ class Exporter(ExporterSubcommandPlugin):
     # declare `property is_flag {...};` etc. themselves.
     udp_definitions = _build_udp_definitions()
 
+    # Native PeakRDL configuration, loaded from the ``[pybind11]`` table in
+    # peakrdl.toml. Missing values remain None so profiles supply defaults.
+    cfg_schema = (
+        {
+            "output_profile": _peakrdl_schema.Choice(["full", "compact", "minimal"]),
+            "gen_pyi": _peakrdl_schema.Boolean(),
+            "gen_schema": _peakrdl_schema.Boolean(),
+            "gen_interrupts": _peakrdl_schema.Boolean(),
+            "gen_aliases": _peakrdl_schema.Boolean(),
+            "root_mirror": _peakrdl_schema.Boolean(),
+        }
+        if _peakrdl_schema is not None
+        else {}
+    )
+
     def add_exporter_arguments(self, arg_group: "argparse._ActionsContainer") -> None:
         """Add exporter-specific arguments to the command line"""
         arg_group.add_argument(
@@ -74,14 +118,48 @@ class Exporter(ExporterSubcommandPlugin):
             help="Version string for the generated SoC module (default: 0.1.0)",
         )
         arg_group.add_argument(
-            "--gen-pyi",
-            dest="gen_pyi",
-            action="store_true",
-            default=True,
-            help="Generate .pyi stub files for type hints (default: enabled)",
+            "--output-profile",
+            choices=("full", "compact", "minimal"),
+            default=None,
+            help=(
+                "Optional-output profile: full preserves the historical manifest; compact omits "
+                "schema/root mirrors; minimal omits all optional artifacts"
+            ),
         )
-        arg_group.add_argument(
-            "--no-gen-pyi", dest="gen_pyi", action="store_false", help="Disable generation of .pyi stub files"
+        _add_boolean_pair(
+            arg_group,
+            dest="gen_pyi",
+            enabled="--gen-pyi",
+            disabled="--no-gen-pyi",
+            noun=".pyi stub files",
+        )
+        _add_boolean_pair(
+            arg_group,
+            dest="gen_schema",
+            enabled="--gen-schema",
+            disabled="--no-gen-schema",
+            noun="schema.json",
+        )
+        _add_boolean_pair(
+            arg_group,
+            dest="gen_interrupts",
+            enabled="--gen-interrupts",
+            disabled="--no-gen-interrupts",
+            noun="interrupt metadata",
+        )
+        _add_boolean_pair(
+            arg_group,
+            dest="gen_aliases",
+            enabled="--gen-aliases",
+            disabled="--no-gen-aliases",
+            noun="alias metadata",
+        )
+        _add_boolean_pair(
+            arg_group,
+            dest="root_mirror",
+            enabled="--root-mirror",
+            disabled="--no-root-mirror",
+            noun="legacy root mirror copies",
         )
         arg_group.add_argument(
             "--split-bindings",
@@ -159,11 +237,30 @@ class Exporter(ExporterSubcommandPlugin):
             soc_name = top_node.inst_name or "soc"
 
         soc_version = getattr(options, "soc_version", "0.1.0")
-        gen_pyi = getattr(options, "gen_pyi", True)
+        cli_profile = getattr(options, "output_profile", None)
+        cfg = getattr(self, "cfg", {}) or {}
+        output_profile = cli_profile or cfg.get("output_profile") or "full"
+
+        # An explicitly selected CLI profile supersedes the TOML artifact
+        # selections as a unit. Explicit artifact flags then override either
+        # source. Without a CLI profile, TOML artifact values refine its TOML
+        # profile in the same way programmatic keyword overrides do.
+        cfg_overrides = {} if cli_profile is not None else cfg
+
+        def output_value(name: str) -> bool | None:
+            cli_value = getattr(options, name, None)
+            return cli_value if cli_value is not None else cfg_overrides.get(name)
+
+        gen_pyi = output_value("gen_pyi")
+        gen_schema = output_value("gen_schema")
+        gen_interrupts = output_value("gen_interrupts")
+        gen_aliases = output_value("gen_aliases")
+        root_mirror = output_value("root_mirror")
         split_bindings = getattr(options, "split_bindings", 100)
         split_by_hierarchy = getattr(options, "split_by_hierarchy", False)
         interrupt_pattern = getattr(options, "interrupt_pattern", None)
         udp_config = getattr(options, "udp_config", None)
+        strict_fields = getattr(options, "strict_fields", True)
 
         exporter.export(
             top_node,
@@ -171,10 +268,16 @@ class Exporter(ExporterSubcommandPlugin):
             soc_name=soc_name,
             soc_version=soc_version,
             gen_pyi=gen_pyi,
+            output_profile=output_profile,
+            gen_schema=gen_schema,
+            gen_interrupts=gen_interrupts,
+            gen_aliases=gen_aliases,
+            root_mirror=root_mirror,
             split_bindings=split_bindings,
             split_by_hierarchy=split_by_hierarchy,
             interrupt_pattern=interrupt_pattern,
             udp_config=udp_config,
+            strict_fields=strict_fields,
         )
 
         # Run sibling-unit CLI handlers after the primary export. Order

@@ -694,35 +694,44 @@ class FeatureDetectionPlugin:
 
     def post_export(self, ctx: PluginContext) -> None:
         top = ctx.top_node
-        # The exporter writes the runtime + stubs into both
-        # ``output_dir/`` and ``output_dir/<soc_name>/``; we mirror that
-        # so consumers (and the E2E ls check) can find these files at
-        # the package root.
-        targets = _output_targets(ctx.output_dir, ctx.soc_name)
+        from peakrdl_pybind11.output_config import OutputConfig
+
+        output_config = ctx.options.get("output_config", OutputConfig.full())
+        targets = _output_targets(
+            ctx.output_dir,
+            ctx.soc_name,
+            root_mirror=output_config.root_mirror,
+        )
 
         pattern = ctx.options.get("interrupt_pattern")
-        groups = detect_interrupt_groups(top, pattern)
-        aliases = detect_aliases(top)
-        schema = build_schema(top)
+        # These tree walks are intentionally lazy: large designs should not
+        # pay for artifacts their selected output profile disabled.
+        groups = detect_interrupt_groups(top, pattern) if output_config.gen_interrupts else []
+        aliases = detect_aliases(top) if output_config.gen_aliases else {}
+        schema = build_schema(top) if output_config.gen_schema else None
 
         for target in targets:
             target.mkdir(parents=True, exist_ok=True)
-            _write_interrupts(target / "interrupts_detected.py", groups)
-            _write_aliases(target / "aliases.py", aliases)
-            _write_schema(target / "schema.json", schema)
+            if output_config.gen_interrupts:
+                _write_interrupts(target / "interrupts_detected.py", groups)
+            if output_config.gen_aliases:
+                _write_aliases(target / "aliases.py", aliases)
+            if schema is not None:
+                _write_schema(target / "schema.json", schema)
 
-        # Stubs enrichment: rewrite both copies of ``__init__.pyi``.
-        try:
-            regs = ctx.nodes["regs"]
-        except (KeyError, TypeError):
-            regs = []
-        if regs:
-            for stubs_dir in targets:
-                enrich_stubs(
-                    stubs_dir / "__init__.pyi",
-                    regs,
-                    pybind_name_for=ctx.exporter._pybind_name_from_node,  # type: ignore[arg-type]
-                )
+        # Enrich only stubs that the main exporter actually generated.
+        if output_config.gen_pyi:
+            try:
+                regs = ctx.nodes["regs"]
+            except (KeyError, TypeError):
+                regs = []
+            if regs:
+                for stubs_dir in targets:
+                    enrich_stubs(
+                        stubs_dir / "__init__.pyi",
+                        regs,
+                        pybind_name_for=ctx.exporter._pybind_name_from_node,  # type: ignore[arg-type]
+                    )
 
         LOGGER.info(
             "feature_detection: %d interrupt group(s), %d alias(es), schema written to %s",
@@ -732,8 +741,11 @@ class FeatureDetectionPlugin:
         )
 
 
-def _output_targets(output_dir: Path, soc_name: str) -> list[Path]:
-    return [output_dir, output_dir / soc_name]
+def _output_targets(output_dir: Path, soc_name: str, *, root_mirror: bool = True) -> list[Path]:
+    targets = [output_dir / soc_name]
+    if root_mirror:
+        targets.insert(0, output_dir)
+    return targets
 
 
 def register(_module: Any) -> FeatureDetectionPlugin:
