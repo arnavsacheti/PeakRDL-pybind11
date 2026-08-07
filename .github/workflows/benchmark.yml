@@ -27,7 +27,7 @@ jobs:
       
       - name: Install dependencies
         run: uv sync --group benchmark
-      
+
       - name: Run fast benchmarks (export only)
         run: |
           uv run pytest benchmarks/ --benchmark-only -m "not slow" -v \

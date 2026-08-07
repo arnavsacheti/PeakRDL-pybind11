@@ -361,7 +361,8 @@ class TestStrictFields:
         ns = parser.parse_args(["--strict-fields=true"])
         assert ns.strict_fields is True
         ns = parser.parse_args([])  # default
-        assert ns.strict_fields is True
+        assert ns.strict_fields is None
+        assert cli_strict.is_strict_from_options(ns) is True
 
     @staticmethod
     def _exec_runtime_prologue(strict: bool) -> tuple[dict[str, Any], list[warnings.WarningMessage]]:

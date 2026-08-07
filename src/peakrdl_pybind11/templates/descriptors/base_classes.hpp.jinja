@@ -538,6 +538,16 @@ public:
     }
 
     /**
+     * Multi-field write: single read-modify-write for a combined mask/value.
+     *
+     * The generated Python shim validates keyword field names and packs their
+     * values before calling this shared implementation.
+     */
+    void write_fields(uint64_t mask, uint64_t value) {
+        modify(value, mask);
+    }
+
+    /**
      * Enter context manager - read current value and cache it
      */
     RegisterBase* __enter__() {
@@ -672,6 +682,28 @@ public:
 
     uint64_t mask() const {
         return ((1ULL << width_) - 1) << lsb_;
+    }
+
+    /**
+     * Read this field from its parent register.
+     */
+    uint64_t read() {
+        if (!is_readable()) {
+            throw std::runtime_error("Field " + name_ + " is not readable");
+        }
+        uint64_t reg_val = parent_register_->read();
+        return (reg_val & mask()) >> lsb_;
+    }
+
+    /**
+     * Write this field with a read-modify-write of its parent register.
+     */
+    void write(uint64_t value) {
+        if (!is_writable()) {
+            throw std::runtime_error("Field " + name_ + " is not writable");
+        }
+        uint64_t field_val = (value << lsb_) & mask();
+        parent_register_->modify(field_val, mask());
     }
 
     /**

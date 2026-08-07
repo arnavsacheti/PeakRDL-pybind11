@@ -41,19 +41,23 @@
 <text class="tick" x="66.0" y="46.0" text-anchor="end">100</text>
 <line class="axis" x1="74.0" y1="234.0" x2="436.0" y2="234.0"/>
 <text class="tick" x="74.0" y="256.0" text-anchor="middle">v0.2.0</text>
-<text class="tick" x="146.4" y="256.0" text-anchor="middle">v0.4.0</text>
-<text class="tick" x="218.8" y="256.0" text-anchor="middle">v0.5.0</text>
-<text class="tick" x="291.2" y="256.0" text-anchor="middle">v0.6.0</text>
-<text class="tick" x="363.6" y="256.0" text-anchor="middle">v0.7.0</text>
-<text class="tick" x="436.0" y="256.0" text-anchor="middle">v0.8.5</text>
-<polyline class="series series-a" points="74.0,186.2 146.4,190.3 218.8,169.1 291.2,166.6 363.6,150.6 436.0,78.6" aria-label="Generation"/>
-<circle class="point series-a" cx="74.0" cy="186.2" r="3.5"/>
-<circle class="point series-a" cx="146.4" cy="190.3" r="3.5"/>
-<circle class="point series-a" cx="218.8" cy="169.1" r="3.5"/>
-<circle class="point series-a" cx="291.2" cy="166.6" r="3.5"/>
-<circle class="point series-a" cx="363.6" cy="150.6" r="3.5"/>
-<circle class="point series-a" cx="436.0" cy="78.6" r="3.5"/>
-<text class="value-label" x="432.0" y="69.6" text-anchor="end">81</text>
+<text class="tick" x="125.7" y="256.0" text-anchor="middle">v0.4.0</text>
+<text class="tick" x="177.4" y="256.0" text-anchor="middle">v0.5.0</text>
+<text class="tick" x="229.1" y="256.0" text-anchor="middle">v0.6.0</text>
+<text class="tick" x="280.9" y="256.0" text-anchor="middle">v0.7.0</text>
+<text class="tick" x="332.6" y="256.0" text-anchor="middle">v0.8.5</text>
+<text class="tick" x="384.3" y="256.0" text-anchor="middle">v0.8.7</text>
+<text class="tick" x="436.0" y="256.0" text-anchor="middle">v0.8.8</text>
+<polyline class="series series-a" points="74.0,188.1 125.7,185.8 177.4,170.6 229.1,170.7 280.9,152.3 332.6,80.6 384.3,83.1 436.0,82.1" aria-label="Generation"/>
+<circle class="point series-a" cx="74.0" cy="188.1" r="3.5"/>
+<circle class="point series-a" cx="125.7" cy="185.8" r="3.5"/>
+<circle class="point series-a" cx="177.4" cy="170.6" r="3.5"/>
+<circle class="point series-a" cx="229.1" cy="170.7" r="3.5"/>
+<circle class="point series-a" cx="280.9" cy="152.3" r="3.5"/>
+<circle class="point series-a" cx="332.6" cy="80.6" r="3.5"/>
+<circle class="point series-a" cx="384.3" cy="83.1" r="3.5"/>
+<circle class="point series-a" cx="436.0" cy="82.1" r="3.5"/>
+<text class="value-label" x="432.0" y="73.1" text-anchor="end">79</text>
 </g>
 <g class="panel" aria-label="Sources to wheel">
 <text class="panel-title" x="470.0" y="28.0">Sources to wheel</text>
@@ -70,19 +74,23 @@
 <text class="tick" x="516.0" y="46.0" text-anchor="end">10</text>
 <line class="axis" x1="524.0" y1="234.0" x2="886.0" y2="234.0"/>
 <text class="tick" x="524.0" y="256.0" text-anchor="middle">v0.2.0</text>
-<text class="tick" x="596.4" y="256.0" text-anchor="middle">v0.4.0</text>
-<text class="tick" x="668.8" y="256.0" text-anchor="middle">v0.5.0</text>
-<text class="tick" x="741.2" y="256.0" text-anchor="middle">v0.6.0</text>
-<text class="tick" x="813.6" y="256.0" text-anchor="middle">v0.7.0</text>
-<text class="tick" x="886.0" y="256.0" text-anchor="middle">v0.8.5</text>
-<polyline class="series series-a" points="524.0,130.1 596.4,131.0 668.8,131.5 741.2,137.3 813.6,127.7 886.0,127.2" aria-label="Build"/>
-<circle class="point series-a" cx="524.0" cy="130.1" r="3.5"/>
-<circle class="point series-a" cx="596.4" cy="131.0" r="3.5"/>
-<circle class="point series-a" cx="668.8" cy="131.5" r="3.5"/>
-<circle class="point series-a" cx="741.2" cy="137.3" r="3.5"/>
-<circle class="point series-a" cx="813.6" cy="127.7" r="3.5"/>
-<circle class="point series-a" cx="886.0" cy="127.2" r="3.5"/>
-<text class="value-label" x="882.0" y="118.2" text-anchor="end">5.6</text>
+<text class="tick" x="575.7" y="256.0" text-anchor="middle">v0.4.0</text>
+<text class="tick" x="627.4" y="256.0" text-anchor="middle">v0.5.0</text>
+<text class="tick" x="679.1" y="256.0" text-anchor="middle">v0.6.0</text>
+<text class="tick" x="730.9" y="256.0" text-anchor="middle">v0.7.0</text>
+<text class="tick" x="782.6" y="256.0" text-anchor="middle">v0.8.5</text>
+<text class="tick" x="834.3" y="256.0" text-anchor="middle">v0.8.7</text>
+<text class="tick" x="886.0" y="256.0" text-anchor="middle">v0.8.8</text>
+<polyline class="series series-a" points="524.0,130.7 575.7,133.3 627.4,132.9 679.1,143.1 730.9,131.2 782.6,131.3 834.3,133.5 886.0,135.4" aria-label="Build"/>
+<circle class="point series-a" cx="524.0" cy="130.7" r="3.5"/>
+<circle class="point series-a" cx="575.7" cy="133.3" r="3.5"/>
+<circle class="point series-a" cx="627.4" cy="132.9" r="3.5"/>
+<circle class="point series-a" cx="679.1" cy="143.1" r="3.5"/>
+<circle class="point series-a" cx="730.9" cy="131.2" r="3.5"/>
+<circle class="point series-a" cx="782.6" cy="131.3" r="3.5"/>
+<circle class="point series-a" cx="834.3" cy="133.5" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="135.4" r="3.5"/>
+<text class="value-label" x="882.0" y="126.4" text-anchor="end">5.1</text>
 </g>
 <g class="panel" aria-label="Generation peak memory">
 <text class="panel-title" x="20.0" y="304.0">Generation peak memory</text>
@@ -99,19 +107,23 @@
 <text class="tick" x="66.0" y="322.0" text-anchor="end">100</text>
 <line class="axis" x1="74.0" y1="510.0" x2="436.0" y2="510.0"/>
 <text class="tick" x="74.0" y="532.0" text-anchor="middle">v0.2.0</text>
-<text class="tick" x="146.4" y="532.0" text-anchor="middle">v0.4.0</text>
-<text class="tick" x="218.8" y="532.0" text-anchor="middle">v0.5.0</text>
-<text class="tick" x="291.2" y="532.0" text-anchor="middle">v0.6.0</text>
-<text class="tick" x="363.6" y="532.0" text-anchor="middle">v0.7.0</text>
-<text class="tick" x="436.0" y="532.0" text-anchor="middle">v0.8.5</text>
-<polyline class="series series-a" points="74.0,423.7 146.4,422.6 218.8,422.4 291.2,422.9 363.6,419.9 436.0,414.7" aria-label="Generation"/>
-<circle class="point series-a" cx="74.0" cy="423.7" r="3.5"/>
-<circle class="point series-a" cx="146.4" cy="422.6" r="3.5"/>
-<circle class="point series-a" cx="218.8" cy="422.4" r="3.5"/>
-<circle class="point series-a" cx="291.2" cy="422.9" r="3.5"/>
-<circle class="point series-a" cx="363.6" cy="419.9" r="3.5"/>
-<circle class="point series-a" cx="436.0" cy="414.7" r="3.5"/>
-<text class="value-label" x="432.0" y="405.7" text-anchor="end">50</text>
+<text class="tick" x="125.7" y="532.0" text-anchor="middle">v0.4.0</text>
+<text class="tick" x="177.4" y="532.0" text-anchor="middle">v0.5.0</text>
+<text class="tick" x="229.1" y="532.0" text-anchor="middle">v0.6.0</text>
+<text class="tick" x="280.9" y="532.0" text-anchor="middle">v0.7.0</text>
+<text class="tick" x="332.6" y="532.0" text-anchor="middle">v0.8.5</text>
+<text class="tick" x="384.3" y="532.0" text-anchor="middle">v0.8.7</text>
+<text class="tick" x="436.0" y="532.0" text-anchor="middle">v0.8.8</text>
+<polyline class="series series-a" points="74.0,423.4 125.7,422.8 177.4,422.3 229.1,422.5 280.9,420.6 332.6,413.6 384.3,414.0 436.0,413.5" aria-label="Generation"/>
+<circle class="point series-a" cx="74.0" cy="423.4" r="3.5"/>
+<circle class="point series-a" cx="125.7" cy="422.8" r="3.5"/>
+<circle class="point series-a" cx="177.4" cy="422.3" r="3.5"/>
+<circle class="point series-a" cx="229.1" cy="422.5" r="3.5"/>
+<circle class="point series-a" cx="280.9" cy="420.6" r="3.5"/>
+<circle class="point series-a" cx="332.6" cy="413.6" r="3.5"/>
+<circle class="point series-a" cx="384.3" cy="414.0" r="3.5"/>
+<circle class="point series-a" cx="436.0" cy="413.5" r="3.5"/>
+<text class="value-label" x="432.0" y="404.5" text-anchor="end">50</text>
 </g>
 <g class="panel" aria-label="Build peak memory">
 <text class="panel-title" x="470.0" y="304.0">Build peak memory</text>
@@ -128,18 +140,22 @@
 <text class="tick" x="516.0" y="322.0" text-anchor="end">1000</text>
 <line class="axis" x1="524.0" y1="510.0" x2="886.0" y2="510.0"/>
 <text class="tick" x="524.0" y="532.0" text-anchor="middle">v0.2.0</text>
-<text class="tick" x="596.4" y="532.0" text-anchor="middle">v0.4.0</text>
-<text class="tick" x="668.8" y="532.0" text-anchor="middle">v0.5.0</text>
-<text class="tick" x="741.2" y="532.0" text-anchor="middle">v0.6.0</text>
-<text class="tick" x="813.6" y="532.0" text-anchor="middle">v0.7.0</text>
-<text class="tick" x="886.0" y="532.0" text-anchor="middle">v0.8.5</text>
-<polyline class="series series-a" points="524.0,442.7 596.4,442.0 668.8,442.0 741.2,421.1 813.6,410.2 886.0,408.9" aria-label="Build"/>
-<circle class="point series-a" cx="524.0" cy="442.7" r="3.5"/>
-<circle class="point series-a" cx="596.4" cy="442.0" r="3.5"/>
-<circle class="point series-a" cx="668.8" cy="442.0" r="3.5"/>
-<circle class="point series-a" cx="741.2" cy="421.1" r="3.5"/>
-<circle class="point series-a" cx="813.6" cy="410.2" r="3.5"/>
-<circle class="point series-a" cx="886.0" cy="408.9" r="3.5"/>
-<text class="value-label" x="882.0" y="399.9" text-anchor="end">527</text>
+<text class="tick" x="575.7" y="532.0" text-anchor="middle">v0.4.0</text>
+<text class="tick" x="627.4" y="532.0" text-anchor="middle">v0.5.0</text>
+<text class="tick" x="679.1" y="532.0" text-anchor="middle">v0.6.0</text>
+<text class="tick" x="730.9" y="532.0" text-anchor="middle">v0.7.0</text>
+<text class="tick" x="782.6" y="532.0" text-anchor="middle">v0.8.5</text>
+<text class="tick" x="834.3" y="532.0" text-anchor="middle">v0.8.7</text>
+<text class="tick" x="886.0" y="532.0" text-anchor="middle">v0.8.8</text>
+<polyline class="series series-a" points="524.0,443.2 575.7,442.0 627.4,441.9 679.1,421.8 730.9,408.3 782.6,408.6 834.3,410.6 886.0,410.9" aria-label="Build"/>
+<circle class="point series-a" cx="524.0" cy="443.2" r="3.5"/>
+<circle class="point series-a" cx="575.7" cy="442.0" r="3.5"/>
+<circle class="point series-a" cx="627.4" cy="441.9" r="3.5"/>
+<circle class="point series-a" cx="679.1" cy="421.8" r="3.5"/>
+<circle class="point series-a" cx="730.9" cy="408.3" r="3.5"/>
+<circle class="point series-a" cx="782.6" cy="408.6" r="3.5"/>
+<circle class="point series-a" cx="834.3" cy="410.6" r="3.5"/>
+<circle class="point series-a" cx="886.0" cy="410.9" r="3.5"/>
+<text class="value-label" x="882.0" y="401.9" text-anchor="end">516</text>
 </g>
 </svg>

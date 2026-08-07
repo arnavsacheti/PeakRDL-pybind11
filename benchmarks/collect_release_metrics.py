@@ -30,7 +30,16 @@ from importlib.metadata import version
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REFS = ("v0.2.0", "v0.4.0", "v0.5.0", "v0.6.0", "v0.7.0", "v0.8.5")
+DEFAULT_REFS = (
+    "v0.2.0",
+    "v0.4.0",
+    "v0.5.0",
+    "v0.6.0",
+    "v0.7.0",
+    "v0.8.5",
+    "v0.8.7",
+    "v0.8.8",
+)
 SOC_NAME = "release_bench"
 
 

@@ -22,6 +22,8 @@ from systemrdl.node import (
     SignalNode,
 )
 
+from .output_config import OutputConfig, OutputProfile
+
 # Words that cannot be used as identifiers in either Python or C++.
 #
 # We deliberately use only ``keyword.kwlist`` (hard Python keywords) and skip
@@ -404,6 +406,7 @@ class Pybind11Exporter:
         self.soc_version: str = "0.1.0"
         self.top_node: AddrmapNode | None = None
         self.output_dir: Path | None = None
+        self.output_config = OutputConfig.full()
         self._name_cache: dict[str, str] = {}
         # ``--udp-config`` declared-type map (sketch §8.2 / §18). Keys are
         # UDP attribute names; values are the *string* type name the user
@@ -427,11 +430,18 @@ class Pybind11Exporter:
         output_dir: str,
         soc_name: str | None = None,
         soc_version: str = "0.1.0",
-        gen_pyi: bool = True,
+        gen_pyi: bool | None = None,
         split_bindings: int = 100,
         split_by_hierarchy: bool = False,
         interrupt_pattern: object | None = None,
         udp_config: str | Path | None = None,
+        output_profile: OutputProfile | str = "full",
+        output_config: OutputConfig | None = None,
+        gen_schema: bool | None = None,
+        gen_interrupts: bool | None = None,
+        gen_aliases: bool | None = None,
+        root_mirror: bool | None = None,
+        strict_fields: bool | None = None,
     ) -> None:
         """
         Export SystemRDL to PyBind11 modules
@@ -441,7 +451,7 @@ class Pybind11Exporter:
             output_dir: Directory to write output files
             soc_name: Name of the SoC module (default: derived from top node)
             soc_version: Version string for the SoC module (default: "0.1.0")
-            gen_pyi: Generate .pyi stub files for type hints
+            gen_pyi: Override generation of .pyi stub files for type hints.
             split_bindings: Split bindings into multiple files when register count exceeds this threshold.
                            Set to 0 to disable splitting. Default: 100
                            Ignored when split_by_hierarchy is True.
@@ -457,6 +467,18 @@ class Pybind11Exporter:
                         default ``Any`` on ``info.tags.<udp_name>`` for type-checkers. Undeclared
                         UDPs fall back to today's permissive ``TagsNamespace``. Requires Python
                         3.11+ (uses :mod:`tomllib`); the rest of the package works on 3.10.
+            output_profile: Base optional-output profile: ``full`` (historical manifest),
+                            ``compact`` (no schema/root mirrors), or ``minimal`` (no optional
+                            artifacts). Individual overrides take precedence.
+            output_config: Optional immutable base configuration. When supplied, it takes the
+                           place of ``output_profile``; individual overrides still take precedence.
+            gen_schema: Override generation of schema.json.
+            gen_interrupts: Override generation of interrupts_detected.py metadata.
+            gen_aliases: Override generation of aliases.py metadata.
+            root_mirror: Override legacy copies of Python artifacts at the output root.
+            strict_fields: Override whether generated register field assignment uses strict
+                           semantics. If omitted, an existing exporter attribute is preserved for
+                           backward compatibility; otherwise the default is strict.
         """
         self.top_node = top_node.top if isinstance(top_node, RootNode) else top_node
         self.output_dir = Path(output_dir)
@@ -465,6 +487,18 @@ class Pybind11Exporter:
         self.split_bindings = split_bindings
         self.split_by_hierarchy = split_by_hierarchy
         self.interrupt_pattern = interrupt_pattern
+        base_output = output_config or OutputConfig.from_profile(output_profile)
+        self.output_config = base_output.with_overrides(
+            gen_pyi=gen_pyi,
+            gen_schema=gen_schema,
+            gen_interrupts=gen_interrupts,
+            gen_aliases=gen_aliases,
+            root_mirror=root_mirror,
+        )
+        if strict_fields is not None:
+            self.strict_fields = strict_fields
+        elif not hasattr(self, "strict_fields"):
+            self.strict_fields = True
 
         # Parse the ``--udp-config`` TOML once and stash the declared-type
         # map on ``self`` so downstream consumers (currently: planned
@@ -482,6 +516,7 @@ class Pybind11Exporter:
 
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
+        self._remove_disabled_outputs()
 
         # Collect all nodes first
         nodes = self._collect_nodes(self.top_node)
@@ -502,13 +537,56 @@ class Pybind11Exporter:
         self._generate_setup_py(nodes)
 
         # Generate .pyi stub files if requested
-        if gen_pyi:
+        if self.output_config.gen_pyi:
             self._generate_pyi_stubs(nodes)
 
         # Run post-export plugins (interrupt detection, schema, etc.).
         # Plugins are best-effort: a plugin failure must not stop the
         # main exporter from declaring success.
         self._run_post_export_plugins(nodes)
+
+    def _remove_disabled_outputs(self) -> None:
+        """Remove stale artifacts only from exporter-owned output targets.
+
+        Output directories are sometimes reused as broader project trees.  A
+        filename match alone is therefore not sufficient proof that files such
+        as ``schema.json`` or ``__init__.py`` belong to this exporter.  The
+        generated runtime carries a stable marker, so use its presence in each
+        target directory as the ownership boundary.  An unmarked directory is
+        left untouched; the requested export still writes its normal package
+        files later in the pipeline.
+        """
+        assert self.output_dir is not None
+        assert self.soc_name is not None
+
+        pkg_dir = self.output_dir / self.soc_name
+        optional_files = {
+            "__init__.pyi": self.output_config.gen_pyi,
+            "schema.json": self.output_config.gen_schema,
+            "interrupts_detected.py": self.output_config.gen_interrupts,
+            "aliases.py": self.output_config.gen_aliases,
+        }
+        if self._has_generated_runtime(pkg_dir):
+            for filename, enabled in optional_files.items():
+                if not enabled:
+                    (pkg_dir / filename).unlink(missing_ok=True)
+
+        if self._has_generated_runtime(self.output_dir):
+            root_files = {"__init__.py": self.output_config.root_mirror, **optional_files}
+            for filename, enabled in root_files.items():
+                if not self.output_config.root_mirror or not enabled:
+                    (self.output_dir / filename).unlink(missing_ok=True)
+
+    @staticmethod
+    def _has_generated_runtime(directory: Path) -> bool:
+        """Return whether ``directory/__init__.py`` is exporter-owned."""
+        runtime = directory / "__init__.py"
+        try:
+            with runtime.open("rb") as stream:
+                prefix = stream.read(4096)
+        except OSError:
+            return False
+        return b"Generated by PeakRDL-pybind11 from SystemRDL" in prefix
 
     def _run_post_export_plugins(self, nodes: "Nodes") -> None:
         from .exporter_plugins import PluginContext, run_post_export
@@ -523,7 +601,10 @@ class Pybind11Exporter:
             output_dir=self.output_dir,
             soc_name=self.soc_name,
             nodes=nodes,
-            options={"interrupt_pattern": self.interrupt_pattern},
+            options={
+                "interrupt_pattern": self.interrupt_pattern,
+                "output_config": self.output_config,
+            },
         )
         try:
             run_post_export(ctx)
@@ -896,7 +977,10 @@ class Pybind11Exporter:
         assert self.soc_name is not None
         pkg_dir = self.output_dir / self.soc_name
         pkg_dir.mkdir(exist_ok=True)
-        for filepath in (pkg_dir / "__init__.py", self.output_dir / "__init__.py"):
+        filepaths = [pkg_dir / "__init__.py"]
+        if self.output_config.root_mirror:
+            filepaths.append(self.output_dir / "__init__.py")
+        for filepath in filepaths:
             with filepath.open("w", encoding="utf-8") as f:
                 f.write(output)
 
@@ -967,7 +1051,10 @@ class Pybind11Exporter:
         assert self.soc_name is not None
         pkg_dir = self.output_dir / self.soc_name
         pkg_dir.mkdir(exist_ok=True)
-        for filepath in (pkg_dir / "__init__.pyi", self.output_dir / "__init__.pyi"):
+        filepaths = [pkg_dir / "__init__.pyi"]
+        if self.output_config.root_mirror:
+            filepaths.append(self.output_dir / "__init__.pyi")
+        for filepath in filepaths:
             with filepath.open("w", encoding="utf-8") as f:
                 f.write(output)
 

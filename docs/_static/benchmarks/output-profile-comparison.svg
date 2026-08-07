@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 720" role="img" aria-labelledby="title description">
+<title id="title">Generated-output profiles at the largest shared register count (100,001 registers)</title>
+<desc id="description">Four horizontal bar charts compare total generated source, source export time, generation peak resident memory, and a deflate-compressed package-text proxy for full, compact, and minimal output profiles at the largest register count shared by every profile. The deflate proxy is not a wheel size. The shared comparison point is 100,001 registers.</desc>
+<style>
+            :root { color-scheme: light dark; }
+            .panel-title, .value-label, .legend { fill: #172033; }
+            .panel-title { font: 600 14px system-ui, sans-serif; }
+            .unit, .tick { fill: #5d6678; font: 11px system-ui, sans-serif; }
+            .legend, .value-label { font: 11px system-ui, sans-serif; }
+            .grid { stroke: #d9dde6; stroke-width: 1; }
+            .axis { stroke: #838b9b; stroke-width: 1; }
+            .series { fill: none; stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+            .point { stroke-width: 2; }
+            .series-a { stroke: #2563eb; }
+            .series-b { stroke: #c2410c; }
+            .point.series-a { fill: #2563eb; }
+            .point.series-b { fill: #c2410c; }
+            @media (prefers-color-scheme: dark) {
+                .panel-title, .value-label, .legend { fill: #ecf0f7; }
+                .unit, .tick { fill: #aab2c2; }
+                .grid { stroke: #3b4352; }
+                .axis { stroke: #7d8799; }
+                .series-a { stroke: #60a5fa; }
+                .series-b { stroke: #fb923c; }
+                .point.series-a { fill: #60a5fa; }
+                .point.series-b { fill: #fb923c; }
+            }
+        </style>
+<style>
+            .bar-label, .bar-value { fill: #172033; font: 11px system-ui, sans-serif; }
+            .bar { stroke: none; }
+            .profile-0 { fill: #2563eb; }
+            .profile-1 { fill: #0f766e; }
+            .profile-2 { fill: #7c3aed; }
+            .profile-3 { fill: #c2410c; }
+            .profile-4 { fill: #be123c; }
+            .profile-5 { fill: #4d7c0f; }
+            @media (prefers-color-scheme: dark) {
+                .bar-label, .bar-value { fill: #ecf0f7; }
+                .profile-0 { fill: #60a5fa; }
+                .profile-1 { fill: #2dd4bf; }
+                .profile-2 { fill: #a78bfa; }
+                .profile-3 { fill: #fb923c; }
+                .profile-4 { fill: #fb7185; }
+                .profile-5 { fill: #a3e635; }
+            }
+        </style>
+<g class="panel" aria-label="Total generated source">
+<text class="panel-title" x="20.0" y="35.0">Total generated source</text>
+<text class="unit" x="560.0" y="35.0" text-anchor="end">GiB</text>
+<line class="grid" x1="162.0" y1="58.0" x2="162.0" y2="302.0"/>
+<text class="tick" x="162.0" y="324.0" text-anchor="middle">0</text>
+<line class="grid" x1="255.5" y1="58.0" x2="255.5" y2="302.0"/>
+<text class="tick" x="255.5" y="324.0" text-anchor="middle">1.2</text>
+<line class="grid" x1="349.0" y1="58.0" x2="349.0" y2="302.0"/>
+<text class="tick" x="349.0" y="324.0" text-anchor="middle">2.5</text>
+<line class="grid" x1="442.5" y1="58.0" x2="442.5" y2="302.0"/>
+<text class="tick" x="442.5" y="324.0" text-anchor="middle">3.8</text>
+<line class="grid" x1="536.0" y1="58.0" x2="536.0" y2="302.0"/>
+<text class="tick" x="536.0" y="324.0" text-anchor="middle">5</text>
+<line class="axis" x1="162.0" y1="302.0" x2="536.0" y2="302.0"/>
+<text class="bar-label" x="152.0" y="102.7" text-anchor="end">Full</text>
+<rect class="bar profile-0" x="162.0" y="86.7" width="183.5" height="24.0" rx="2" aria-label="Full: 2.5 GiB"/>
+<text class="bar-value" x="351.5" y="102.7" text-anchor="start">2.5</text>
+<text class="bar-label" x="152.0" y="184.0" text-anchor="end">Compact</text>
+<rect class="bar profile-1" x="162.0" y="168.0" width="70.7" height="24.0" rx="2" aria-label="Compact: 0.94 GiB"/>
+<text class="bar-value" x="238.7" y="184.0" text-anchor="start">0.94</text>
+<text class="bar-label" x="152.0" y="265.3" text-anchor="end">Minimal</text>
+<rect class="bar profile-2" x="162.0" y="249.3" width="48.2" height="24.0" rx="2" aria-label="Minimal: 0.64 GiB"/>
+<text class="bar-value" x="216.2" y="265.3" text-anchor="start">0.64</text>
+</g>
+<g class="panel" aria-label="Source export time">
+<text class="panel-title" x="600.0" y="35.0">Source export time</text>
+<text class="unit" x="1140.0" y="35.0" text-anchor="end">seconds</text>
+<line class="grid" x1="742.0" y1="58.0" x2="742.0" y2="302.0"/>
+<text class="tick" x="742.0" y="324.0" text-anchor="middle">0</text>
+<line class="grid" x1="835.5" y1="58.0" x2="835.5" y2="302.0"/>
+<text class="tick" x="835.5" y="324.0" text-anchor="middle">25</text>
+<line class="grid" x1="929.0" y1="58.0" x2="929.0" y2="302.0"/>
+<text class="tick" x="929.0" y="324.0" text-anchor="middle">50</text>
+<line class="grid" x1="1022.5" y1="58.0" x2="1022.5" y2="302.0"/>
+<text class="tick" x="1022.5" y="324.0" text-anchor="middle">75</text>
+<line class="grid" x1="1116.0" y1="58.0" x2="1116.0" y2="302.0"/>
+<text class="tick" x="1116.0" y="324.0" text-anchor="middle">100</text>
+<line class="axis" x1="742.0" y1="302.0" x2="1116.0" y2="302.0"/>
+<text class="bar-label" x="732.0" y="102.7" text-anchor="end">Full</text>
+<rect class="bar profile-0" x="742.0" y="86.7" width="183.9" height="24.0" rx="2" aria-label="Full: 49 seconds"/>
+<text class="bar-value" x="931.9" y="102.7" text-anchor="start">49</text>
+<text class="bar-label" x="732.0" y="184.0" text-anchor="end">Compact</text>
+<rect class="bar profile-1" x="742.0" y="168.0" width="114.0" height="24.0" rx="2" aria-label="Compact: 30 seconds"/>
+<text class="bar-value" x="862.0" y="184.0" text-anchor="start">30</text>
+<text class="bar-label" x="732.0" y="265.3" text-anchor="end">Minimal</text>
+<rect class="bar profile-2" x="742.0" y="249.3" width="85.7" height="24.0" rx="2" aria-label="Minimal: 23 seconds"/>
+<text class="bar-value" x="833.7" y="265.3" text-anchor="start">23</text>
+</g>
+<g class="panel" aria-label="Generation peak memory">
+<text class="panel-title" x="20.0" y="391.0">Generation peak memory</text>
+<text class="unit" x="560.0" y="391.0" text-anchor="end">GiB RSS</text>
+<line class="grid" x1="162.0" y1="414.0" x2="162.0" y2="658.0"/>
+<text class="tick" x="162.0" y="680.0" text-anchor="middle">0</text>
+<line class="grid" x1="255.5" y1="414.0" x2="255.5" y2="658.0"/>
+<text class="tick" x="255.5" y="680.0" text-anchor="middle">2.5</text>
+<line class="grid" x1="349.0" y1="414.0" x2="349.0" y2="658.0"/>
+<text class="tick" x="349.0" y="680.0" text-anchor="middle">5</text>
+<line class="grid" x1="442.5" y1="414.0" x2="442.5" y2="658.0"/>
+<text class="tick" x="442.5" y="680.0" text-anchor="middle">7.5</text>
+<line class="grid" x1="536.0" y1="414.0" x2="536.0" y2="658.0"/>
+<text class="tick" x="536.0" y="680.0" text-anchor="middle">10</text>
+<line class="axis" x1="162.0" y1="658.0" x2="536.0" y2="658.0"/>
+<text class="bar-label" x="152.0" y="458.7" text-anchor="end">Full</text>
+<rect class="bar profile-0" x="162.0" y="442.7" width="292.0" height="24.0" rx="2" aria-label="Full: 7.8 GiB RSS"/>
+<text class="bar-value" x="460.0" y="458.7" text-anchor="start">7.8</text>
+<text class="bar-label" x="152.0" y="540.0" text-anchor="end">Compact</text>
+<rect class="bar profile-1" x="162.0" y="524.0" width="213.1" height="24.0" rx="2" aria-label="Compact: 5.7 GiB RSS"/>
+<text class="bar-value" x="381.1" y="540.0" text-anchor="start">5.7</text>
+<text class="bar-label" x="152.0" y="621.3" text-anchor="end">Minimal</text>
+<rect class="bar profile-2" x="162.0" y="605.3" width="119.5" height="24.0" rx="2" aria-label="Minimal: 3.2 GiB RSS"/>
+<text class="bar-value" x="287.5" y="621.3" text-anchor="start">3.2</text>
+</g>
+<g class="panel" aria-label="Package-text deflate proxy">
+<text class="panel-title" x="600.0" y="391.0">Package-text deflate proxy</text>
+<text class="unit" x="1140.0" y="391.0" text-anchor="end">MiB · NOT WHEEL SIZE</text>
+<line class="grid" x1="742.0" y1="414.0" x2="742.0" y2="658.0"/>
+<text class="tick" x="742.0" y="680.0" text-anchor="middle">0</text>
+<line class="grid" x1="835.5" y1="414.0" x2="835.5" y2="658.0"/>
+<text class="tick" x="835.5" y="680.0" text-anchor="middle">5</text>
+<line class="grid" x1="929.0" y1="414.0" x2="929.0" y2="658.0"/>
+<text class="tick" x="929.0" y="680.0" text-anchor="middle">10</text>
+<line class="grid" x1="1022.5" y1="414.0" x2="1022.5" y2="658.0"/>
+<text class="tick" x="1022.5" y="680.0" text-anchor="middle">15</text>
+<line class="grid" x1="1116.0" y1="414.0" x2="1116.0" y2="658.0"/>
+<text class="tick" x="1116.0" y="680.0" text-anchor="middle">20</text>
+<line class="axis" x1="742.0" y1="658.0" x2="1116.0" y2="658.0"/>
+<text class="bar-label" x="732.0" y="458.7" text-anchor="end">Full</text>
+<rect class="bar profile-0" x="742.0" y="442.7" width="291.7" height="24.0" rx="2" aria-label="Full: 16 MiB · NOT WHEEL SIZE"/>
+<text class="bar-value" x="1039.7" y="458.7" text-anchor="start">16</text>
+<text class="bar-label" x="732.0" y="540.0" text-anchor="end">Compact</text>
+<rect class="bar profile-1" x="742.0" y="524.0" width="195.2" height="24.0" rx="2" aria-label="Compact: 10 MiB · NOT WHEEL SIZE"/>
+<text class="bar-value" x="943.2" y="540.0" text-anchor="start">10</text>
+<text class="bar-label" x="732.0" y="621.3" text-anchor="end">Minimal</text>
+<rect class="bar profile-2" x="742.0" y="605.3" width="140.3" height="24.0" rx="2" aria-label="Minimal: 7.5 MiB · NOT WHEEL SIZE"/>
+<text class="bar-value" x="888.3" y="621.3" text-anchor="start">7.5</text>
+</g>
+</svg>

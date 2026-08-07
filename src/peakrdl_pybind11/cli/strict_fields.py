@@ -79,7 +79,7 @@ def add_arguments(arg_group: argparse._ActionsContainer) -> None:
         "--strict-fields",
         dest="strict_fields",
         type=parse_strict_fields_value,
-        default=STRICT_FIELDS_DEFAULT,
+        default=None,
         metavar="BOOL",
         help=(
             "Build-time toggle for register attribute-assignment policy "
@@ -103,7 +103,8 @@ def is_strict_from_options(options: argparse.Namespace | None) -> bool:
     """
     if options is None:
         return STRICT_FIELDS_DEFAULT
-    return bool(getattr(options, "strict_fields", STRICT_FIELDS_DEFAULT))
+    value = getattr(options, "strict_fields", None)
+    return STRICT_FIELDS_DEFAULT if value is None else bool(value)
 
 
 # No ``handle()`` / ``post_handle()`` — this flag mutates the export,
